@@ -13,6 +13,11 @@
 
 ```c++
 
+#include "delabella.h"
+// ...
+
+    // somewhere in your code ...
+
     int POINTS = 1000000;
     int* abc = new int[3 * (2 * POINTS - 4/*5*/)];
     double* xy = new double[2 * POINTS];
@@ -43,5 +48,7 @@
 
     delete[] xy;
     delete[] abc;
+    
+    // ...
 
 ```
