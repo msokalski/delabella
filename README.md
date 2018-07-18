@@ -20,8 +20,6 @@
 
     int POINTS = 1000000;
     
-    // maximum number of triangles is 2 * POINTS - 5
-    
     int max_tris = 2 * POINTS - 5;
     int* abc = new int[3 * max_tris];
     double* xy = new double[2 * POINTS];
