@@ -54,10 +54,7 @@ struct Vert
 	int i; // user's array idx
 	Signed14 x, y;
 	Unsigned28 z;
-
-	// silhouette
 	Vert* next;
-	Vert* prev;
 
 	Vect operator - (const Vert& v) const // diff
 	{
@@ -102,7 +99,6 @@ struct Face
 	Vert* v[3];
 	Face* f[3];
 	Norm n;
-
 	Face* next;
 
 	static Face* Alloc(Face** from)
