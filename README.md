@@ -41,7 +41,7 @@
       // make emergency call ...
     }
 
-  delete[] xy;
-  delete[] abc;
+    delete[] xy;
+    delete[] abc;
 
 ```
