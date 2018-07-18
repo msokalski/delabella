@@ -315,7 +315,7 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 		}
 	}
 
-	if (points < 4)
+	if (points < 3)
 	{
 		if (points == 2)
 		{
