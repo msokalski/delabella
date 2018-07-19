@@ -5,12 +5,15 @@
 #include <stdlib.h> // rand
 #include <windows.h> // outputdebugstring
 
+// assuming BITS is max(X_BITS,Y_BITS)
 
-typedef double Unsigned28;
-typedef double Signed14, Signed15;
-typedef double Signed29, Signed31;
-typedef double Signed45, Signed59, Signed62;
-
+typedef double Unsigned28; // 2xBITS
+typedef double Signed14;   // BITS
+typedef double Signed15;   // BITS + 1
+typedef double Signed29;   // 2xBITS + 1
+typedef double Signed31;   // 2xBITS + 3
+typedef double Signed45;   // 3xBITS + 3
+typedef double Signed62;   // 4xBITS + 6
 
 static Unsigned28 s14sqr(const Signed14& s)
 {
@@ -28,16 +31,6 @@ struct Vect
 {
 	Signed15 x, y;
 	Signed29 z;
-
-	Signed59 sqrlen() const
-	{
-		return (Signed31)x*x + (Signed31)y*y + (Signed59)z*z;
-	}
-
-	Signed59 dot(const Vect& v) const // dot prod
-	{
-		return (Signed31)x*v.x + (Signed31)y*v.y + (Signed59)z*v.z;
-	}
 
 	Norm cross (const Vect& v) const // cross prod
 	{
@@ -128,9 +121,49 @@ struct Face
 		return 0;
 	}
 
-	Face* NextOpen(const Vert* p, int e[3])
+	Face* FirstOpen(int e[3])
 	{
+		if (!f[0])
+		{
+			e[0] = 2;
+			e[1] = 1;
+			e[2] = 0;
+			return this;
+		}
+
+		if (!f[1])
+		{
+			e[0] = 0;
+			e[1] = 2;
+			e[2] = 1;
+			return this;
+		}
+
+		if (!f[2])
+		{
+			e[0] = 1;
+			e[1] = 0;
+			e[2] = 2;
+			return this;
+		}
+
+		return 0;
+	}
+
+	Face* NextOpen(int e[3])
+	{
+		if (!f[e[0]])
+		{
+			int rot = e[0];
+			e[0] = e[1];
+			e[1] = e[2];
+			e[2] = rot;
+			return this;
+		}
+
+		Vert* p = v[e[1]];
 		Face* n = this;
+
 		do
 		{
 			if (n->v[0] == p)
@@ -639,7 +672,7 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 
 	for (; i < points; i++)
 	{
-		//ValidateHull(alloc, 2 * i - 4);
+		ValidateHull(alloc, 2 * i - 4);
 
 		Vert* q = cloud + i;
 		Vert* p = cloud + i - 1;
@@ -692,7 +725,7 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 		Face* first = 0;
 
 		int e[3];
-		Face* b = bound->NextOpen(bound->v[0],e);
+		Face* b = bound->FirstOpen(e);
 
 		int add = 0;
 		while (b)
@@ -727,7 +760,7 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 			f->f[0] = first;
 			first->f[1] = f;
 
-			b = b->NextOpen(b->v[e[1]],e);
+			b = b->NextOpen(e);
 		}
 
 		assert(add == del+2);
@@ -736,7 +769,7 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 	}
 
 	assert(2 * i - 4 == max_faces);
-	//ValidateHull(alloc, max_faces);
+	ValidateHull(alloc, max_faces);
 
 	i = 0;
 	for (int j = 0; j < max_faces; j++)
