@@ -1,9 +1,9 @@
 #include <assert.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <search.h>
-#include <stdlib.h> // rand
-#include <windows.h> // outputdebugstring
+#include <malloc.h>
+
+#include "delabella.h" // we just need LOG() macro
 
 // assuming BITS is max(X_BITS,Y_BITS)
 
@@ -42,12 +42,15 @@ struct Vect
 	}
 };
 
+struct Face;
+
 struct Vert
 {
 	int i; // user's array idx
 	Signed14 x, y;
 	Unsigned28 z;
 	Vert* next;
+	Face* sew;
 
 	Vect operator - (const Vert& v) const // diff
 	{
@@ -121,119 +124,6 @@ struct Face
 		return 0;
 	}
 
-	Face* FirstOpen(int e[3])
-	{
-		if (!f[0])
-		{
-			e[0] = 2;
-			e[1] = 1;
-			e[2] = 0;
-			return this;
-		}
-
-		if (!f[1])
-		{
-			e[0] = 0;
-			e[1] = 2;
-			e[2] = 1;
-			return this;
-		}
-
-		if (!f[2])
-		{
-			e[0] = 1;
-			e[1] = 0;
-			e[2] = 2;
-			return this;
-		}
-
-		return 0;
-	}
-
-	Face* NextOpen(int e[3])
-	{
-		if (!f[e[0]])
-		{
-			int rot = e[0];
-			e[0] = e[1];
-			e[1] = e[2];
-			e[2] = rot;
-			return this;
-		}
-
-		Vert* p = v[e[1]];
-		Face* n = this;
-
-		do
-		{
-			if (n->v[0] == p)
-			{
-				if (!n->f[1])
-				{
-					e[0] = 0;
-					e[1] = 2;
-					e[2] = 1;
-					return n;
-				}
-				n = n->f[1];
-			}
-			else
-			if (n->v[1] == p)
-			{
-				if (!n->f[2])
-				{
-					e[0] = 1;
-					e[1] = 0;
-					e[2] = 2;
-					return n;
-				}
-				n = n->f[2];
-			}
-			else
-			if (n->v[2] == p)
-			{
-				if (!n->f[0])
-				{
-					e[0] = 2;
-					e[1] = 1;
-					e[2] = 0;
-					return n;
-				}
-				n = n->f[0];
-			}
-
-		} while (n != this);
-
-		return 0;
-	}
-
-	void Detach(Face** stack)
-	{
-		for (int i = 0; i < 3; i++)
-		{
-			Face* s = f[i];
-			if (s)
-			{
-				bool ok = false;
-				for (int j = 0; j < 3; j++)
-					if (s->f[j] == this)
-					{
-						ok = true;
-						s->f[j] = 0;
-					}
-
-				assert(ok); // missing back link?
-
-				// push if not already on stack, ensure first element gets marker
-				if (!s->next)
-				{
-					s->next = *stack ? *stack : s;
-					*stack = s;
-				}
-			}
-		}
-	}
-
 	Signed62 dot (const Vert& p) const // dot
 	{
 		Vect d = p - *v[0];
@@ -285,22 +175,31 @@ void ValidateHull(Face* arr, int n)
 	}
 }
 
-int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5][3]*/)
+int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5][3]*/, int(*errlog)(const char* fmt, ...))
 {
 	if (points <= 0)
 	{
-		printf("[WRN] no points given, nutting to return!\n");
+		if (errlog)
+			errlog("[WRN] no points given, nutting to return!\n");
 		return 0;
 	}
 
 	if (points == 1)
 	{
-		printf("[WRN] given single point, returning single point!\n");
+		if (errlog)
+			errlog("[WRN] given single point, returning single point!\n");
 		abc[0] = 0;
 		return -1;
 	}
 
-	Vert* cloud = new Vert[points];
+	Vert* cloud = (Vert*)malloc(sizeof(Vert)*points); // new Vert[points];
+	if (!cloud)
+	{
+		if (errlog)
+			errlog("[ERR] Not enough memory, shop for some more RAM. See you!\n");
+		return 0;
+	}
+
 	for (int i = 0; i < points; i++)
 	{
 		cloud[i].i = i;
@@ -339,7 +238,8 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 
 		if (points - w)
 		{
-			printf("[WRN] detected %d dups in xy array!\n", points - w);
+			if (errlog)
+				errlog("[WRN] detected %d dups in xy array!\n", points - w);
 			points = w;
 		}
 	}
@@ -348,17 +248,19 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 	{
 		if (points == 2)
 		{
-			printf("[WRN] all input points are colinear, returning single segment!\n");
+			if (errlog)
+				errlog("[WRN] all input points are colinear, returning single segment!\n");
 			abc[0] = cloud[0].i;
 			abc[1] = cloud[1].i;
 		}
 		else
 		{
-			printf("[WRN] all input points are identical, returning signle point!\n");
+			if (errlog)
+				errlog("[WRN] all input points are identical, returning signle point!\n");
 			abc[0] = cloud[0].i;
 		}
 
-		delete[] cloud;
+		free(cloud); // delete[] cloud;
 		return -points;
 	}
 
@@ -450,7 +352,8 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 	{
 		if (colinear)
 		{
-			printf("[WRN] all input points are colinear, returning segment list!\n");
+			if (errlog)
+				errlog("[WRN] all input points are colinear, returning segment list!\n");
 			Vert* v = head;
 			int i = 0;
 			do
@@ -458,15 +361,20 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 				abc[i++] = v->i;
 				v = v->next;
 			} while (v != head);
-			delete[] cloud;
+			
+			free(cloud); // delete[] cloud;
+
 			return -i;
 		}
 		else
 		{
-			if (points>3)
-				printf("[NFO] all input points are cocircular.\n");
-			else
-				printf("[NFO] trivial case of 3 points, thank you.\n");
+			if (errlog)
+			{
+				if (points > 3)
+					errlog("[NFO] all input points are cocircular.\n");
+				else
+					errlog("[NFO] trivial case of 3 points, thank you.\n");
+			}
 
 			Vert* p = head->next;
 			Vert* v = p->next;
@@ -495,14 +403,23 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 				} while (v != head);
 			}
 
-			delete[] cloud;
+			free(cloud); // delete[] cloud;
+
 			return i;
 		}
 	}
 
 	// prepare cache list
 	int max_faces = 2 * points - 4; // +1 max delaunay faces!
-	Face* alloc = new Face[max_faces];
+	Face* alloc = (Face*)malloc(sizeof(Face)*max_faces); // new Face[max_faces];
+	if (!alloc)
+	{
+		if (errlog)
+			errlog("[ERR] Not enough memory, shop for some more RAM. See you!\n");
+		free(cloud);
+		return 0;
+	}
+
 	for (int i = 1; i < max_faces; i++)
 		alloc[i - 1].next = alloc + i;
 	alloc[max_faces - 1].next = 0;
@@ -678,22 +595,31 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 		Vert* p = cloud + i - 1;
 		Face* f = hull;
 
-		// 1. to find first visible face: 
+		// 1. FIND FIRST VISIBLE FACE 
 		//    simply iterate around last vertex using last added triange adjecency info
 		while (f->dot(*q) <= 0)
 		{
 			f = f->Next(p);
-			assert(f != hull);
+			if (f == hull)
+			{
+				// if no visible face can be located at last vertex,
+				// let's run through all faces (approximately last to first), 
+				// yes this is emergency fallback and should not ever happen.
+				f = alloc + 2 * i - 4 - 1;
+				while (f->dot(*q) <= 0)
+				{
+					assert(f != alloc); // no face is visible? you must be kidding!
+					f--;
+				}
+			}
 		}
 
-		// 2. find rest of visible faces:
-		//    delete'em all (including first one)
+		// 2. DELETE VISIBLE FACES & ADD NEW ONES
+		//    (we also build silhouette (vertex loop) between visible & invisible faces)
 
-		int del = 0;
-
-		Face* bound = 0;
+		// push first visible face onto stack (of visible faces)
 		Face* stack = f;
-		f->next = f; // old trick to use list pointers as markers
+		f->next = f; // old trick to use list pointers as 'on-stack' markers
 		while (stack)
 		{
 			// pop, take care of last item ptr (it's not null!)
@@ -703,69 +629,95 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 				stack = 0;
 			f->next = 0;
 
-			if (f->dot(*q) > 0)
+			// copy parts of old face that we still need after removal
+			Vert* fv[3] = { f->v[0],f->v[1],f->v[2] };
+			Face* ff[3] = { f->f[0],f->f[1],f->f[2] };
+
+			// delete visible face
+			f->Free(&cache);
+
+			// check all 3 neighbors
+			for (int e = 0; e < 3; e++)
 			{
-				// detach from adjacent faces and push them on stack if not pushed yet
-				f->Detach(&stack);
-				f->Free(&cache);
-				del++;
+				Face* n = ff[e];
+				if (n && !n->next) // ensure neighbor is not processed yet & isn't on stack 
+				{
+					if (n->dot(*q) <= 0) // if neighbor is not visible we have slihouette edge
+					{
+						// build face
+
+						// ab: given face adjacency [index][], 
+						// it provides [][2] vertex indices on shared edge (CCW order)
+						const static int ab[3][2] = { { 1,2 },{ 2,0 },{ 0,1 } }; 
+
+						Vert* a = fv[ab[e][0]];
+						Vert* b = fv[ab[e][1]];
+
+						Face* s = Face::Alloc(&cache);
+						s->v[0] = a;
+						s->v[1] = b;
+						s->v[2] = q;
+
+						s->n = s->cross();
+						s->f[2] = n;
+
+						// change neighbour's adjacency from old visible face to cone side
+						if (n->f[0] == f)
+							n->f[0] = s;
+						else
+						if (n->f[1] == f)
+							n->f[1] = s;
+						else
+						if (n->f[2] == f)
+							n->f[2] = s;
+						else
+							assert(0);
+
+						// build silhouette needed for sewing sides in the second pass
+						a->sew = s;
+						a->next = b;
+					}
+					else
+					{
+						// disjoin visible faces
+						// so they won't be processed more than once
+
+						if (n->f[0] == f)
+							n->f[0] = 0;
+						else
+						if (n->f[1] == f)
+							n->f[1] = 0;
+						else
+						if (n->f[2] == f)
+							n->f[2] = 0;
+						else
+							assert(0);
+
+						// push neighbor face, it's visible and requires processing
+						n->next = stack ? stack : n;
+						stack = n;
+					}
+				}
 			}
-			else
-				bound = f;
 		}
 
-		assert(del>0);
+		// 3. SEW SIDES OF CONE BUILT ON SLIHOUTTE SEGMENTS
 
-		// 3. great, all visible faces are killed
-		//    and we have ptr to some random boundary face that survived
-		//    starting from it, run through all boundary faces 
-		//    and create new ones (cone sides) on their open edges
+		hull = alloc + 2 * i - 4 + 1; // last added face
 
-		Face* prev = 0;
-		Face* first = 0;
+		// last face must contain part of the silhouette
+		// (edge between its v[0] and v[1])
+		Vert* entry = hull->v[0]; 
 
-		int e[3];
-		Face* b = bound->FirstOpen(e);
-
-		int add = 0;
-		while (b)
+		Vert* pr = entry; 
+		do
 		{
-			add++;
-			f = Face::Alloc(&cache);
-			f->v[0] = b->v[e[0]];
-			f->v[1] = b->v[e[1]];
-			f->v[2] = q;
-			f->n = f->cross();
-
-			f->f[0] = 0;
-			f->f[1] = 0;
-			f->f[2] = 0;
-
-			if (prev)
-			{
-				// side w/ side
-				f->f[1] = prev;
-				prev->f[0] = f;
-			}
-			else
-				first = f;
-
-			prev = f;
-
-			// side w/ base
-			f->f[2] = b;
-			b->f[e[2]] = f;
-
-			// close side loop
-			f->f[0] = first;
-			first->f[1] = f;
-
-			b = b->NextOpen(e);
-		}
-
-		assert(add == del+2);
-
-		hull = prev;
+			// sew pr<->nx
+			Vert* nx = pr->next;
+			pr->sew->f[0] = nx->sew;
+			nx->sew->f[1] = pr->sew;
+			pr = nx;
+		} while (pr != entry);
 	}
 
 	assert(2 * i - 4 == max_faces);
@@ -783,8 +735,9 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 		}
 	}
 
-	delete[] cloud;
-	delete[] alloc;
+	free(cloud); // delete[] cloud;
+	free(alloc); // delete[] alloc;
+
 	return i;
 }
 
