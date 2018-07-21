@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <search.h>
 #include <malloc.h>
-
+#include <algorithm>
 #include "delabella.h" // we just need LOG() macro
 
 // assuming BITS is max(X_BITS,Y_BITS)
@@ -64,6 +64,11 @@ struct Vert
 	static bool overlap(const Vert* v1, const Vert* v2)
 	{
 		return v1->x == v2->x && v1->y == v2->y;
+	}
+
+	bool operator < (const Vert& v) const
+	{
+		return u28cmp(this, &v) < 0;
 	}
 
 	static int u28cmp(const void* a, const void* b)
@@ -208,7 +213,8 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 		cloud[i].z = s14sqr(cloud[i].x) + s14sqr(cloud[i].y); // x*x + y*y
 	}
 
-	qsort(cloud, points, sizeof(Vert), Vert::u28cmp);
+	//qsort(cloud, points, sizeof(Vert), Vert::u28cmp);
+	std::sort(cloud, cloud + points);
 
 	// rmove dups
 	{
@@ -589,7 +595,7 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 
 	for (; i < points; i++)
 	{
-		ValidateHull(alloc, 2 * i - 4);
+		//ValidateHull(alloc, 2 * i - 4);
 
 		Vert* q = cloud + i;
 		Vert* p = cloud + i - 1;
@@ -721,7 +727,7 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 	}
 
 	assert(2 * i - 4 == max_faces);
-	ValidateHull(alloc, max_faces);
+	//ValidateHull(alloc, max_faces);
 
 	i = 0;
 	for (int j = 0; j < max_faces; j++)
