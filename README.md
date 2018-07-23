@@ -55,6 +55,7 @@
 
 ```
 ## performance comparision:
+Output from speedtest.cpp
 
 |         points |        QHULL |       S-HULL |    S-HULL-3D |    DELABELLA |
 | --------------:| ------------:| ------------:| ------------:| ------------:|
