@@ -77,3 +77,5 @@ Output from speedtest.cpp
 |      1,000,000 |  7801.639 ms |  3971.826 ms |  3007.223 ms |  1160.063 ms |
 |      2,500,000 | 20803.077 ms | 11282.402 ms |  8043.722 ms |  3159.174 ms |
 |      5,000,000 | 72522.570 ms | 24885.967 ms | 20205.864 ms |  8888.995 ms |
+
+![speedtest results in Log,Log scale](speedtest.png)
