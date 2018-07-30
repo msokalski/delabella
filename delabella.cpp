@@ -90,7 +90,7 @@ struct Vert
 		if (va->i < vb->i)
 			return -1;
 		if (va->i > vb->i)
-			return -1;
+			return 1;
 		return 0;
 	}
 };
