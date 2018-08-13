@@ -8,6 +8,10 @@
 - It is pretty well described in this paper:
 
   https://arxiv.org/ftp/arxiv/papers/1602/1602.04707.pdf
+  
+## Example triangulation of signed distance field around some fancy font glyph
+
+![Example](sample.png)
 
 ## delabella usage:
 
