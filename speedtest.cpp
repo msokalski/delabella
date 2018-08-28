@@ -1,3 +1,8 @@
+/*
+DELABELLA - Delaunay triangualtion library
+Copyright (C) 2018 GUMIX - Marcin Sokalski
+*/
+
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -5,7 +10,7 @@
 
 #include "delabella.h"
 #include "NewtonApple_hull3D.h"
-#include "elo_delaunay.h"
+#include "delaunay.h"
 
 extern "C"
 {
@@ -45,13 +50,23 @@ void print_points(int n)
 		printf("% 6d,%03d,%03d", n / 1000000, n/1000 % 1000, n%1000);
 }
 
+struct MyPoint
+{
+	int x, y;
+	void get_xy(double xy[2], void* cookie)
+	{
+		xy[0] = x;
+		xy[1] = y;
+	}
+};
+
 int main(int argc, char* argv[])
 {
 	LARGE_INTEGER t0, t1, fr;
 	QueryPerformanceFrequency(&fr);
 	double dt;
 
-	int POINTS = 4;
+	int POINTS;
 
 	const static int test[18] =
 	{
@@ -65,8 +80,8 @@ int main(int argc, char* argv[])
 
 	int passes = sizeof(test) / sizeof(int);
 
-	printf("|         points |        QHULL |       S-HULL |    S-HULL-3D |    DELABELLA |\n");
-	printf("| --------------:| ------------:| ------------:| ------------:| ------------:|\n");
+	printf("|         points |       Oraiby |        QHULL |       S-HULL |    S-HULL-3D |    DELABELLA |\n");
+	printf("| --------------:| ------------:| ------------:| ------------:| ------------:| ------------:|\n");
 
 	for (int pass = -5; pass < passes; pass++)
 	{
@@ -79,7 +94,8 @@ int main(int argc, char* argv[])
 		int* abc = new int[3 * max_tris];
 		double* xy = new double[2 * POINTS];
 
-		double dt_qhull, dt_shull, dt_shull3d, dt_delabella;
+		double dt_oraiby,dt_qhull, dt_shull, dt_shull3d, dt_delabella;
+		dt_oraiby = dt_qhull = dt_shull = dt_shull3d = dt_delabella = -1;
 
 		srand(pass + 32109);
 
@@ -110,7 +126,9 @@ int main(int argc, char* argv[])
 			free(del_xy);
 
 			dt = (double)(t1.QuadPart - t0.QuadPart) / (double)fr.QuadPart;
-			//printf("ELO tris = %d, dt = %f ms\n", tris, dt * 1000);
+			printf("ELO tris = %d, dt = %f ms\n", tris, dt * 1000);
+
+			dt_oraiby = dt;
 		}
 
 		if (1)
@@ -165,7 +183,7 @@ int main(int argc, char* argv[])
 
 			int tris = qh->num_good;
 			dt = (double)(t1.QuadPart - t0.QuadPart) / (double)fr.QuadPart;
-			//printf("QHL tris = %d, dt = %f ms\n", tris, dt * 1000);
+			printf("QHL tris = %d, dt = %f ms\n", tris, dt * 1000);
 
 			free(points);
 
@@ -181,8 +199,8 @@ int main(int argc, char* argv[])
 			{
 				Shx pt;
 				pt.id = i;
-				pt.r = xy[2 * i + 0];
-				pt.c = xy[2 * i + 1];
+				pt.r = (float)xy[2 * i + 0];
+				pt.c = (float)xy[2 * i + 1];
 				pts.push_back(pt);
 			}
 
@@ -194,7 +212,7 @@ int main(int argc, char* argv[])
 			QueryPerformanceCounter(&t1);
 
 			double dt = (double)(t1.QuadPart - t0.QuadPart) / (double)fr.QuadPart;
-			//printf("SHL tris = %d, dt = %f ms\n", (int)triads.size(), dt * 1000);
+			printf("SHL tris = %d, dt = %f ms\n", (int)triads.size(), dt * 1000);
 
 			dt_shull = dt;
 		}
@@ -219,7 +237,7 @@ int main(int argc, char* argv[])
 			QueryPerformanceCounter(&t1);
 
 			dt = (double)(t1.QuadPart - t0.QuadPart) / (double)fr.QuadPart;
-			//printf("SH3 tris = %d, dt = %f ms\n", (int)triads.size(), dt * 1000);
+			printf("SH3 tris = %d, dt = %f ms\n", (int)triads.size(), dt * 1000);
 
 			dt_shull3d = dt;
 		}
@@ -227,12 +245,35 @@ int main(int argc, char* argv[])
 
 		if (1)
 		{
+			IDelaBella* idb = IDelaBella::Create();
+			
+			struct MyErrLogStream
+			{
+				MyErrLogStream(FILE* f) : file(f) {}
+				static int errlog(void* stream, const char* fmt, ...)
+				{
+					int ret;
+					MyErrLogStream* s = (MyErrLogStream*)stream;
+					va_list arglist;
+					va_start(arglist, fmt);
+					ret = vfprintf(s->file, fmt, arglist);
+					va_end(arglist);
+					return ret;
+				}
+				FILE* file;
+			};
+
+			MyErrLogStream myerrlog(stderr);
+			idb->SetErrLog(MyErrLogStream::errlog, &myerrlog);
+
 			QueryPerformanceCounter(&t0);
-			int verts = DelaBella(POINTS, xy, abc);
+			int verts = idb->Triangulate(POINTS, xy, xy+1, sizeof(double[2]));
 			QueryPerformanceCounter(&t1);
 
+			idb->Destroy();
+
 			dt = (double)(t1.QuadPart - t0.QuadPart) / (double)fr.QuadPart;
-			//printf("DEL tris = %d, dt = %f ms\n", verts / 3, dt * 1000);
+			printf("DEL tris = %d, dt = %f ms\n", verts / 3, dt * 1000);
 
 			dt_delabella = dt;
 		}
@@ -241,7 +282,8 @@ int main(int argc, char* argv[])
 		{
 			printf("| ");
 			print_points(POINTS);
-			printf(" | %9.3f ms | %9.3f ms | %9.3f ms | %9.3f ms |\n",
+			printf(" | %9.3f ms | %9.3f ms | %9.3f ms | %9.3f ms | %9.3f ms |\n",
+				dt_oraiby * 1000, 
 				dt_qhull * 1000,
 				dt_shull * 1000,
 				dt_shull3d * 1000,
