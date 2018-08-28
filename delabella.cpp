@@ -1,5 +1,5 @@
 /*
-DELABELLA - Delaunay triangualtion library
+DELABELLA - Delaunay triangulation library
 Copyright (C) 2018 GUMIX - Marcin Sokalski
 */
 
