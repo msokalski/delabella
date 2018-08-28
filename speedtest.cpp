@@ -1,5 +1,5 @@
 /*
-DELABELLA - Delaunay triangualtion library
+DELABELLA - Delaunay triangulation library
 Copyright (C) 2018 GUMIX - Marcin Sokalski
 */
 
@@ -295,4 +295,60 @@ int main(int argc, char* argv[])
 	}
 
 	return 0;
+}
+
+
+
+void a()
+{
+	// somewhere in your code ...
+
+	int POINTS = 1000000;
+
+	struct MyPoint
+	{
+		char something;
+		float x;
+		int something_else;
+		float y;
+		float foo[5];
+	};
+
+	MyPoint* cloud = new MyPoint[POINTS];
+
+	srand(36341);
+
+	// gen some random input
+	for (int i = 0; i < POINTS; i++)
+	{
+		cloud[i].x = rand();
+		cloud[i].y = rand();
+	}
+
+	IDelaBella* idb = IDelaBella::Create();
+
+	int verts = idb->Triangulate(POINTS, &cloud->x, &cloud->y, sizeof(MyPoint));
+
+	// if positive, all ok 
+	if (verts>0)
+	{
+		int tris = verts / 3;
+		const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
+		for (int i = 0; i<tris; i++)
+		{
+			// do something with dela triangle 
+			// ...
+			dela = dela->next;
+		}
+	}
+	else
+	{
+		// no points given or all points are colinear
+		// make emergency call ...
+	}
+
+	delete[] cloud;
+	idb->Destroy();
+
+	// ...
 }
