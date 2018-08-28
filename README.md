@@ -20,42 +20,57 @@
 #include "delabella.h"
 // ...
 
-    // somewhere in your code ...
+	// somewhere in your code ...
 
-    int POINTS = 1000000;
-    
-    int max_tris = 2 * POINTS - 5;
-    int* abc = new int[3 * max_tris];
-    double* xy = new double[2 * POINTS];
+	int POINTS = 1000000;
 
-    srand(36341);
+	struct MyPoint
+	{
+		char something;
+		float x;
+		int something_else;
+		float y;
+		float foo[5];
+	};
 
-    for (int i = 0; i < 2 * POINTS; i++)
-    {
-      double quot = (rand() & 0x3FFF) - 8192; // +-8k (14bits)
-      unsigned int frac = ((rand() & 0x7FFF) << 15) | (rand() & 0x7FFF); // 30 bits
-      xy[i] = quot + frac / (double)(1<<30);
-    }
-  
-    int verts = DelaBella(POINTS, xy, abc);
+	MyPoint* cloud = new MyPoint[POINTS];
 
-    // if positive, all ok 
-    if (verts>0)
-    {
-      int tris = verts/3;
-      // do something useful with abc array
-      // ...
-    }
-    else
-    {
-      // no points given or all points are colinear
-      // make emergency call ...
-    }
+	srand(36341);
 
-    delete[] xy;
-    delete[] abc;
-    
-    // ...
+	// gen some random input
+	for (int i = 0; i < POINTS; i++)
+	{
+		cloud[i].x = rand();
+		cloud[i].y = rand();
+	}
+
+	IDelaBella* idb = IDelaBella::Create();
+
+	int verts = idb->Triangulate(POINTS, &cloud->x, &cloud->y, sizeof(MyPoint));
+
+	// if positive, all ok 
+	if (verts>0)
+	{
+		int tris = verts / 3;
+		const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
+		for (int i = 0; i<tris; i++)
+		{
+			// do something with dela triangle 
+			// ...
+			dela = dela->next;
+		}
+	}
+	else
+	{
+		// no points given or all points are colinear
+		// make emergency call ...
+	}
+
+	delete[] cloud;
+	idb->Destroy();
+
+	// ...
+
 
 ```
 ## performance comparison:
