@@ -6,11 +6,13 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
-#include <windows.h>
+
+#include <tuple>
+#include "delaunator-cpp.h"
 
 #include "delabella.h"
+
 #include "NewtonApple_hull3D.h"
-#include "delaunay.h"
 
 extern "C"
 {
@@ -20,6 +22,8 @@ extern "C"
 
 #include <algorithm>
 #include "s_hull_pro.h"
+
+#include <windows.h>
 
 bool pointSortPredicate(const Shx& a, const Shx& b)
 {
@@ -80,7 +84,7 @@ int main(int argc, char* argv[])
 
 	int passes = sizeof(test) / sizeof(int);
 
-	printf("|         points |       Oraiby |        QHULL |       S-HULL |    S-HULL-3D |    DELABELLA |\n");
+	printf("|         points |        QHULL |       S-HULL |    S-HULL-3D |   DELAUNATOR |    DELABELLA |\n");
 	printf("| --------------:| ------------:| ------------:| ------------:| ------------:| ------------:|\n");
 
 	for (int pass = -5; pass < passes; pass++)
@@ -94,8 +98,8 @@ int main(int argc, char* argv[])
 		int* abc = new int[3 * max_tris];
 		double* xy = new double[2 * POINTS];
 
-		double dt_oraiby,dt_qhull, dt_shull, dt_shull3d, dt_delabella;
-		dt_oraiby = dt_qhull = dt_shull = dt_shull3d = dt_delabella = -1;
+		double dt_qhull, dt_shull, dt_shull3d, dt_delaunator, dt_delabella;
+		dt_qhull = dt_shull = dt_shull3d = dt_delaunator = dt_delabella = -1;
 
 		srand(pass + 32109);
 
@@ -104,31 +108,6 @@ int main(int argc, char* argv[])
 			double quot = (rand() & 0x3FFF) - 8192; // +-8k (14bits)
 			unsigned int frac = ((rand() & 0x7FFF) << 15) | (rand() & 0x7FFF); // 30 bits
 			xy[i] = quot + frac / (double)(1 << 30);
-		}
-
-		if (0)
-		{
-			del_point2d_t* del_xy = (del_point2d_t*)malloc(POINTS * sizeof(del_point2d_t));
-			for (int i = 0; i < POINTS; i++)
-			{
-				del_xy[i].x = xy[2 * i + 0];
-				del_xy[i].y = xy[2 * i + 1];
-			}
-
-			QueryPerformanceCounter(&t0);
-			delaunay2d_t* tmp = delaunay2d_from(del_xy, POINTS);
-			QueryPerformanceCounter(&t1);
-
-			tri_delaunay2d_t* v = tri_delaunay2d_from(tmp);
-			int tris = (int)v->num_triangles;
-			delaunay2d_release(tmp);
-			tri_delaunay2d_release(v);
-			free(del_xy);
-
-			dt = (double)(t1.QuadPart - t0.QuadPart) / (double)fr.QuadPart;
-			printf("ELO tris = %d, dt = %f ms\n", tris, dt * 1000);
-
-			dt_oraiby = dt;
 		}
 
 		if (1)
@@ -183,7 +162,7 @@ int main(int argc, char* argv[])
 
 			int tris = qh->num_good;
 			dt = (double)(t1.QuadPart - t0.QuadPart) / (double)fr.QuadPart;
-			printf("QHL tris = %d, dt = %f ms\n", tris, dt * 1000);
+			//printf("QHL tris = %d, dt = %f ms\n", tris, dt * 1000);
 
 			free(points);
 
@@ -212,7 +191,7 @@ int main(int argc, char* argv[])
 			QueryPerformanceCounter(&t1);
 
 			double dt = (double)(t1.QuadPart - t0.QuadPart) / (double)fr.QuadPart;
-			printf("SHL tris = %d, dt = %f ms\n", (int)triads.size(), dt * 1000);
+			//printf("SHL tris = %d, dt = %f ms\n", (int)triads.size(), dt * 1000);
 
 			dt_shull = dt;
 		}
@@ -237,11 +216,32 @@ int main(int argc, char* argv[])
 			QueryPerformanceCounter(&t1);
 
 			dt = (double)(t1.QuadPart - t0.QuadPart) / (double)fr.QuadPart;
-			printf("SH3 tris = %d, dt = %f ms\n", (int)triads.size(), dt * 1000);
+			//printf("SH3 tris = %d, dt = %f ms\n", (int)triads.size(), dt * 1000);
 
 			dt_shull3d = dt;
 		}
 
+		if (1)
+		{
+
+			std::vector<double> coords;
+			for (int i = 0; i < POINTS; i++)
+			{
+				coords.push_back(xy[2 * i + 0]);
+				coords.push_back(xy[2 * i + 1]);
+			}
+
+			QueryPerformanceCounter(&t0);
+			delaunator::Delaunator d(coords);
+			size_t verts = d.triangles.size();
+			QueryPerformanceCounter(&t1);
+
+
+			dt = (double)(t1.QuadPart - t0.QuadPart) / (double)fr.QuadPart;
+			//printf("DTR tris = %d, dt = %f ms\n", verts/3, dt * 1000);
+
+			dt_delaunator = dt;
+		}
 
 		if (1)
 		{
@@ -273,7 +273,7 @@ int main(int argc, char* argv[])
 			idb->Destroy();
 
 			dt = (double)(t1.QuadPart - t0.QuadPart) / (double)fr.QuadPart;
-			printf("DEL tris = %d, dt = %f ms\n", verts / 3, dt * 1000);
+			//printf("DEL tris = %d, dt = %f ms\n", verts / 3, dt * 1000);
 
 			dt_delabella = dt;
 		}
@@ -283,10 +283,10 @@ int main(int argc, char* argv[])
 			printf("| ");
 			print_points(POINTS);
 			printf(" | %9.3f ms | %9.3f ms | %9.3f ms | %9.3f ms | %9.3f ms |\n",
-				dt_oraiby * 1000, 
 				dt_qhull * 1000,
 				dt_shull * 1000,
 				dt_shull3d * 1000,
+				dt_delaunator * 1000,
 				dt_delabella * 1000);
 		}
 
