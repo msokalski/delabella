@@ -6,7 +6,13 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #include <assert.h>
 #include <stdio.h>
 #include <search.h>
+
+#if (defined(__APPLE__))
+#include <malloc/malloc.h>
+#else
 #include <malloc.h>
+#endif
+
 #include <algorithm>
 #include "delabella.h" // we just need LOG() macro
 
@@ -175,6 +181,10 @@ struct CDelaBella : IDelaBella
 	int(*errlog_proc)(void* file, const char* fmt, ...);
 	void* errlog_file;
 
+	virtual ~CDelaBella ()
+	{
+	}
+
 	int Triangulate()
 	{
 		int points = inp_verts;
@@ -182,8 +192,6 @@ struct CDelaBella : IDelaBella
 
 		// rmove dups
 		{
-			int dups = 0;
-
 			int w = 0, r = 1; // skip initial no-dups block
 			while (r < points && !Vert::overlap(vert_alloc + r, vert_alloc + w))
 			{
@@ -303,15 +311,15 @@ struct CDelaBella : IDelaBella
 
 			Norm LvH = (*v - *last).cross(*head - *last);
 			bool lvh =
-				f.n.x > 0 && LvH.x > 0 || f.n.x < 0 && LvH.x < 0 ||
-				f.n.y > 0 && LvH.y > 0 || f.n.y < 0 && LvH.y < 0 ||
-				f.n.z > 0 && LvH.z > 0 || f.n.z < 0 && LvH.z < 0;
+				(f.n.x > 0 && LvH.x > 0) || (f.n.x < 0 && LvH.x < 0) ||
+				(f.n.y > 0 && LvH.y > 0) || (f.n.y < 0 && LvH.y < 0) ||
+				(f.n.z > 0 && LvH.z > 0) || (f.n.z < 0 && LvH.z < 0);
 
 			Norm TvL = (*v - *tail).cross(*last - *tail);
 			bool tvl =
-				f.n.x > 0 && TvL.x > 0 || f.n.x < 0 && TvL.x < 0 ||
-				f.n.y > 0 && TvL.y > 0 || f.n.y < 0 && TvL.y < 0 ||
-				f.n.z > 0 && TvL.z > 0 || f.n.z < 0 && TvL.z < 0;
+				(f.n.x > 0 && TvL.x > 0) || (f.n.x < 0 && TvL.x < 0) ||
+				(f.n.y > 0 && TvL.y > 0) || (f.n.y < 0 && TvL.y < 0) ||
+				(f.n.z > 0 && TvL.z > 0) || (f.n.z < 0 && TvL.z < 0);
 
 			if (lvh && !tvl) // insert new f on top of e(2,0) = (last,head)
 			{
@@ -575,25 +583,25 @@ struct CDelaBella : IDelaBella
 		{
 			//ValidateHull(alloc, 2 * i - 4);
 
-			Vert* q = vert_alloc + i;
-			Vert* p = vert_alloc + i - 1;
-			Face* f = hull;
+			Vert* _q = vert_alloc + i;
+			Vert* _p = vert_alloc + i - 1;
+			Face* _f = hull;
 
 			// 1. FIND FIRST VISIBLE FACE 
 			//    simply iterate around last vertex using last added triange adjecency info
-			while (f->dot(*q) <= 0)
+			while (_f->dot(*_q) <= 0)
 			{
-				f = f->Next(p);
-				if (f == hull)
+				_f = _f->Next(_p);
+				if (_f == hull)
 				{
 					// if no visible face can be located at last vertex,
 					// let's run through all faces (approximately last to first), 
 					// yes this is emergency fallback and should not ever happen.
-					f = face_alloc + 2 * i - 4 - 1;
-					while (f->dot(*q) <= 0)
+					_f = face_alloc + 2 * i - 4 - 1;
+					while (_f->dot(*_q) <= 0)
 					{
-						assert(f != face_alloc); // no face is visible? you must be kidding!
-						f--;
+						assert(_f != face_alloc); // no face is visible? you must be kidding!
+						_f--;
 					}
 				}
 			}
@@ -605,23 +613,23 @@ struct CDelaBella : IDelaBella
 			int add = 0;
 
 			// push first visible face onto stack (of visible faces)
-			Face* stack = f;
-			f->next = f; // old trick to use list pointers as 'on-stack' markers
+			Face* stack = _f;
+			_f->next = _f; // old trick to use list pointers as 'on-stack' markers
 			while (stack)
 			{
 				// pop, take care of last item ptr (it's not null!)
-				f = stack;
-				stack = (Face*)f->next;
-				if (stack == f)
+				_f = stack;
+				stack = (Face*)_f->next;
+				if (stack == _f)
 					stack = 0;
-				f->next = 0;
+				_f->next = 0;
 
 				// copy parts of old face that we still need after removal
-				Vert* fv[3] = { (Vert*)f->v[0],(Vert*)f->v[1],(Vert*)f->v[2] };
-				Face* ff[3] = { (Face*)f->f[0],(Face*)f->f[1],(Face*)f->f[2] };
+				Vert* fv[3] = { (Vert*)_f->v[0],(Vert*)_f->v[1],(Vert*)_f->v[2] };
+				Face* ff[3] = { (Face*)_f->f[0],(Face*)_f->f[1],(Face*)_f->f[2] };
 
 				// delete visible face
-				f->Free(&cache);
+				_f->Free(&cache);
 				del++;
 
 				// check all 3 neighbors
@@ -630,7 +638,7 @@ struct CDelaBella : IDelaBella
 					Face* n = ff[e];
 					if (n && !n->next) // ensure neighbor is not processed yet & isn't on stack 
 					{
-						if (n->dot(*q) <= 0) // if neighbor is not visible we have slihouette edge
+						if (n->dot(*_q) <= 0) // if neighbor is not visible we have slihouette edge
 						{
 							// build face
 							add++;
@@ -645,19 +653,19 @@ struct CDelaBella : IDelaBella
 							Face* s = Face::Alloc(&cache);
 							s->v[0] = a;
 							s->v[1] = b;
-							s->v[2] = q;
+							s->v[2] = _q;
 
 							s->n = s->cross();
 							s->f[2] = n;
 
 							// change neighbour's adjacency from old visible face to cone side
-							if (n->f[0] == f)
+							if (n->f[0] == _f)
 								n->f[0] = s;
 							else
-								if (n->f[1] == f)
+								if (n->f[1] == _f)
 									n->f[1] = s;
 								else
-									if (n->f[2] == f)
+									if (n->f[2] == _f)
 										n->f[2] = s;
 									else
 										assert(0);
@@ -671,13 +679,13 @@ struct CDelaBella : IDelaBella
 							// disjoin visible faces
 							// so they won't be processed more than once
 
-							if (n->f[0] == f)
+							if (n->f[0] == _f)
 								n->f[0] = 0;
 							else
-								if (n->f[1] == f)
+								if (n->f[1] == _f)
 									n->f[1] = 0;
 								else
-									if (n->f[2] == f)
+									if (n->f[2] == _f)
 										n->f[2] = 0;
 									else
 										assert(0);
@@ -718,7 +726,7 @@ struct CDelaBella : IDelaBella
 		//ValidateHull(alloc, hull_faces);
 
 		// needed?
-		for (int i = 0; i < points; i++)
+		for (i = 0; i < points; i++)
 		{
 			vert_alloc[i].next = 0;
 			vert_alloc[i].sew = 0;
@@ -729,31 +737,31 @@ struct CDelaBella : IDelaBella
 		Face** prev_hull = &first_hull_face;
 		for (int j = 0; j < hull_faces; j++)
 		{
-			Face* f = face_alloc + j;
-			if (f->n.z < 0)
+			Face* _f = face_alloc + j;
+			if (_f->n.z < 0)
 			{
-				*prev_dela = f;
-				prev_dela = (Face**)&f->next;
+				*prev_dela = _f;
+				prev_dela = (Face**)&_f->next;
 				i++;
 			}
 			else
 			{
-				*prev_hull = f;
-				prev_hull = (Face**)&f->next;
-				if (((Face*)f->f[0])->n.z < 0)
+				*prev_hull = _f;
+				prev_hull = (Face**)&_f->next;
+				if (((Face*)_f->f[0])->n.z < 0)
 				{
-					f->v[1]->next = f->v[2];
-					((Vert*)f->v[1])->sew = f;
+					_f->v[1]->next = _f->v[2];
+					((Vert*)_f->v[1])->sew = _f;
 				}
-				if (((Face*)f->f[1])->n.z < 0)
+				if (((Face*)_f->f[1])->n.z < 0)
 				{
-					f->v[2]->next = f->v[0];
-					((Vert*)f->v[2])->sew = f;
+					_f->v[2]->next = _f->v[0];
+					((Vert*)_f->v[2])->sew = _f;
 				}
-				if (((Face*)f->f[2])->n.z < 0)
+				if (((Face*)_f->f[2])->n.z < 0)
 				{
-					f->v[0]->next = f->v[1];
-					((Vert*)f->v[0])->sew = f;
+					_f->v[0]->next = _f->v[1];
+					((Vert*)_f->v[0])->sew = _f;
 				}
 			}
 		}
@@ -809,8 +817,8 @@ struct CDelaBella : IDelaBella
 		if (!y)
 			y = x + 1;
 
-		if (advance_bytes < sizeof(float) * 2)
-			advance_bytes = sizeof(float) * 2;
+		if (advance_bytes < static_cast<int>(sizeof(float) * 2))
+			advance_bytes = static_cast<int>(sizeof(float) * 2);
 
 		if (!ReallocVerts(points))
 			return 0;
@@ -836,8 +844,8 @@ struct CDelaBella : IDelaBella
 		if (!y)
 			y = x + 1;
 		
-		if (advance_bytes < sizeof(double) * 2)
-			advance_bytes = sizeof(double) * 2;
+		if (advance_bytes < static_cast<int>(sizeof(double) * 2))
+			advance_bytes = static_cast<int>(sizeof(double) * 2);
 
 		if (!ReallocVerts(points))
 			return 0;
