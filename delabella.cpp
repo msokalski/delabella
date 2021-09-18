@@ -65,6 +65,10 @@ struct Vect
 	}
 };
 
+IDelaBella::~IDelaBella()
+{
+}
+
 struct CDelaBella : IDelaBella
 {
 	struct Face;
