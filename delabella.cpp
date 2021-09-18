@@ -182,8 +182,6 @@ struct CDelaBella : IDelaBella
 
 		// rmove dups
 		{
-			int dups = 0;
-
 			int w = 0, r = 1; // skip initial no-dups block
 			while (r < points && !Vert::overlap(vert_alloc + r, vert_alloc + w))
 			{
@@ -295,7 +293,7 @@ struct CDelaBella : IDelaBella
 			Vert* v = vert_alloc + i;
 
 			// it is enough to test just 1 non-zero coord
-			// but we want also to test stability (assert) 
+			// but we want also to test stability (assert)
 			// so we calc all signs...
 
 			// why not testing sign of dot prod of 2 normals?
@@ -303,15 +301,15 @@ struct CDelaBella : IDelaBella
 
 			Norm LvH = (*v - *last).cross(*head - *last);
 			bool lvh =
-				f.n.x > 0 && LvH.x > 0 || f.n.x < 0 && LvH.x < 0 ||
-				f.n.y > 0 && LvH.y > 0 || f.n.y < 0 && LvH.y < 0 ||
-				f.n.z > 0 && LvH.z > 0 || f.n.z < 0 && LvH.z < 0;
+				(f.n.x > 0 && LvH.x > 0) || (f.n.x < 0 && LvH.x < 0) ||
+				(f.n.y > 0 && LvH.y > 0) || (f.n.y < 0 && LvH.y < 0) ||
+				(f.n.z > 0 && LvH.z > 0) || (f.n.z < 0 && LvH.z < 0);
 
 			Norm TvL = (*v - *tail).cross(*last - *tail);
 			bool tvl =
-				f.n.x > 0 && TvL.x > 0 || f.n.x < 0 && TvL.x < 0 ||
-				f.n.y > 0 && TvL.y > 0 || f.n.y < 0 && TvL.y < 0 ||
-				f.n.z > 0 && TvL.z > 0 || f.n.z < 0 && TvL.z < 0;
+				(f.n.x > 0 && TvL.x > 0) || (f.n.x < 0 && TvL.x < 0) ||
+				(f.n.y > 0 && TvL.y > 0) || (f.n.y < 0 && TvL.y < 0) ||
+				(f.n.z > 0 && TvL.z > 0) || (f.n.z < 0 && TvL.z < 0);
 
 			if (lvh && !tvl) // insert new f on top of e(2,0) = (last,head)
 			{
@@ -351,7 +349,7 @@ struct CDelaBella : IDelaBella
 				if (errlog_proc)
 					errlog_proc(errlog_file, "[WRN] all input points are colinear, returning segment list!\n");
 				first_hull_vert = head;
-				last->next = 0; // break contour, make it a list 
+				last->next = 0; // break contour, make it a list
 				return -points;
 			}
 			else
@@ -579,7 +577,7 @@ struct CDelaBella : IDelaBella
 			Vert* p = vert_alloc + i - 1;
 			Face* f = hull;
 
-			// 1. FIND FIRST VISIBLE FACE 
+			// 1. FIND FIRST VISIBLE FACE
 			//    simply iterate around last vertex using last added triange adjecency info
 			while (f->dot(*q) <= 0)
 			{
@@ -587,7 +585,7 @@ struct CDelaBella : IDelaBella
 				if (f == hull)
 				{
 					// if no visible face can be located at last vertex,
-					// let's run through all faces (approximately last to first), 
+					// let's run through all faces (approximately last to first),
 					// yes this is emergency fallback and should not ever happen.
 					f = face_alloc + 2 * i - 4 - 1;
 					while (f->dot(*q) <= 0)
@@ -628,14 +626,14 @@ struct CDelaBella : IDelaBella
 				for (int e = 0; e < 3; e++)
 				{
 					Face* n = ff[e];
-					if (n && !n->next) // ensure neighbor is not processed yet & isn't on stack 
+					if (n && !n->next) // ensure neighbor is not processed yet & isn't on stack
 					{
 						if (n->dot(*q) <= 0) // if neighbor is not visible we have slihouette edge
 						{
 							// build face
 							add++;
 
-							// ab: given face adjacency [index][], 
+							// ab: given face adjacency [index][],
 							// it provides [][2] vertex indices on shared edge (CCW order)
 							const static int ab[3][2] = { { 1,2 },{ 2,0 },{ 0,1 } };
 
@@ -809,7 +807,7 @@ struct CDelaBella : IDelaBella
 		if (!y)
 			y = x + 1;
 
-		if (advance_bytes < sizeof(float) * 2)
+		if (advance_bytes < static_cast<int>(sizeof(float) * 2))
 			advance_bytes = sizeof(float) * 2;
 
 		if (!ReallocVerts(points))
