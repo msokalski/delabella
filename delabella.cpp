@@ -99,8 +99,8 @@ struct CDelaBella : IDelaBella
 
 		static int u28cmp(const void* a, const void* b)
 		{
-			Vert* va = (Vert*)a;
-			Vert* vb = (Vert*)b;
+			const Vert* va = (const Vert*)a;
+			const Vert* vb = (const Vert*)b;
 			if (va->z < vb->z)
 				return -1;
 			if (va->z > vb->z)
@@ -838,7 +838,7 @@ struct CDelaBella : IDelaBella
 		if (!y)
 			y = x + 1;
 		
-		if (advance_bytes < sizeof(double) * 2)
+		if (advance_bytes < static_cast<int>(sizeof(double) * 2))
 			advance_bytes = sizeof(double) * 2;
 
 		if (!ReallocVerts(points))
@@ -924,6 +924,7 @@ IDelaBella* IDelaBella::Create()
 	return db;
 }
 
+#ifndef __cplusplus
 void* DelaBella_Create()
 {
 	return IDelaBella::Create();
@@ -973,43 +974,4 @@ const DelaBella_Vertex*   GetFirstHullVertex(void* db)
 {
 	return ((IDelaBella*)db)->GetFirstHullVertex();
 }
-
-// depreciated!
-int DelaBella(int points, const double* xy, int* abc, int(*errlog)(const char* fmt, ...))
-{
-	if (errlog)
-		errlog("[WRN] Depreciated interface! errlog disabled.\n");
-
-	if (!xy || points <= 0)
-		return 0;
-
-	IDelaBella* db = IDelaBella::Create();
-	int verts = db->Triangulate(points, xy, 0, 0);
-
-	if (!abc)
-		return verts;
-
-	if (verts > 0)
-	{
-		int tris = verts / 3;
-		const DelaBella_Triangle* dela = db->GetFirstDelaunayTriangle();
-		for (int i = 0; i < tris; i++)
-		{
-			for (int j=0; j<3; j++)
-				abc[3 * i + j] = dela->v[j]->i;
-			dela = dela->next;
-		}
-	}
-	else
-	{
-		int pnts = -verts;
-		const DelaBella_Vertex* line = db->GetFirstHullVertex();
-		for (int i = 0; i < pnts; i++)
-		{
-			abc[i] = line->i;
-			line = line->next;
-		}
-	}
-
-	return verts;
-}
+#endif
