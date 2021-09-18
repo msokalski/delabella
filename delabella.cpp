@@ -178,7 +178,7 @@ struct CDelaBella : IDelaBella
 	int(*errlog_proc)(void* file, const char* fmt, ...);
 	void* errlog_file;
 
-	int Triangulate()
+	int Prepare(int* start, Face** hull, int* out_hull_faces, Face** cache)
 	{
 		int points = inp_verts;
 		std::sort(vert_alloc, vert_alloc + points);
@@ -237,6 +237,7 @@ struct CDelaBella : IDelaBella
 		}
 
 		int hull_faces = 2 * points - 4;
+		*out_hull_faces = hull_faces;
 
 		if (max_faces < hull_faces)
 		{
@@ -258,8 +259,7 @@ struct CDelaBella : IDelaBella
 			face_alloc[i - 1].next = face_alloc + i;
 		face_alloc[hull_faces - 1].next = 0;
 
-		Face* cache = face_alloc;
-		Face* hull = 0;
+		*cache = face_alloc;
 
 		Face f; // tmp
 		f.v[0] = vert_alloc + 0;
@@ -367,9 +367,9 @@ struct CDelaBella : IDelaBella
 					if (errlog_proc)
 						errlog_proc(errlog_file, "[NFO] trivial case of 3 points, thank you.\n");
 
-					first_dela_face = Face::Alloc(&cache);
+					first_dela_face = Face::Alloc(cache);
 					first_dela_face->next = 0;
-					first_hull_face = Face::Alloc(&cache);
+					first_hull_face = Face::Alloc(cache);
 					first_hull_face->next = 0;
 
 					first_dela_face->f[0] = first_dela_face->f[1] = first_dela_face->f[2] = first_hull_face;
@@ -422,152 +422,170 @@ struct CDelaBella : IDelaBella
 		// CREATE CONE HULL WITH TOP AT cloud[i] AND BASE MADE OF CONTOUR LIST
 		// in 2 ways :( - depending on at which side of the contour a top vertex appears
 
-		Vert* q = vert_alloc + i;
-
-		if (f.dot(*q) > 0)
 		{
-			Vert* p = last;
-			Vert* n = (Vert*)p->next;
+			Vert* q = vert_alloc + i;
 
-			Face* first_side = Face::Alloc(&cache);
-			first_side->v[0] = p;
-			first_side->v[1] = n;
-			first_side->v[2] = q;
-			first_side->n = first_side->cross();
-			hull = first_side;
-
-			p = n;
-			n = (Vert*)n->next;
-
-			Face* prev_side = first_side;
-			Face* prev_base = 0;
-			Face* first_base = 0;
-
-			do
+			if (f.dot(*q) > 0)
 			{
-				Face* base = Face::Alloc(&cache);
-				base->v[0] = n;
-				base->v[1] = p;
-				base->v[2] = last;
-				base->n = base->cross();
+				Vert* p = last;
+				Vert* n = (Vert*)p->next;
 
-				Face* side = Face::Alloc(&cache);
-				side->v[0] = p;
-				side->v[1] = n;
-				side->v[2] = q;
-				side->n = side->cross();
-
-				side->f[2] = base;
-				base->f[2] = side;
-
-				side->f[1] = prev_side;
-				prev_side->f[0] = side;
-
-				base->f[0] = prev_base;
-				if (prev_base)
-					prev_base->f[1] = base;
-				else
-					first_base = base;
-
-				prev_base = base;
-				prev_side = side;
+				Face* first_side = Face::Alloc(cache);
+				first_side->v[0] = p;
+				first_side->v[1] = n;
+				first_side->v[2] = q;
+				first_side->n = first_side->cross();
+				*hull = first_side;
 
 				p = n;
 				n = (Vert*)n->next;
-			} while (n != last);
 
-			Face* last_side = Face::Alloc(&cache);
-			last_side->v[0] = p;
-			last_side->v[1] = n;
-			last_side->v[2] = q;
-			last_side->n = last_side->cross();
+				Face* prev_side = first_side;
+				Face* prev_base = 0;
+				Face* first_base = 0;
 
-			last_side->f[1] = prev_side;
-			prev_side->f[0] = last_side;
+				do
+				{
+					Face* base = Face::Alloc(cache);
+					base->v[0] = n;
+					base->v[1] = p;
+					base->v[2] = last;
+					base->n = base->cross();
 
-			last_side->f[0] = first_side;
-			first_side->f[1] = last_side;
+					Face* side = Face::Alloc(cache);
+					side->v[0] = p;
+					side->v[1] = n;
+					side->v[2] = q;
+					side->n = side->cross();
 
-			first_base->f[0] = first_side;
-			first_side->f[2] = first_base;
+					side->f[2] = base;
+					base->f[2] = side;
 
-			last_side->f[2] = prev_base;
-			prev_base->f[1] = last_side;
+					side->f[1] = prev_side;
+					prev_side->f[0] = side;
 
-			i++;
-		}
-		else
-		{
-			Vert* p = last;
-			Vert* n = (Vert*)p->next;
+					base->f[0] = prev_base;
+					if (prev_base)
+						prev_base->f[1] = base;
+					else
+						first_base = base;
 
-			Face* first_side = Face::Alloc(&cache);
-			first_side->v[0] = n;
-			first_side->v[1] = p;
-			first_side->v[2] = q;
-			first_side->n = first_side->cross();
-			hull = first_side;
+					prev_base = base;
+					prev_side = side;
 
-			p = n;
-			n = (Vert*)n->next;
+					p = n;
+					n = (Vert*)n->next;
+				} while (n != last);
 
-			Face* prev_side = first_side;
-			Face* prev_base = 0;
-			Face* first_base = 0;
+				Face* last_side = Face::Alloc(cache);
+				last_side->v[0] = p;
+				last_side->v[1] = n;
+				last_side->v[2] = q;
+				last_side->n = last_side->cross();
 
-			do
+				last_side->f[1] = prev_side;
+				prev_side->f[0] = last_side;
+
+				last_side->f[0] = first_side;
+				first_side->f[1] = last_side;
+
+				first_base->f[0] = first_side;
+				first_side->f[2] = first_base;
+
+				last_side->f[2] = prev_base;
+				prev_base->f[1] = last_side;
+
+				i++;
+			}
+			else
 			{
-				Face* base = Face::Alloc(&cache);
-				base->v[0] = p;
-				base->v[1] = n;
-				base->v[2] = last;
-				base->n = base->cross();
+				Vert* p = last;
+				Vert* n = (Vert*)p->next;
 
-				Face* side = Face::Alloc(&cache);
-				side->v[0] = n;
-				side->v[1] = p;
-				side->v[2] = q;
-				side->n = side->cross();
-
-				side->f[2] = base;
-				base->f[2] = side;
-
-				side->f[0] = prev_side;
-				prev_side->f[1] = side;
-
-				base->f[1] = prev_base;
-				if (prev_base)
-					prev_base->f[0] = base;
-				else
-					first_base = base;
-
-				prev_base = base;
-				prev_side = side;
+				Face* first_side = Face::Alloc(cache);
+				first_side->v[0] = n;
+				first_side->v[1] = p;
+				first_side->v[2] = q;
+				first_side->n = first_side->cross();
+				*hull = first_side;
 
 				p = n;
 				n = (Vert*)n->next;
-			} while (n != last);
 
-			Face* last_side = Face::Alloc(&cache);
-			last_side->v[0] = n;
-			last_side->v[1] = p;
-			last_side->v[2] = q;
-			last_side->n = last_side->cross();
+				Face* prev_side = first_side;
+				Face* prev_base = 0;
+				Face* first_base = 0;
 
-			last_side->f[0] = prev_side;
-			prev_side->f[1] = last_side;
+				do
+				{
+					Face* base = Face::Alloc(cache);
+					base->v[0] = p;
+					base->v[1] = n;
+					base->v[2] = last;
+					base->n = base->cross();
 
-			last_side->f[1] = first_side;
-			first_side->f[0] = last_side;
+					Face* side = Face::Alloc(cache);
+					side->v[0] = n;
+					side->v[1] = p;
+					side->v[2] = q;
+					side->n = side->cross();
 
-			first_base->f[1] = first_side;
-			first_side->f[2] = first_base;
+					side->f[2] = base;
+					base->f[2] = side;
 
-			last_side->f[2] = prev_base;
-			prev_base->f[0] = last_side;
+					side->f[0] = prev_side;
+					prev_side->f[1] = side;
 
-			i++;
+					base->f[1] = prev_base;
+					if (prev_base)
+						prev_base->f[0] = base;
+					else
+						first_base = base;
+
+					prev_base = base;
+					prev_side = side;
+
+					p = n;
+					n = (Vert*)n->next;
+				} while (n != last);
+
+				Face* last_side = Face::Alloc(cache);
+				last_side->v[0] = n;
+				last_side->v[1] = p;
+				last_side->v[2] = q;
+				last_side->n = last_side->cross();
+
+				last_side->f[0] = prev_side;
+				prev_side->f[1] = last_side;
+
+				last_side->f[1] = first_side;
+				first_side->f[0] = last_side;
+
+				first_base->f[1] = first_side;
+				first_side->f[2] = first_base;
+
+				last_side->f[2] = prev_base;
+				prev_base->f[0] = last_side;
+
+				i++;
+			}
 		}
+
+		*start = i;
+
+		return points;
+	}
+
+	int Triangulate()
+	{
+		int i = 0;
+		Face* hull = 0;
+		int hull_faces = 0;
+		Face* cache = 0;
+
+		int points = Prepare(&i, &hull, &hull_faces, &cache);
+		if (points <= 0)
+			return points;
 
 		/////////////////////////////////////////////////////////////////////////
 		// ACTUAL ALGORITHM
@@ -719,10 +737,10 @@ struct CDelaBella : IDelaBella
 		//ValidateHull(alloc, hull_faces);
 
 		// needed?
-		for (int i = 0; i < points; i++)
+		for (int j = 0; j < points; j++)
 		{
-			vert_alloc[i].next = 0;
-			vert_alloc[i].sew = 0;
+			vert_alloc[j].next = 0;
+			vert_alloc[j].sew = 0;
 		}
 
 		i = 0;
