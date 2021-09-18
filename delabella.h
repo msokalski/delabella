@@ -29,6 +29,7 @@ struct DelaBella_Triangle
 struct IDelaBella
 {
 	static IDelaBella* Create();
+	virtual ~IDelaBella();
 
 	virtual void Destroy() = 0;
 
