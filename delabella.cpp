@@ -3,10 +3,9 @@ DELABELLA - Delaunay triangulation library
 Copyright (C) 2018 GUMIX - Marcin Sokalski
 */
 
-#include <assert.h>
-#include <stdio.h>
-#include <search.h>
-#include <malloc.h>
+#include <cassert>
+#include <cstdio>
+#include <cstdlib>
 #include <algorithm>
 #include "delabella.h" // we just need LOG() macro
 
