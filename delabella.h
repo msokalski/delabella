@@ -6,6 +6,41 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #ifndef DELABELLA_H
 #define DELABELLA_H
 
+// regular floating point setup
+typedef double Signed14;		// BITS			xy coords
+typedef double Signed15;		// BITS + 1		vect::xy
+typedef long double Unsigned28; // 2xBITS		z coord
+typedef long double Signed29;   // 2xBITS + 1	vect::z
+typedef long double Signed31;   // 2xBITS + 3	norm::z
+typedef long double Signed45;   // 3xBITS + 3	norm::xy
+typedef long double Signed62;   // 4xBITS + 6	dot(vect,norm)
+
+/*
+// exact arithmetic using integers 
+// can handle only a tiny range of input coords +/-8191
+typedef int16_t  Signed14;		// BITS			xy coords
+typedef int16_t  Signed15;		// BITS + 1		vect::xy
+typedef uint32_t Unsigned28;	// 2xBITS		z coord
+typedef int32_t  Signed29;		// 2xBITS + 1	vect::z
+typedef int32_t  Signed31;		// 2xBITS + 3	norm::z
+typedef int64_t  Signed45;		// 3xBITS + 3	norm::xy
+typedef int64_t  Signed62;		// 4xBITS + 6	dot(vect,norm)
+*/
+
+/*
+// exact arithmetic floating point configuration
+// its about 50x slower than regular floating point setup
+// but if you need it it's priceless!
+#include "crude-xa/src/crude-xa.h"
+typedef XA_REF Signed14;   // BITS			xy coords
+typedef XA_REF Signed15;   // BITS + 1		vect::xy
+typedef XA_REF Unsigned28; // 2xBITS		z coord
+typedef XA_REF Signed29;   // 2xBITS + 1	vect::z
+typedef XA_REF Signed31;   // 2xBITS + 3	norm::z
+typedef XA_REF Signed45;   // 3xBITS + 3	norm::xy
+typedef XA_REF Signed62;   // 4xBITS + 6	dot(vect,norm)
+*/
+
 // returns: positive value: number of triangle indices, negative: number of line segment indices (degenerated input)
 //          triangle indices in abc array are always returned in clockwise order
 // DEPRECIATED. move to new API either extern "C" or IDelaBella (C++)

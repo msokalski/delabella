@@ -9,8 +9,18 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #include <algorithm>
 #include "delabella.h" // we just need LOG() macro
 
-// assuming BITS is max(X_BITS,Y_BITS)
+/*
+#include "crude-xa/src/crude-xa.h"
+typedef XA_REF Signed14;		// BITS			xy coords
+typedef XA_REF Signed15;		// BITS + 1		vect::xy
+typedef XA_REF Unsigned28; // 2xBITS		z coord
+typedef XA_REF Signed29;   // 2xBITS + 1	vect::z
+typedef XA_REF Signed31;   // 2xBITS + 3	norm::z
+typedef XA_REF Signed45;   // 3xBITS + 3	norm::xy
+typedef XA_REF Signed62;   // 4xBITS + 6	dot(vect,norm)
+*/
 
+// assuming BITS is max(X_BITS,Y_BITS)
 typedef double Signed14;		// BITS			xy coords
 typedef double Signed15;		// BITS + 1		vect::xy
 typedef long double Unsigned28; // 2xBITS		z coord
@@ -129,11 +139,13 @@ struct CDelaBella : IDelaBella
 			Face* f = *from;
 			*from = (Face*)f->next;
 			f->next = 0;
+			// init all arithmetics to 0
 			return f;
 		}
 
 		void Free(Face** to)
 		{
+			// free all arithmetics
 			next = *to;
 			*to = this;
 		}
@@ -242,9 +254,13 @@ struct CDelaBella : IDelaBella
 		if (max_faces < hull_faces)
 		{
 			if (max_faces)
-				free(face_alloc);
+			{
+				//free(face_alloc);
+				delete [] face_alloc;
+			}
 			max_faces = 0;
-			face_alloc = (Face*)malloc(sizeof(Face) * hull_faces);
+			//face_alloc = (Face*)malloc(sizeof(Face) * hull_faces);
+			face_alloc = new Face[hull_faces];
 			if (face_alloc)
 				max_faces = hull_faces;
 			else
@@ -801,12 +817,14 @@ struct CDelaBella : IDelaBella
 		{
 			if (max_verts)
 			{
-				free(vert_alloc);
+				//free(vert_alloc);
+				delete [] vert_alloc;
 				vert_alloc = 0;
 				max_verts = 0;
 			}
 
-			vert_alloc = (Vert*)malloc(sizeof(Vert)*points);
+			//vert_alloc = (Vert*)malloc(sizeof(Vert)*points);
+			vert_alloc = new Vert[points];
 			if (vert_alloc)
 				max_verts = points;
 			else
@@ -877,9 +895,15 @@ struct CDelaBella : IDelaBella
 	virtual void Destroy()
 	{
 		if (face_alloc)
-			free(face_alloc);
+		{
+			//free(face_alloc);
+			delete [] face_alloc;
+		}
 		if (vert_alloc)
-			free(vert_alloc);
+		{
+			//free(vert_alloc);
+			delete [] vert_alloc;
+		}
 		delete this;
 	}
 
