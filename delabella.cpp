@@ -7,45 +7,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #include <cstdio>
 #include <cstdlib>
 #include <algorithm>
-#include "delabella.h" // we just need LOG() macro
-
-/*
-#include "crude-xa/src/crude-xa.h"
-typedef XA_REF Signed14;		// BITS			xy coords
-typedef XA_REF Signed15;		// BITS + 1		vect::xy
-typedef XA_REF Unsigned28; // 2xBITS		z coord
-typedef XA_REF Signed29;   // 2xBITS + 1	vect::z
-typedef XA_REF Signed31;   // 2xBITS + 3	norm::z
-typedef XA_REF Signed45;   // 3xBITS + 3	norm::xy
-typedef XA_REF Signed62;   // 4xBITS + 6	dot(vect,norm)
-*/
-
-// assuming BITS is max(X_BITS,Y_BITS)
-typedef double Signed14;		// BITS			xy coords
-typedef double Signed15;		// BITS + 1		vect::xy
-typedef long double Unsigned28; // 2xBITS		z coord
-typedef long double Signed29;   // 2xBITS + 1	vect::z
-typedef long double Signed31;   // 2xBITS + 3	norm::z
-typedef long double Signed45;   // 3xBITS + 3	norm::xy
-typedef long double Signed62;   // 4xBITS + 6	dot(vect,norm)
-
-/*
-// above typedefs can be used to configure delabella arithmetic types
-// in example, EXACT SOLVER (with xy coords limited to 14bits integers in range: +/-8192) 
-// could be achieved with following configuration:
-
-typedef int16_t  Signed14;		// BITS			xy coords
-typedef int16_t  Signed15;		// BITS + 1		vect::xy
-typedef uint32_t Unsigned28;	// 2xBITS		z coord
-typedef int32_t  Signed29;		// 2xBITS + 1	vect::z
-typedef int32_t  Signed31;		// 2xBITS + 3	norm::z
-typedef int64_t  Signed45;		// 3xBITS + 3	norm::xy
-typedef int64_t  Signed62;		// 4xBITS + 6	dot(vect,norm)
-
-// alternatively, one could use some BigInt implementation
-// in order to expand xy range
-*/
-
+#include "delabella.h"
 
 static Unsigned28 s14sqr(const Signed14& s)
 {
