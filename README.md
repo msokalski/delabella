@@ -13,6 +13,9 @@
 
 ![Example](sample.png)
 
+## NEW!!!
+Added exact arithmetic (crude-xa) as option, you can enable it right in delabella.h header. 
+
 ## delabella usage:
 
 ```c++
