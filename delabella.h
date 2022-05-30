@@ -49,7 +49,7 @@ int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5
 struct DelaBella_Vertex
 {
 	int i; // index of original point
-	double x, y; // coordinates (input copy)
+	Signed14 x,y; // coordinates (input copy)
 	DelaBella_Vertex* next; // next silhouette vertex
 };
 

@@ -16,6 +16,8 @@ static Unsigned28 s14sqr(const Signed14& s)
 
 struct Norm
 {
+	~Norm() {} // prevents leaks from crude-xa
+
 	Signed45 x;
 	Signed45 y;
 	Signed31 z;
