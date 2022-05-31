@@ -22,6 +22,7 @@ Added exact arithmetic (crude-xa) as option, you can enable it by adding globall
 ## Adding new interactive sample builds
 - delabella-sdl2
 - delabella-xa-sdl2 (this one requires crude-xa to be cloned inside delabella dir)
+
 Both use SDL2 library for rendering calculated triangulation using OpenGL
 They expect 'xy' input file passed as argument. 
 The file should simply contain all x y coordinates.
