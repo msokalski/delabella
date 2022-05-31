@@ -11,7 +11,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 static Unsigned28 s14sqr(const Signed14& s)
 {
-	return (Unsigned28)((Signed29)s*s);
+	return (Unsigned28)((Signed29)s*(Signed29)s);
 }
 
 struct Norm
@@ -31,9 +31,9 @@ struct Vect
 	Norm cross (const Vect& v) const // cross prod
 	{
 		Norm n;
-		n.x = (Signed45)y*v.z - (Signed45)z*v.y;
-		n.y = (Signed45)z*v.x - (Signed45)x*v.z;
-		n.z = (Signed29)x*v.y - (Signed29)y*v.x;
+		n.x = (Signed45)y*(Signed45)v.z - (Signed45)z*(Signed45)v.y;
+		n.y = (Signed45)z*(Signed45)v.x - (Signed45)x*(Signed45)v.z;
+		n.z = (Signed31)x*(Signed31)v.y - (Signed31)y*(Signed31)v.x;
 		return n;
 	}
 };
@@ -130,7 +130,7 @@ struct CDelaBella : IDelaBella
 		Signed62 dot(const Vert& p) const // dot
 		{
 			Vect d = p - *(Vert*)v[0];
-			return (Signed62)n.x * d.x + (Signed62)n.y * d.y + (Signed62)n.z * d.z;
+			return (Signed62)n.x * (Signed62)d.x + (Signed62)n.y * (Signed62)d.y + (Signed62)n.z * (Signed62)d.z;
 		}
 
 		Norm cross() const // cross of diffs
@@ -150,6 +150,8 @@ struct CDelaBella : IDelaBella
 
 	int inp_verts;
 	int out_verts;
+	int out_hull_faces;
+
 
 	int(*errlog_proc)(void* file, const char* fmt, ...);
 	void* errlog_file;
@@ -556,7 +558,7 @@ struct CDelaBella : IDelaBella
 		return points;
 	}
 
-	int Triangulate()
+	int Triangulate(int* other_faces)
 	{
 		int i = 0;
 		Face* hull = 0;
@@ -564,7 +566,7 @@ struct CDelaBella : IDelaBella
 		Face* cache = 0;
 
 		int points = Prepare(&i, &hull, &hull_faces, &cache);
-		if (points <= 0)
+		if (points <= 0 || points == 3)
 			return points;
 
 		/////////////////////////////////////////////////////////////////////////
@@ -723,6 +725,8 @@ struct CDelaBella : IDelaBella
 			vert_alloc[j].sew = 0;
 		}
 
+		int others = 0;
+
 		i = 0;
 		Face** prev_dela = &first_dela_face;
 		Face** prev_hull = &first_hull_face;
@@ -737,6 +741,7 @@ struct CDelaBella : IDelaBella
 			}
 			else
 			{
+				others++;
 				*prev_hull = f;
 				prev_hull = (Face**)&f->next;
 				if (((Face*)f->f[0])->n.z < 0)
@@ -756,6 +761,9 @@ struct CDelaBella : IDelaBella
 				}
 			}
 		}
+
+		if (other_faces)
+			*other_faces = others;
 
 		*prev_dela = 0;
 		*prev_hull = 0;
@@ -824,8 +832,9 @@ struct CDelaBella : IDelaBella
 			v->y = (Signed14)*(const float*)((const char*)y + i*advance_bytes);
 			v->z = s14sqr(v->x) + s14sqr(v->y);
 		}
-
-		out_verts = Triangulate();
+		
+		out_hull_faces = 0;
+		out_verts = Triangulate(&out_hull_faces);
 		return out_verts;
 	}
 
@@ -852,9 +861,38 @@ struct CDelaBella : IDelaBella
 			v->z = s14sqr(v->x) + s14sqr(v->y);
 		}
 
-		out_verts = Triangulate();
+		out_hull_faces = 0;
+		out_verts = Triangulate(&out_hull_faces);
 		return out_verts;
 	}
+
+	virtual int Triangulate(int points, const long double* x, const long double* y, int advance_bytes)
+	{
+		if (!x)
+			return 0;
+		
+		if (!y)
+			y = x + 1;
+		
+		if (advance_bytes < static_cast<int>(sizeof(double) * 2))
+			advance_bytes = sizeof(long double) * 2;
+
+		if (!ReallocVerts(points))
+			return 0;
+
+		for (int i = 0; i < points; i++)
+		{
+			Vert* v = vert_alloc + i;
+			v->i = i;
+			v->x = (Signed14)*(const long double*)((const char*)x + i*advance_bytes);
+			v->y = (Signed14)*(const long double*)((const char*)y + i*advance_bytes);
+			v->z = s14sqr(v->x) + s14sqr(v->y);
+		}
+
+		out_hull_faces = 0;
+		out_verts = Triangulate(&out_hull_faces);
+		return out_verts;
+	}	
 
 	virtual void Destroy()
 	{
@@ -881,6 +919,16 @@ struct CDelaBella : IDelaBella
 	virtual int GetNumOutputVerts() const
 	{
 		return out_verts;
+	}
+
+	virtual int GetNumOutputHullFaces() const
+	{
+		return out_hull_faces;
+	}
+
+	virtual int GetNumOutputHullVerts() const
+	{
+		return out_hull_faces ? out_hull_faces + 2 : 0;
 	}
 
 	virtual const DelaBella_Triangle* GetFirstDelaunayTriangle() const
@@ -922,6 +970,7 @@ IDelaBella* IDelaBella::Create()
 
 	db->inp_verts = 0;
 	db->out_verts = 0;
+	db->out_hull_faces = 0;
 
 	db->errlog_proc = 0;
 	db->errlog_file = 0;
@@ -955,6 +1004,12 @@ int   DelaBella_TriangulateDouble(void* db, int points, double* x, double* y, in
 	return ((IDelaBella*)db)->Triangulate(points, x, y, advance_bytes);
 }
 
+int   DelaBella_TriangulateLongDouble(void* db, int points, long double* x, long double* y, int advance_bytes)
+{
+	return ((IDelaBella*)db)->Triangulate(points, x, y, advance_bytes);
+}
+
+
 int   DelaBella_GetNumInputPoints(void* db)
 {
 	return ((IDelaBella*)db)->GetNumInputPoints();
@@ -964,6 +1019,12 @@ int   DelaBella_GetNumOutputVerts(void* db)
 {
 	return ((IDelaBella*)db)->GetNumOutputVerts();
 }
+
+int   Delabella_GetNumOutputHullFaces(void* db);
+{
+	return ((IDelaBella*)db)->GetNumOutputHullFaces();
+}
+
 
 const DelaBella_Triangle* GetFirstDelaunayTriangle(void* db)
 {

@@ -6,28 +6,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #ifndef DELABELLA_H
 #define DELABELLA_H
 
-// regular floating point setup
-typedef double Signed14;		// BITS			xy coords
-typedef double Signed15;		// BITS + 1		vect::xy
-typedef long double Unsigned28; // 2xBITS		z coord
-typedef long double Signed29;   // 2xBITS + 1	vect::z
-typedef long double Signed31;   // 2xBITS + 3	norm::z
-typedef long double Signed45;   // 3xBITS + 3	norm::xy
-typedef long double Signed62;   // 4xBITS + 6	dot(vect,norm)
-
-/*
-// exact arithmetic using integers 
-// can handle only a tiny range of input coords +/-8191
-typedef int16_t  Signed14;		// BITS			xy coords
-typedef int16_t  Signed15;		// BITS + 1		vect::xy
-typedef uint32_t Unsigned28;	// 2xBITS		z coord
-typedef int32_t  Signed29;		// 2xBITS + 1	vect::z
-typedef int32_t  Signed31;		// 2xBITS + 3	norm::z
-typedef int64_t  Signed45;		// 3xBITS + 3	norm::xy
-typedef int64_t  Signed62;		// 4xBITS + 6	dot(vect,norm)
-*/
-
-/*
+#ifdef CRUDE_XA
 // exact arithmetic floating point configuration
 // its about 50x slower than regular floating point setup
 // but if you need it it's priceless!
@@ -39,6 +18,27 @@ typedef XA_REF Signed29;   // 2xBITS + 1	vect::z
 typedef XA_REF Signed31;   // 2xBITS + 3	norm::z
 typedef XA_REF Signed45;   // 3xBITS + 3	norm::xy
 typedef XA_REF Signed62;   // 4xBITS + 6	dot(vect,norm)
+#else
+// regular floating point setup
+typedef double Signed14;		// BITS			xy coords
+typedef double Signed15;		// BITS + 1		vect::xy
+typedef long double Unsigned28; // 2xBITS		z coord
+typedef long double Signed29;   // 2xBITS + 1	vect::z
+typedef long double Signed31;   // 2xBITS + 3	norm::z
+typedef long double Signed45;   // 3xBITS + 3	norm::xy
+typedef long double Signed62;   // 4xBITS + 6	dot(vect,norm)
+#endif
+
+/*
+// exact arithmetic using integers 
+// can handle only a tiny range of input coords +/-8191
+typedef int16_t  Signed14;		// BITS			xy coords
+typedef int16_t  Signed15;		// BITS + 1		vect::xy
+typedef uint32_t Unsigned28;	// 2xBITS		z coord
+typedef int32_t  Signed29;		// 2xBITS + 1	vect::z
+typedef int32_t  Signed31;		// 2xBITS + 3	norm::z
+typedef int64_t  Signed45;		// 3xBITS + 3	norm::xy
+typedef int64_t  Signed62;		// 4xBITS + 6	dot(vect,norm)
 */
 
 // returns: positive value: number of triangle indices, negative: number of line segment indices (degenerated input)
@@ -77,12 +77,19 @@ struct IDelaBella
 	// if advance_bytes is less than 2*sizeof coordinate type, it is treated as 2*sizeof coordinate type  
 	virtual int Triangulate(int points, const float* x, const float* y = 0, int advance_bytes = 0) = 0;
 	virtual int Triangulate(int points, const double* x, const double* y = 0, int advance_bytes = 0) = 0;
+	virtual int Triangulate(int points, const long double* x, const long double* y = 0, int advance_bytes = 0) = 0;
 
 	// num of points passed to last call to Triangulate()
 	virtual int GetNumInputPoints() const = 0;
 
 	// num of verts returned from last call to Triangulate()
 	virtual int GetNumOutputVerts() const = 0;
+
+	// num of hull faces returned from last call to Triangulate()
+	virtual int GetNumOutputHullFaces() const = 0;
+
+	// num of hull verts returned from last call to Triangulate()
+	virtual int GetNumOutputHullVerts() const = 0;
 
 	virtual const DelaBella_Triangle* GetFirstDelaunayTriangle() const = 0; // valid only if Triangulate() > 0
 	virtual const DelaBella_Triangle* GetFirstHullTriangle() const = 0; // valid only if Triangulate() > 0
@@ -94,8 +101,11 @@ void  DelaBella_Destroy(void* db);
 void  DelaBella_SetErrLog(void* db, int(*proc)(void* stream, const char* fmt, ...), void* stream);
 int   DelaBella_TriangulateFloat(void* db, int points, float* x, float* y = 0, int advance_bytes = 0);
 int   DelaBella_TriangulateDouble(void* db, int points, double* x, double* y = 0, int advance_bytes = 0);
+int   DelaBella_TriangulateLongDouble(void* db, int points, long double* x, long double* y = 0, int advance_bytes = 0);
 int   DelaBella_GetNumInputPoints(void* db);
 int   DelaBella_GetNumOutputVerts(void* db);
+int   Delabella_GetNumOutputHullFaces(void* db);
+int   Delabella_GetNumOutputHullVerts(void* db);
 const DelaBella_Triangle* GetFirstDelaunayTriangle(void* db);
 const DelaBella_Triangle* GetFirstHullTriangle(void* db);
 const DelaBella_Vertex*   GetFirstHullVertex(void* db);
