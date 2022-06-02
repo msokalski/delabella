@@ -592,7 +592,7 @@ struct CDelaBella : IDelaBella
 		Face* cache = 0;
 
 		int points = Prepare(&i, &hull, &hull_faces, &cache);
-		unique_points = points < 0 ? points : -points;
+		unique_points = points < 0 ? -points : points;
 		if (points <= 0 || points == 3)
 			return points;
 
@@ -749,10 +749,12 @@ struct CDelaBella : IDelaBella
 		assert(2 * i - 4 == hull_faces);
 		//ValidateHull(alloc, hull_faces);
 
-		// needed?
 		for (int j = 0; j < points; j++)
 		{
 			vert_alloc[j].next = 0;
+			
+			// important for convex-hull case
+			// unlink consumed verts
 			vert_alloc[j].sew = 0;
 		}
 
@@ -771,6 +773,13 @@ struct CDelaBella : IDelaBella
 		for (int j = 0; j < hull_faces; j++)
 		{
 			Face* f = face_alloc + j;
+
+			// back-link all verts->some face
+			// yea, multiple times, sorry
+			((Vert*)f->v[0])->sew = f;
+			((Vert*)f->v[1])->sew = f;
+			((Vert*)f->v[2])->sew = f;
+
 			if (f->n.z < 0)
 			{
 				*prev_dela = f;
@@ -780,34 +789,17 @@ struct CDelaBella : IDelaBella
 			else
 			{
 				// link slihouette verts into contour
-				// and sew its edges with hull faces
-
 				others++;
 				*prev_hull = f;
 				prev_hull = (Face**)&f->next;
 				if (((Face*)f->f[0])->n.z < 0)
-				{
 					f->v[1]->next = f->v[2];
-					((Vert*)f->v[1])->sew = f;
-				}
 				if (((Face*)f->f[1])->n.z < 0)
-				{
 					f->v[2]->next = f->v[0];
-					((Vert*)f->v[2])->sew = f;
-				}
 				if (((Face*)f->f[2])->n.z < 0)
-				{
 					f->v[0]->next = f->v[1];
-					((Vert*)f->v[0])->sew = f;
-				}
 			}
 		}
-
-		// TODO:
-		// instead of sewing contour vertices with hull faces
-		// we should sew every v with any face sharing this v
-		// and make sew field part of a DelaBella_Triangle (instaead of derived Face)
-		// making it possible to implement more bizarre iterators by a user
 
 		if (other_faces)
 			*other_faces = others;
@@ -962,11 +954,6 @@ struct CDelaBella : IDelaBella
 		return inp_verts;
 	}
 
-	virtual int GetNumUniquePoints() const
-	{
-		return unique_points;
-	}
-
 	// num of verts returned from last call to Triangulate()
 	virtual int GetNumOutputVerts() const
 	{
@@ -982,6 +969,14 @@ struct CDelaBella : IDelaBella
 	{
 		return out_hull_faces ? out_hull_faces + 2 : 0;
 	}
+
+	virtual const DelaBella_Vertex* GetVertexArray(int* num_verts, int* advance_bytes) const
+	{
+		*num_verts = unique_points;
+		*advance_bytes = sizeof(Vert);
+		return vert_alloc;
+	}
+
 
 	virtual const DelaBella_Triangle* GetFirstDelaunayTriangle() const
 	{

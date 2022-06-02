@@ -66,7 +66,7 @@ struct DelaBella_Vertex
 	DelaBella_Vertex* next; // next silhouette vertex
 	DelaBella_Triangle* sew; // one of triangles sharing this vertex
 
-	inline void StartIterator(DelaBella_Iterator* it/*not_null*/) const;
+	inline const DelaBella_Triangle* StartIterator(DelaBella_Iterator* it/*not_null*/) const;
 };
 
 struct DelaBella_Triangle
@@ -103,7 +103,7 @@ struct DelaBella_Triangle
 		return af->v[2];
 	}
 
-	inline void StartIterator(DelaBella_Iterator* it/*not_null*/, int around/*0,1,2*/) const;
+	inline const DelaBella_Triangle* StartIterator(DelaBella_Iterator* it/*not_null*/, int around/*0,1,2*/) const;
 };
 
 struct DelaBella_Iterator
@@ -162,13 +162,14 @@ struct DelaBella_Iterator
 	}
 };
 
-inline void DelaBella_Triangle::StartIterator(DelaBella_Iterator* it/*not_null*/, int around/*0,1,2*/) const
+inline const DelaBella_Triangle* DelaBella_Triangle::StartIterator(DelaBella_Iterator* it/*not_null*/, int around/*0,1,2*/) const
 {
 	it->current = this;
 	it->around = around;
+	return this;
 }
 
-inline void DelaBella_Vertex::StartIterator(DelaBella_Iterator* it/*not_null*/) const
+inline const DelaBella_Triangle* DelaBella_Vertex::StartIterator(DelaBella_Iterator* it/*not_null*/) const
 {
 	it->current = sew;
 	if (sew->v[0] == this)
@@ -178,6 +179,7 @@ inline void DelaBella_Vertex::StartIterator(DelaBella_Iterator* it/*not_null*/) 
 		it->around = 1;
 	else
 		it->around = 2;	
+	return sew;
 }
 
 #ifdef __cplusplus
@@ -211,8 +213,7 @@ struct IDelaBella
 	// num of hull verts returned from last call to Triangulate()
 	virtual int GetNumOutputHullVerts() const = 0;
 
-	virtual int GetNumUniquePoints() const = 0;
-
+	virtual const DelaBella_Vertex* GetVertexArray(int* num_verts, int* advance_bytes) const = 0;
 	virtual const DelaBella_Triangle* GetFirstDelaunayTriangle() const = 0; // valid only if Triangulate() > 0
 	virtual const DelaBella_Triangle* GetFirstHullTriangle() const = 0; // valid only if Triangulate() > 0
 	virtual const DelaBella_Vertex*   GetFirstHullVertex() const = 0; // if Triangulate() < 0 it is list, otherwise closed contour! 

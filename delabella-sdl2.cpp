@@ -242,6 +242,8 @@ int main(int argc, char* argv[])
 	}
 
 	const DelaBella_Vertex* vert = idb->GetFirstHullVertex();
+    int contour_min = points-1;
+    int contour_max = 0;
     for (int i = 3*tris_delabella; i<3*tris_delabella+contour; i++)    
     {
         if (!vert)
@@ -251,20 +253,35 @@ int main(int argc, char* argv[])
             break;
         }
         ibo_ptr[i] = (GLuint)vert->i;
+        contour_min = vert->i < contour_min ? vert->i : contour_min;
+        contour_max = vert->i > contour_max ? vert->i : contour_max;
         vert = vert->next;
     }
 
-    // handle every vertex (thanks to v->sew)
-    int uniques = idb->GetNumUniquePoints();
-    /*
-    for (int i = 0; i<uniques; i++)
+    printf("contour min:%d max:%d\n",contour_min,contour_max);
+
+    // handle every vertex once (thanks to v->sew)
+    int order_max = 0;
+    int vert_num, vert_adv;
+    const char* base = (char*)idb->GetVertexArray(&vert_num,&vert_adv);
+    for (int i = 0; i<vert_num; i++)
     {
-        const DelaBella_Vertex* vert = 0; // how to get i-th vert?
+        const DelaBella_Vertex* vert = (const DelaBella_Vertex*)(base + i*vert_adv);
         DelaBella_Iterator it;
-        vert->StartIterator(&it);
-        dela = dela->next;    
+
+        int order = 0;
+        const DelaBella_Triangle* face = vert->StartIterator(&it);
+        const DelaBella_Triangle* loop = face;
+        do
+        {
+            order++;
+            face = it.Next();
+        } while (face != loop);
+        
+        order_max = order > order_max ? order : order_max;
     }
-    */
+
+    printf("order max: %d\n",order_max);
 
     glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
 
@@ -452,23 +469,23 @@ int main(int argc, char* argv[])
 
         glColor4f(0.2f,0.2f,0.2f,1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        glDrawElements(GL_TRIANGLES, tris_delabella*3, GL_UNSIGNED_INT, 0);
+        glDrawRangeElements(GL_TRIANGLES, 0,points-1, tris_delabella*3, GL_UNSIGNED_INT, 0);
 
         glColor4f(1.0f,0.0f,0.0f,1.0f);
         glLineWidth(3.0f);
-        glDrawElements(GL_LINE_LOOP, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella*3);
+        glDrawRangeElements(GL_LINE_LOOP, contour_min, contour_max, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella*3);
 
         glColor4f(1.0f,0.0f,1.0f,1.0f);
         glLineWidth(1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glDrawElements(GL_TRIANGLES, tris_delabella * 3, GL_UNSIGNED_INT, 0);
+        glDrawRangeElements(GL_TRIANGLES, 0,points-1, tris_delabella * 3, GL_UNSIGNED_INT, 0);
 
         // delaunator
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_delaunator);
         glColor4f(1.0f,1.0f,1.0f,1.0f);
         glLineWidth(1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glDrawElements(GL_TRIANGLES, tris_delaunator * 3, GL_UNSIGNED_INT, 0);
+        glDrawRangeElements(GL_TRIANGLES, 0,points-1, tris_delaunator * 3, GL_UNSIGNED_INT, 0);
 
         SDL_GL_SwapWindow(window);
         SDL_Delay(15);
