@@ -20,6 +20,7 @@ typedef XA_REF Signed45;   // 3xBITS + 3	norm::xy
 typedef XA_REF Signed62;   // 4xBITS + 6	dot(vect,norm)
 #else
 // regular floating point setup
+/*
 typedef double Signed14;		// BITS			xy coords
 typedef double Signed15;		// BITS + 1		vect::xy
 typedef long double Unsigned28; // 2xBITS		z coord
@@ -27,6 +28,15 @@ typedef long double Signed29;   // 2xBITS + 1	vect::z
 typedef long double Signed31;   // 2xBITS + 3	norm::z
 typedef long double Signed45;   // 3xBITS + 3	norm::xy
 typedef long double Signed62;   // 4xBITS + 6	dot(vect,norm)
+*/
+
+typedef double Signed14;		// BITS			xy coords
+typedef double Signed15;		// BITS + 1		vect::xy
+typedef double Unsigned28; // 2xBITS		z coord
+typedef double Signed29;   // 2xBITS + 1	vect::z
+typedef double Signed31;   // 2xBITS + 3	norm::z
+typedef double Signed45;   // 3xBITS + 3	norm::xy
+typedef double Signed62;   // 4xBITS + 6	dot(vect,norm)
 #endif
 
 /*

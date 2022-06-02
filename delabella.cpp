@@ -127,6 +127,30 @@ struct CDelaBella : IDelaBella
 			return 0;
 		}
 
+		bool dot0(const Vert& p)
+		{
+			return 
+				(Signed62)n.x * (Signed62)((Signed15)p.x - (Signed15)v[0]->x) + 
+				(Signed62)n.y * (Signed62)((Signed15)p.y - (Signed15)v[0]->y) == 
+				(Signed62)n.z * (Signed62)((Signed29)((Vert*)v[0])->z - (Signed29)p.z);
+		}
+
+		bool dotP(const Vert& p)
+		{
+			return 
+				(Signed62)n.x * (Signed62)((Signed15)p.x - (Signed15)v[0]->x) + 
+				(Signed62)n.y * (Signed62)((Signed15)p.y - (Signed15)v[0]->y) > 
+				(Signed62)n.z * (Signed62)((Signed29)((Vert*)v[0])->z - (Signed29)p.z);
+		}
+
+		bool dotNP(const Vert& p)
+		{
+			return 
+				(Signed62)n.x * (Signed62)((Signed15)p.x - (Signed15)v[0]->x) + 
+				(Signed62)n.y * (Signed62)((Signed15)p.y - (Signed15)v[0]->y) <= 
+				(Signed62)n.z * (Signed62)((Signed29)((Vert*)v[0])->z - (Signed29)p.z);
+		}
+
 		Signed62 dot(const Vert& p) const // dot
 		{
 			Vect d = p - *(Vert*)v[0];
@@ -273,7 +297,8 @@ struct CDelaBella : IDelaBella
 		tail->next = last;
 		last->next = head;
 
-		while (i < points && f.dot(vert_alloc[i]) == 0)
+		//while (i < points && f.dot(vert_alloc[i]) == 0)
+		while (i < points && f.dot0(vert_alloc[i]))
 		{
 			Vert* v = vert_alloc + i;
 
@@ -407,7 +432,8 @@ struct CDelaBella : IDelaBella
 		{
 			Vert* q = vert_alloc + i;
 
-			if (f.dot(*q) > 0)
+			//if (f.dot(*q) > 0)
+			if (f.dotP(*q))
 			{
 				Vert* p = last;
 				Vert* n = (Vert*)p->next;
@@ -582,7 +608,8 @@ struct CDelaBella : IDelaBella
 
 			// 1. FIND FIRST VISIBLE FACE
 			//    simply iterate around last vertex using last added triange adjecency info
-			while (f->dot(*q) <= 0)
+			//while (f->dot(*q) <= 0)
+			while (f->dotNP(*q))
 			{
 				f = f->Next(p);
 				if (f == hull)
@@ -591,7 +618,8 @@ struct CDelaBella : IDelaBella
 					// let's run through all faces (approximately last to first),
 					// yes this is emergency fallback and should not ever happen.
 					f = face_alloc + 2 * i - 4 - 1;
-					while (f->dot(*q) <= 0)
+					//while (f->dot(*q) <= 0)
+					while (f->dotNP(*q))
 					{
 						assert(f != face_alloc); // no face is visible? you must be kidding!
 						f--;
@@ -631,7 +659,9 @@ struct CDelaBella : IDelaBella
 					Face* n = ff[e];
 					if (n && !n->next) // ensure neighbor is not processed yet & isn't on stack
 					{
-						if (n->dot(*q) <= 0) // if neighbor is not visible we have slihouette edge
+						// if neighbor is not visible we have slihouette edge
+						//if (n->dot(*q) <= 0) 
+						if (n->dotNP(*q))
 						{
 							// build face
 							add++;
@@ -726,6 +756,13 @@ struct CDelaBella : IDelaBella
 		}
 
 		int others = 0;
+
+		// TO CONSIDER:
+		// fix inexact solution?
+		// check if dela triangles
+		// span over entire input set
+		// if not, add missing triangles
+		// probably having Nz==0 
 
 		i = 0;
 		Face** prev_dela = &first_dela_face;

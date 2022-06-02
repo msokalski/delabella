@@ -14,10 +14,17 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
 
+#include <random>
+
 #include "delabella.h"
 
 #include <GL/gl.h>
 #include <GL/glext.h>
+
+// competitor
+#include <assert.h>
+#include "delaunator/delaunator-header-only.hpp"
+
 
 int errlog(void* stream, const char* fmt, ...)
 {
@@ -26,6 +33,28 @@ int errlog(void* stream, const char* fmt, ...)
 	int ret = vfprintf((FILE*)stream, fmt, arg);
 	va_end(arg);
 	return ret;
+}
+
+static uint64_t uSec()
+{
+	#ifdef _WIN32
+	LARGE_INTEGER c;
+	static LARGE_INTEGER f;
+	static BOOL bf = QueryPerformanceFrequency(&f);
+	QueryPerformanceCounter(&c);
+	uint64_t n = c.QuadPart;
+	uint64_t d = f.QuadPart;
+	uint64_t m = 1000000;
+	// calc n*m/d carefully!
+	// naive mul/div would work only for upto 5h on 1GHz freq
+	// we exploit fact that m*d fits in uint64 (upto 18THz freq)
+	// so n%d*m fits as well
+	return n / d * m + n % d * m / d;
+	#else
+	timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (uint64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+	#endif
 }
 
 int main(int argc, char* argv[])
@@ -37,13 +66,6 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
-	FILE* f = fopen(argv[1],"r");
-	if (!f)
-	{
-		printf("can't open %s file, terminating!\n", argv[1]);
-		return -1;
-	}
-
 	struct MyPoint
 	{
 		long double x;
@@ -52,22 +74,79 @@ int main(int argc, char* argv[])
 	
 	std::vector<MyPoint> cloud;
 
-	while (1)
+	FILE* f = fopen(argv[1],"r");
+    int n = atoi(argv[1]);
+	if (!f)
 	{
-		long double x,y;
-		if ( fscanf(f,"%Lf %Lf", &x, &y) != 2)
-			break;
-		MyPoint p = {x,y};
-		cloud.push_back(p);
-	}
-	fclose(f);
+        if (n<=2)
+        {
+		    printf("can't open %s file, terminating!\n", argv[1]);
+            return -1;
+        }
+        printf("generating random %d points\n", n);
+       	std::random_device rd{};
+    	std::mt19937_64 gen{rd()};
 
+        std::uniform_real_distribution<long double> d(-1.L,1.L);
+        //std::normal_distribution<long double> d{0.0, 2.0};
+        //std::gamma_distribution<long double> d(0.1L,2.0L);
+
+        for (int i=0; i<n; i++)
+        {
+            MyPoint p = { d(gen), d(gen) };
+            //p.y=p.x*0.3;
+            cloud.push_back(p);
+        }
+	}
+    else
+    {
+        while (1)
+        {
+            long double x,y;
+            if ( fscanf(f,"%Lf %Lf", &x, &y) != 2)
+                break;
+            MyPoint p = {x,y};
+            cloud.push_back(p);
+        }
+        fclose(f);
+    }
+
+    int points = cloud.size();
+
+    std::vector<double> coords;
+    for (int i=0; i<points; i++)
+    {
+        coords.push_back(cloud[i].x);
+        coords.push_back(cloud[i].y);
+    }
+
+    #if 1
+    uint64_t t0 = uSec();
+    printf("running delaunator...\n");
+    delaunator::Delaunator d(coords);
+    int tris_delaunator = d.triangles.size() / 3;
+    uint64_t t1 = uSec();
+    printf("elapsed %d ms\n", (int)((t1-t0)/1000));
+    printf("delaunator triangles: %d\n", tris_delaunator);
+    /*
+    for(std::size_t i = 0; i < d.triangles.size(); i+=3) 
+    {
+        printf("%d %d %d\n", (int)d.triangles[i], (int)d.triangles[i+1], (int)d.triangles[i+2]);
+    }
+    */
+    #endif
+    
 	IDelaBella* idb = IDelaBella::Create();
 	idb->SetErrLog(errlog, stdout);
 	
-	int verts = idb->Triangulate(cloud.size(), &cloud.data()->x, &cloud.data()->y, sizeof(MyPoint));
-	int tris = verts / 3;
+    printf("running delabella...\n");
+    uint64_t t2 = uSec();
+	int verts = idb->Triangulate(points, &cloud.data()->x, &cloud.data()->y, sizeof(MyPoint));
+	int tris_delabella = verts / 3;
     int contour = idb->GetNumOutputHullVerts();
+    uint64_t t3 = uSec();
+    printf("elapsed %d ms\n", (int)((t3-t2)/1000));
+    printf("delabella triangles: %d\n", tris_delabella);
 
 	// if positive, all ok 
 	if (verts<=0)
@@ -83,17 +162,14 @@ int main(int argc, char* argv[])
         f = fopen(argv[2],"w");
         if (f)
         {
-            for (int i=0; i<tris; i++)
+            for (int i=0; i<tris_delabella; i++)
             {
                 const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
-                for (int i = 0; i<tris; i++)
-                {
-                    fprintf(f,"%d %d %d\n", 
-                        dela->v[0]->i,
-                        dela->v[1]->i,
-                        dela->v[2]->i);
-                    dela = dela->next;
-                }
+                fprintf(f,"%d %d %d\n", 
+                    dela->v[0]->i,
+                    dela->v[1]->i,
+                    dela->v[2]->i);
+                dela = dela->next;
             }
             fclose(f);
         }
@@ -121,22 +197,143 @@ int main(int argc, char* argv[])
     SDL_Window * window = SDL_CreateWindow( title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     SDL_GLContext context = SDL_GL_CreateContext( window );
 
-	// create vbo and ibo
-    GLuint vbo, ibo;
-	glGenBuffers( 1, &vbo );
-	glGenBuffers( 1, &ibo );
-    glBindBuffer( GL_ARRAY_BUFFER, vbo );
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, ibo );
-    glBufferData( GL_ARRAY_BUFFER, sizeof(GLfloat[2]) * cloud.size(), 0, GL_STATIC_DRAW );
-    glBufferData( GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris + sizeof(GLuint) * contour, 0, GL_STATIC_DRAW );
+    #if 0
+    #define CODE(...) #__VA_ARGS__
+    const char* vsrc = CODE
+    (
+        \n#version 130\n
+        out vec2 v_here;
+        out vec4 v_voronoi;
+        out vec4 v_pos;
+        void main()
+        {
+            v_pos = gl_ModelViewProjectionMatrix * vec4(gl_Vertex.xy,0.0,1.0);
+            v_here = gl_Vertex.xy;
+            v_voronoi = vec4(gl_Vertex.xyz,1.0); 
+        }
+    );
 
+    const char* gsrc = CODE
+    (
+        \n#version 150\n
+        layout (triangles) in;
+        layout (triangle_strip) out;
+        layout (max_vertices = 3) out;
+        in vec4 v_pos[3];
+        in vec2 v_here[3];
+        in vec4 v_voronoi[3];
+        flat out vec4 voronoi[3];
+        out vec2 here;
+
+        void main()
+        {
+            for (int i=0; i<3; i++)
+            {
+                gl_Position = v_pos[i];
+                here = v_here[i];
+                if (i==2) // provoking
+                    for (int j=0; j<3; j++)
+                        voronoi[j] = v_voronoi[j];
+                EmitVertex();
+            }
+            EndPrimitive();
+        }
+    );
+
+    const char* fsrc = CODE
+    (
+        \n#version 130\n
+        in vec2 here;
+        out vec4 fragcolor;
+        flat in vec4 voronoi[3];
+        uniform vec4 palette[5];
+
+        void main()
+        {
+            vec4 of = vec4(here,0.0,0.0);
+            vec4 v0 = voronoi[0] - of;
+            vec4 v1 = voronoi[1] - of;
+            vec4 v2 = voronoi[2] - of;
+
+            vec4 v;
+
+            v0.a = dot(v0.xy, v0.xy);
+            v = v0;
+            v1.a = dot(v1.xy, v1.xy);
+            if (v1.a < v.a)
+                v = v1;
+            v2.a = dot(v2.xy, v2.xy);
+            if (v2.a < v.a)
+                v = v2;
+
+            // decode winner to color index
+            int index = int(round(v.z));
+
+            // access color from palette (uniform)
+            vec4 color = palette[index];
+
+            fragcolor = color;
+        }
+    );
+
+    char nfo[1000];
+    GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vs,1,&vsrc,0);
+    glCompileShader(vs);
+    glGetShaderInfoLog(vs,1000,0,nfo);
+    printf("VS:\n%s\n",nfo);
+
+    GLuint gs = glCreateShader(GL_GEOMETRY_SHADER);
+    glShaderSource(gs,1,&gsrc,0);
+    glCompileShader(gs);
+    glGetShaderInfoLog(gs,1000,0,nfo);
+    printf("GS:\n%s\n",nfo);
+
+    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fs,1,&fsrc,0);
+    glCompileShader(fs);
+    glGetShaderInfoLog(fs,1000,0,nfo);
+    printf("FS:\n%s\n",nfo);
+
+    GLuint prg = glCreateProgram();
+    glAttachShader(prg,vs);
+    glAttachShader(prg,gs);
+    glAttachShader(prg,fs);
+    glLinkProgram(prg);
+    glGetProgramInfoLog(prg,1000,0,nfo);
+    printf("PRG:\n%s\n",nfo);
+
+    glUseProgram(prg);
+
+    static const float colors[5][4]=
+    {
+        {1,0,0,1},
+        {1,1,0,1},
+        {0,1,0,1},
+        {0,0,1,1},
+        {1,0,1,1},
+    };
+
+    GLint pal = glGetUniformLocation(prg,"palette");
+    glUniform4fv(pal, 5, (const float*)colors);
+    glUseProgram(0);
+    #endif
+
+	// create vbo and ibo
+    GLuint vbo, ibo_delabella, ibo_delaunator;
+	glGenBuffers( 1, &vbo );
+	glGenBuffers( 1, &ibo_delabella );
+	glGenBuffers( 1, &ibo_delaunator );
+
+    glBindBuffer( GL_ARRAY_BUFFER, vbo );
+    glBufferData( GL_ARRAY_BUFFER, sizeof(GLfloat[3]) * points, 0, GL_STATIC_DRAW );
     GLfloat* vbo_ptr = (GLfloat*)glMapBuffer( GL_ARRAY_BUFFER, GL_WRITE_ONLY);
-    int points = cloud.size();
     float box[4]={(float)cloud[0].x, (float)cloud[0].y, (float)cloud[0].x, (float)cloud[0].y};
 	for (int i = 0; i<points; i++)
     {
-        vbo_ptr[2*i+0] = (GLfloat)cloud[i].x;
-        vbo_ptr[2*i+1] = (GLfloat)cloud[i].y;
+        vbo_ptr[3*i+0] = (GLfloat)cloud[i].x;
+        vbo_ptr[3*i+1] = (GLfloat)cloud[i].y;
+        vbo_ptr[3*i+2] = i%5; // color
 
         box[0] = fmin(box[0], (float)cloud[i].x);
         box[1] = fmin(box[1], (float)cloud[i].y);
@@ -145,10 +342,13 @@ int main(int argc, char* argv[])
     }
     glUnmapBuffer(GL_ARRAY_BUFFER);
 
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, ibo_delabella );
+    glBufferData( GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delabella + sizeof(GLuint) * contour, 0, GL_STATIC_DRAW );
     GLuint* ibo_ptr = (GLuint*)glMapBuffer( GL_ELEMENT_ARRAY_BUFFER, GL_WRITE_ONLY);
 	const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
-	for (int i = 0; i<tris; i++)
+	for (int i = 0; i<tris_delabella; i++)
 	{
+        // triangles with adjacency?
         ibo_ptr[3*i+0] = (GLuint)dela->v[0]->i;
         ibo_ptr[3*i+1] = (GLuint)dela->v[1]->i;
         ibo_ptr[3*i+2] = (GLuint)dela->v[2]->i;
@@ -156,10 +356,27 @@ int main(int argc, char* argv[])
 	}
 
 	const DelaBella_Vertex* vert = idb->GetFirstHullVertex();
-    for (int i = 3*tris; i<3*tris+contour; i++)    
+    for (int i = 3*tris_delabella; i<3*tris_delabella+contour; i++)    
     {
+        if (!vert)
+        {
+            // contour degeneration detected
+            contour = i-3*tris_delabella;
+            break;
+        }
         ibo_ptr[i] = (GLuint)vert->i;
         vert = vert->next;
+    }
+    glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
+
+    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, ibo_delaunator );
+    glBufferData( GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delaunator, 0, GL_STATIC_DRAW );
+    ibo_ptr = (GLuint*)glMapBuffer( GL_ELEMENT_ARRAY_BUFFER, GL_WRITE_ONLY);
+    for (int i = 0; i<tris_delaunator; i++)    
+    {
+        ibo_ptr[3*i+0] = (GLuint)d.triangles[3*i+0];
+        ibo_ptr[3*i+1] = (GLuint)d.triangles[3*i+1];
+        ibo_ptr[3*i+2] = (GLuint)d.triangles[3*i+2];
     }
     glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
 
@@ -167,15 +384,19 @@ int main(int argc, char* argv[])
     idb->Destroy();
 
     // hello ancient world
-    glInterleavedArrays(GL_V2F,0,0);
+    glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
+
+    int vpw, vph;
+    SDL_GL_GetDrawableSize(window, &vpw, &vph);
 
     double cx = 0.5 * (box[0]+box[2]);
     double cy = 0.5 * (box[1]+box[3]);
-    double dd = fmax(box[2]-box[0], box[3]-box[1]);
-    int zoom = (int)round(log(dd) / log(1.01));
+    double scale = 2.0 * fmin((double)vpw/(box[2]-box[0]),(double)vph/(box[3]-box[1]));
+    int zoom = -3+(int)round(log(scale) / log(1.01));
 
-    int drag_x, drag_y;
-    bool drag = false;
+    int drag_x, drag_y, drag_zoom;
+    double drag_cx, drag_cy;
+    int drag = 0;
 
     for( ;; )
     {
@@ -187,44 +408,96 @@ int main(int argc, char* argv[])
             {
                 case SDL_MOUSEWHEEL:
                 {
-                    zoom += event.wheel.y * 10;
+                    if (drag==0)
+                    {
+                        scale = pow(1.01, zoom);
+                        int vpw, vph;
+                        SDL_GL_GetDrawableSize(window, &vpw, &vph);
+
+                        SDL_GetMouseState(&drag_x,&drag_y);
+
+                        drag_cx = cx + 2.0 * (drag_x - vpw*0.5) / scale;
+                        drag_cy = cy + 2.0 * (vph*0.5 - drag_y) / scale;
+
+                        zoom += event.wheel.y * 10;
+                        scale = pow(1.01, zoom);
+
+                        cx = (drag_cx - 2.0 * (drag_x - vpw*0.5) / scale);
+                        cy = (drag_cy - 2.0 * (vph*0.5 - drag_y) / scale);
+                    }
+
                     break;
                 }
 
                 case SDL_MOUSEMOTION:
                 {
-                    if (drag)
+                    if (drag == 1)
                     {
                         int dx = event.motion.x - drag_x;
                         int dy = event.motion.y - drag_y;
 
                         double scale = pow(1.01, zoom);
-                        cx -= 2*dx/scale;
-                        cy += 2*dy/scale;
+                        cx = drag_cx - 2*dx/scale;
+                        cy = drag_cy + 2*dy/scale;
+                    }
 
-                        drag_x = event.motion.x;
-                        drag_y = event.motion.y;
+                    if (drag == 2)
+                    {
+                        int dx = event.motion.x - drag_x;
+                        int dy = event.motion.y - drag_y;
+
+                        zoom = drag_zoom - dy;
+
+                        scale = pow(1.01, zoom);
+                        int vpw, vph;
+                        SDL_GL_GetDrawableSize(window, &vpw, &vph);
+
+                        cx = (drag_cx - 2.0 * (drag_x - vpw*0.5) / scale);
+                        cy = (drag_cy - 2.0 * (vph*0.5 - drag_y) / scale);                        
                     }
                     break;
                 }
 
                 case SDL_MOUSEBUTTONDOWN:
                 {
-                    if (event.button.button == SDL_BUTTON_LEFT)
+                    if (!drag)
                     {
-                        drag = true;
-                        drag_x = event.button.x;
-                        drag_y = event.button.y;
-                        SDL_CaptureMouse(SDL_TRUE);
+                        if (event.button.button == SDL_BUTTON_LEFT)
+                        {
+                            drag = 1;
+                            drag_x = event.button.x;
+                            drag_y = event.button.y;
+                            drag_cx = cx;
+                            drag_cy = cy;
+                            drag_zoom = zoom;
+                            SDL_CaptureMouse(SDL_TRUE);
+                        }
+                        if (event.button.button == SDL_BUTTON_RIGHT)
+                        {
+                            scale = pow(1.01, zoom);
+                            int vpw, vph;
+                            SDL_GL_GetDrawableSize(window, &vpw, &vph);
+                            double dx = cx + 2.0 * (event.button.x - vpw*0.5) / scale;
+                            double dy = cy + 2.0 * (vph*0.5 - event.button.y) / scale;
+
+                            drag = 2;
+                            drag_x = event.button.x;
+                            drag_y = event.button.y;
+                            drag_cx = dx;
+                            drag_cy = dy;
+                            drag_zoom = zoom;
+                            SDL_CaptureMouse(SDL_TRUE);
+                        }
                     }
                     break;
                 }
 
                 case SDL_MOUSEBUTTONUP:
                 {
-                    if (event.button.button == SDL_BUTTON_LEFT && drag)
+                    if ((event.button.button == SDL_BUTTON_LEFT && drag == 1) ||
+                        (event.button.button == SDL_BUTTON_RIGHT && drag == 2))
                     {
-                        drag = false;
+                        drag = 0;
                         SDL_CaptureMouse(SDL_FALSE);
                     }
                     break;
@@ -270,26 +543,38 @@ int main(int argc, char* argv[])
         glOrtho(cx - vpw/scale, cx + vpw/scale, cy - vph/scale, cy + vph/scale, -1, +1);
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
+        glScalef(1,1,0); // flatten z when not shaded
 
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_delabella);
+
+        //glUseProgram(prg); 
         glColor4f(0.2f,0.2f,0.2f,1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        glDrawElements(GL_TRIANGLES, tris*3, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, tris_delabella*3, GL_UNSIGNED_INT, 0);
+        //glUseProgram(0);
 
         glColor4f(1.0f,0.0f,0.0f,1.0f);
         glLineWidth(3.0f);
-        glDrawElements(GL_LINE_LOOP, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris*3);
+        glDrawElements(GL_LINE_LOOP, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella*3);
 
-        glColor4f(1.0f,1.0f,1.0f,1.0f);
+        //glColor4f(1.0f,1.0f,1.0f,1.0f);
         glLineWidth(1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glDrawElements(GL_TRIANGLES, tris*3, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, tris_delabella*3, GL_UNSIGNED_INT, 0);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_delaunator);
+        glColor4f(0.0f,1.0f,1.0f,1.0f);
+        glLineWidth(1.0f);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glDrawElements(GL_TRIANGLES, tris_delaunator*3, GL_UNSIGNED_INT, 0);
 
         SDL_GL_SwapWindow(window);
         SDL_Delay(15);
     }
 
     glDeleteBuffers(1,&vbo);
-    glDeleteBuffers(1,&ibo);
+    glDeleteBuffers(1,&ibo_delabella);
+    glDeleteBuffers(1,&ibo_delaunator);
 
     SDL_GL_DeleteContext( context );
     SDL_DestroyWindow( window );
