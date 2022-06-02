@@ -778,6 +778,9 @@ struct CDelaBella : IDelaBella
 			}
 			else
 			{
+				// link slihouette verts into contour
+				// and sew its edges with hull faces
+
 				others++;
 				*prev_hull = f;
 				prev_hull = (Face**)&f->next;
@@ -806,9 +809,6 @@ struct CDelaBella : IDelaBella
 		*prev_hull = 0;
 
 		first_hull_vert = (Vert*)first_hull_face->v[0];
-
-		// todo link slihouette verts into contour
-		// and sew its edges with hull faces
 
 		return 3*i;
 	}
