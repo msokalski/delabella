@@ -68,8 +68,8 @@ int main(int argc, char* argv[])
 
 	struct MyPoint
 	{
-		long double x;
-		long double y;
+		/*long*/ double x;
+		/*long*/ double y;
 	};
 	
 	std::vector<MyPoint> cloud;
@@ -87,9 +87,9 @@ int main(int argc, char* argv[])
        	std::random_device rd{};
     	std::mt19937_64 gen{rd()};
 
-        std::uniform_real_distribution<long double> d(-1.L,1.L);
-        //std::normal_distribution<long double> d{0.0, 2.0};
-        //std::gamma_distribution<long double> d(0.1L,2.0L);
+        //std::uniform_real_distribution</*long*/ double> d(-1.L,1.L);
+        std::normal_distribution</*long*/ double> d{0.0, 2.0};
+        //std::gamma_distribution</*long*/ double> d(0.1L,2.0L);
 
         for (int i=0; i<n; i++)
         {
@@ -102,8 +102,13 @@ int main(int argc, char* argv[])
     {
         while (1)
         {
+            /*
             long double x,y;
-            if ( fscanf(f,"%Lf %Lf", &x, &y) != 2)
+            if (fscanf(f,"%Lf %Lf", &x, &y) != 2)
+                break;
+            */
+            double x,y;
+            if (fscanf(f,"%lf %lf", &x, &y) != 2)
                 break;
             MyPoint p = {x,y};
             cloud.push_back(p);
@@ -144,9 +149,13 @@ int main(int argc, char* argv[])
 	int verts = idb->Triangulate(points, &cloud.data()->x, &cloud.data()->y, sizeof(MyPoint));
 	int tris_delabella = verts / 3;
     int contour = idb->GetNumOutputHullVerts();
+
     uint64_t t3 = uSec();
     printf("elapsed %d ms\n", (int)((t3-t2)/1000));
     printf("delabella triangles: %d\n", tris_delabella);
+    printf("delabella contour: %d\n", contour);
+    printf("delabella is %s\n", tris_delabella == 2*points - 4 - (contour-2) ? "CORRECT" : "WRONG");
+
 
 	// if positive, all ok 
 	if (verts<=0)
@@ -197,124 +206,6 @@ int main(int argc, char* argv[])
     SDL_Window * window = SDL_CreateWindow( title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     SDL_GLContext context = SDL_GL_CreateContext( window );
 
-    //#if 0
-    #define CODE(...) #__VA_ARGS__
-    const char* vsrc = CODE
-    (
-        \n#version 130\n
-        out vec2 v_here;
-        out vec4 v_voronoi;
-        out vec4 v_pos;
-        void main()
-        {
-            v_pos = gl_ModelViewProjectionMatrix * vec4(gl_Vertex.xy,0.0,1.0);
-            v_here = gl_Vertex.xy;
-            v_voronoi = vec4(gl_Vertex.xyz,1.0); 
-        }
-    );
-
-    const char* gsrc = CODE
-    (
-        \n#version 150\n
-        layout (triangles_adjacency) in;
-        layout (triangle_strip) out;
-        layout (max_vertices = 3) out;
-        in vec4 v_pos[6];
-        in vec2 v_here[6];
-        in vec4 v_voronoi[6];
-        flat out vec4 voronoi[6];
-        out vec2 here;
-
-        void main()
-        {
-            for (int i=0; i<3; i++)
-            {
-                int a = 2*i;
-                gl_Position = v_pos[a];
-                here = v_here[a];
-                if (i==2) // provoking
-                    for (int j=0; j<6; j++)
-                        voronoi[j] = v_voronoi[j];
-                EmitVertex();
-            }
-            EndPrimitive();
-        }
-    );
-
-    const char* fsrc = CODE
-    (
-        \n#version 130\n
-        in vec2 here;
-        out vec4 fragcolor;
-        flat in vec4 voronoi[6];
-        uniform vec4 palette[5];
-
-        void main()
-        {
-            vec4 of = vec4(here,0.0,0.0);
-            vec4 v = voronoi[0] - of;
-            v.a = dot(v.xy, v.xy);
-            for (int i = 1; i<6; i++)
-            {
-                vec4 u = voronoi[i] - of;
-                u.a = dot(u.xy, u.xy);
-                if (u.a < v.a)
-                    v = u;
-            }
-
-            // decode winner to color index
-            int index = int(round(v.z));
-
-            // access color from palette (uniform)
-            vec4 color = palette[index];
-
-            fragcolor = color;
-        }
-    );
-
-    char nfo[1000];
-    GLuint vs = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vs,1,&vsrc,0);
-    glCompileShader(vs);
-    glGetShaderInfoLog(vs,1000,0,nfo);
-    printf("VS:\n%s\n",nfo);
-
-    GLuint gs = glCreateShader(GL_GEOMETRY_SHADER);
-    glShaderSource(gs,1,&gsrc,0);
-    glCompileShader(gs);
-    glGetShaderInfoLog(gs,1000,0,nfo);
-    printf("GS:\n%s\n",nfo);
-
-    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fs,1,&fsrc,0);
-    glCompileShader(fs);
-    glGetShaderInfoLog(fs,1000,0,nfo);
-    printf("FS:\n%s\n",nfo);
-
-    GLuint prg = glCreateProgram();
-    glAttachShader(prg,vs);
-    glAttachShader(prg,gs);
-    glAttachShader(prg,fs);
-    glLinkProgram(prg);
-    glGetProgramInfoLog(prg,1000,0,nfo);
-    printf("PRG:\n%s\n",nfo);
-
-    glUseProgram(prg);
-
-    static const float colors[5][4]=
-    {
-        {1,0,0,1},
-        {1,1,0,1},
-        {0,1,0,1},
-        {0,0,1,1},
-        {1,0,1,1},
-    };
-
-    GLint pal = glGetUniformLocation(prg,"palette");
-    glUniform4fv(pal, 5, (const float*)colors);
-    glUseProgram(0);
-    //#endif
-
 	// create vbo and ibo
     GLuint vbo, ibo_delabella, ibo_delaunator;
 	glGenBuffers( 1, &vbo );
@@ -339,69 +230,42 @@ int main(int argc, char* argv[])
     glUnmapBuffer(GL_ARRAY_BUFFER);
 
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, ibo_delabella );
-    glBufferData( GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[6]) * tris_delabella + sizeof(GLuint) * contour, 0, GL_STATIC_DRAW );
+    glBufferData( GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delabella + sizeof(GLuint) * contour, 0, GL_STATIC_DRAW );
     GLuint* ibo_ptr = (GLuint*)glMapBuffer( GL_ELEMENT_ARRAY_BUFFER, GL_WRITE_ONLY);
 	const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
 	for (int i = 0; i<tris_delabella; i++)
 	{
-        // triangles with adjacency?
-        ibo_ptr[6*i+0] = (GLuint)dela->v[0]->i;
-        {
-            int j;
-            if (dela->f[2]->f[0] == dela)
-                j = 0;
-            else
-            if (dela->f[2]->f[1] == dela)
-                j = 1;
-            else
-                j = 2;
-
-            ibo_ptr[6*i+1] = (GLuint)dela->f[2]->v[j]->i;
-        }
-
-        ibo_ptr[6*i+2] = (GLuint)dela->v[1]->i;
-        {
-            int j;
-            if (dela->f[0]->f[0] == dela)
-                j = 0;
-            else
-            if (dela->f[0]->f[1] == dela)
-                j = 1;
-            else
-                j = 2;
-
-            ibo_ptr[6*i+3] = (GLuint)dela->f[0]->v[j]->i;
-        }
-
-        ibo_ptr[6*i+4] = (GLuint)dela->v[2]->i;
-        {
-            int j;
-            if (dela->f[1]->f[0] == dela)
-                j = 0;
-            else
-            if (dela->f[1]->f[1] == dela)
-                j = 1;
-            else
-                j = 2;
-
-            ibo_ptr[6*i+5] = (GLuint)dela->f[1]->v[j]->i;
-        }
-
+        ibo_ptr[3*i+0] = (GLuint)dela->v[0]->i;
+        ibo_ptr[3*i+1] = (GLuint)dela->v[1]->i;
+        ibo_ptr[3*i+2] = (GLuint)dela->v[2]->i;
 		dela = dela->next;
 	}
 
 	const DelaBella_Vertex* vert = idb->GetFirstHullVertex();
-    for (int i = 6*tris_delabella; i<6*tris_delabella+contour; i++)    
+    for (int i = 3*tris_delabella; i<3*tris_delabella+contour; i++)    
     {
         if (!vert)
         {
             // contour degeneration detected
-            contour = i-6*tris_delabella;
+            contour = i-3*tris_delabella;
             break;
         }
         ibo_ptr[i] = (GLuint)vert->i;
         vert = vert->next;
     }
+
+    // handle every vertex (thanks to v->sew)
+    int uniques = idb->GetNumUniquePoints();
+    /*
+    for (int i = 0; i<uniques; i++)
+    {
+        const DelaBella_Vertex* vert = 0; // how to get i-th vert?
+        DelaBella_Iterator it;
+        vert->StartIterator(&it);
+        dela = dela->next;    
+    }
+    */
+
     glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
 
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, ibo_delaunator );
@@ -580,30 +444,31 @@ int main(int argc, char* argv[])
         glLoadIdentity();
         glScalef(1,1,0); // flatten z when not shaded
 
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glFrontFace(GL_CW);
+
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_delabella);
 
-        glUseProgram(prg); 
-        //glColor4f(0.2f,0.2f,0.2f,1.0f);
+        glColor4f(0.2f,0.2f,0.2f,1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        glDrawElements(GL_TRIANGLES_ADJACENCY, tris_delabella*6, GL_UNSIGNED_INT, 0);
-        glUseProgram(0);
+        glDrawElements(GL_TRIANGLES, tris_delabella*3, GL_UNSIGNED_INT, 0);
 
-        glColor4f(1.0f,1.0f,1.0f,1.0f);
+        glColor4f(1.0f,0.0f,0.0f,1.0f);
         glLineWidth(3.0f);
-        glDrawElements(GL_LINE_LOOP, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella*6);
+        glDrawElements(GL_LINE_LOOP, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella*3);
 
-        //glColor4f(1.0f,1.0f,1.0f,1.0f);
+        glColor4f(1.0f,0.0f,1.0f,1.0f);
         glLineWidth(1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glDrawElements(GL_TRIANGLES_ADJACENCY, tris_delabella*6, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, tris_delabella * 3, GL_UNSIGNED_INT, 0);
 
-        /*
+        // delaunator
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_delaunator);
-        glColor4f(0.0f,1.0f,1.0f,1.0f);
+        glColor4f(1.0f,1.0f,1.0f,1.0f);
         glLineWidth(1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glDrawElements(GL_TRIANGLES, tris_delaunator*3, GL_UNSIGNED_INT, 0);
-        */
+        glDrawElements(GL_TRIANGLES, tris_delaunator * 3, GL_UNSIGNED_INT, 0);
 
         SDL_GL_SwapWindow(window);
         SDL_Delay(15);

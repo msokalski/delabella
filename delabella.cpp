@@ -49,7 +49,7 @@ struct CDelaBella : IDelaBella
 	struct Vert : DelaBella_Vertex
 	{
 		Unsigned28 z;
-		Face* sew;
+		//Face* sew; now it is inherited!
 
 		Vect operator - (const Vert& v) const // diff
 		{
@@ -175,7 +175,7 @@ struct CDelaBella : IDelaBella
 	int inp_verts;
 	int out_verts;
 	int out_hull_faces;
-
+	int unique_points;
 
 	int(*errlog_proc)(void* file, const char* fmt, ...);
 	void* errlog_file;
@@ -592,6 +592,7 @@ struct CDelaBella : IDelaBella
 		Face* cache = 0;
 
 		int points = Prepare(&i, &hull, &hull_faces, &cache);
+		unique_points = points < 0 ? points : -points;
 		if (points <= 0 || points == 3)
 			return points;
 
@@ -802,6 +803,12 @@ struct CDelaBella : IDelaBella
 			}
 		}
 
+		// TODO:
+		// instead of sewing contour vertices with hull faces
+		// we should sew every v with any face sharing this v
+		// and make sew field part of a DelaBella_Triangle (instaead of derived Face)
+		// making it possible to implement more bizarre iterators by a user
+
 		if (other_faces)
 			*other_faces = others;
 
@@ -871,6 +878,7 @@ struct CDelaBella : IDelaBella
 		}
 		
 		out_hull_faces = 0;
+		unique_points = 0;
 		out_verts = Triangulate(&out_hull_faces);
 		return out_verts;
 	}
@@ -899,6 +907,7 @@ struct CDelaBella : IDelaBella
 		}
 
 		out_hull_faces = 0;
+		unique_points = 0;
 		out_verts = Triangulate(&out_hull_faces);
 		return out_verts;
 	}
@@ -927,6 +936,7 @@ struct CDelaBella : IDelaBella
 		}
 
 		out_hull_faces = 0;
+		unique_points = 0;
 		out_verts = Triangulate(&out_hull_faces);
 		return out_verts;
 	}	
@@ -950,6 +960,11 @@ struct CDelaBella : IDelaBella
 	virtual int GetNumInputPoints() const
 	{
 		return inp_verts;
+	}
+
+	virtual int GetNumUniquePoints() const
+	{
+		return unique_points;
 	}
 
 	// num of verts returned from last call to Triangulate()
@@ -1008,6 +1023,7 @@ IDelaBella* IDelaBella::Create()
 	db->inp_verts = 0;
 	db->out_verts = 0;
 	db->out_hull_faces = 0;
+	db->unique_points = 0;
 
 	db->errlog_proc = 0;
 	db->errlog_file = 0;

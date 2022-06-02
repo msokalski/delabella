@@ -56,11 +56,17 @@ typedef int64_t  Signed62;		// 4xBITS + 6	dot(vect,norm)
 // DEPRECIATED. move to new API either extern "C" or IDelaBella (C++)
 int DelaBella(int points, const double* xy/*[points][2]*/, int* abc/*[2*points-5][3]*/, int (*errlog)(const char* fmt,...) = printf);
 
+struct DelaBella_Triangle;
+struct DelaBella_Iterator;
+
 struct DelaBella_Vertex
 {
 	int i; // index of original point
 	Signed14 x,y; // coordinates (input copy)
 	DelaBella_Vertex* next; // next silhouette vertex
+	DelaBella_Triangle* sew; // one of triangles sharing this vertex
+
+	inline void StartIterator(DelaBella_Iterator* it/*not_null*/) const;
 };
 
 struct DelaBella_Triangle
@@ -68,7 +74,111 @@ struct DelaBella_Triangle
 	DelaBella_Vertex* v[3]; // 3 vertices spanning this triangle
 	DelaBella_Triangle* f[3]; // 3 adjacent faces, f[i] is at the edge opposite to vertex v[i]
 	DelaBella_Triangle* next; // next triangle (of delaunay set or hull set)
+
+/*
+  av(0)        v[1]        av(2)
+    +-----------+-----------+
+	 \         /.\         /
+      \ f[0]  /. .\  f[2] /
+ 	   \     /. . .\  ___/___ around(0)->prev
+        \   /. this.\/  /
+	     \ /. . . . /\ / 
+	 v[2] +--------\--+ v[0]
+	       \        \/ 
+            \  f[1] /\___ around(0)->next
+             \     /
+              \   /
+			   \ /
+                +
+		      av(1)
+*/
+
+	DelaBella_Vertex* GetAdjacentVertex(int e/*0,1,2*/)
+	{
+		DelaBella_Triangle* af = f[e];
+		if (af->f[0] == this)
+			return af->v[0];
+		if (af->f[1] == this)
+			return af->v[1];
+		return af->v[2];
+	}
+
+	inline void StartIterator(DelaBella_Iterator* it/*not_null*/, int around/*0,1,2*/) const;
 };
+
+struct DelaBella_Iterator
+{
+	const DelaBella_Triangle* current;
+	int around;
+
+	const DelaBella_Triangle* Next()
+	{
+		int pivot = around+1;
+		if (pivot == 3)
+			pivot = 0;
+
+		DelaBella_Triangle* next = current->f[pivot];
+
+		// we should not pass silhouette!
+		// ...
+
+		DelaBella_Vertex* v = current->v[around];
+
+		if (next->v[0] == v)
+			around = 0;
+		else
+		if (next->v[1] == v)
+			around = 1;
+		else
+			around = 2;
+
+		current = next;
+		return current;
+	}
+
+	const DelaBella_Triangle* Prev()
+	{
+		int pivot = around-1;
+		if (pivot == -1)
+			pivot = 2;
+
+		DelaBella_Triangle* prev = current->f[pivot];
+
+		// we should not pass silhouette!
+		// ...
+
+		DelaBella_Vertex* v = current->v[around];
+
+		if (prev->v[0] == v)
+			around = 0;
+		else
+		if (prev->v[1] == v)
+			around = 1;
+		else
+			around = 2;
+
+		current = prev;
+		return current;
+	}
+};
+
+inline void DelaBella_Triangle::StartIterator(DelaBella_Iterator* it/*not_null*/, int around/*0,1,2*/) const
+{
+	it->current = this;
+	it->around = around;
+}
+
+inline void DelaBella_Vertex::StartIterator(DelaBella_Iterator* it/*not_null*/) const
+{
+	it->current = sew;
+	if (sew->v[0] == this)
+		it->around = 0;
+	else
+	if (sew->v[1] == this)
+		it->around = 1;
+	else
+		it->around = 2;	
+}
 
 #ifdef __cplusplus
 struct IDelaBella
@@ -100,6 +210,8 @@ struct IDelaBella
 
 	// num of hull verts returned from last call to Triangulate()
 	virtual int GetNumOutputHullVerts() const = 0;
+
+	virtual int GetNumUniquePoints() const = 0;
 
 	virtual const DelaBella_Triangle* GetFirstDelaunayTriangle() const = 0; // valid only if Triangulate() > 0
 	virtual const DelaBella_Triangle* GetFirstHullTriangle() const = 0; // valid only if Triangulate() > 0
