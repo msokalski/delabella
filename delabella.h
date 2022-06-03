@@ -74,6 +74,19 @@ struct DelaBella_Triangle
 	DelaBella_Vertex* v[3]; // 3 vertices spanning this triangle
 	DelaBella_Triangle* f[3]; // 3 adjacent faces, f[i] is at the edge opposite to vertex v[i]
 	DelaBella_Triangle* next; // next triangle (of delaunay set or hull set)
+	int sign[0]; // [0] is made to overlap this field over other private data
+
+	// -1: dela_triange, 0: wall triangle (degenerated), 1: hull_triange
+	int GetSignature() const
+	{
+		return sign[0];
+	}
+
+	// n-th item index in containing list (GetSignature() identifies list)
+	int GetListIndex() const
+	{
+		return sign[1];
+	}
 
 /*
   av(0)        v[1]        av(2)
@@ -93,7 +106,7 @@ struct DelaBella_Triangle
 		      av(1)
 */
 
-	DelaBella_Vertex* GetAdjacentVertex(int e/*0,1,2*/)
+	DelaBella_Vertex* GetAdjacentVertex(int e/*0,1,2*/) const
 	{
 		DelaBella_Triangle* af = f[e];
 		if (af->f[0] == this)
@@ -210,13 +223,13 @@ struct IDelaBella
 	// num of hull faces returned from last call to Triangulate()
 	virtual int GetNumOutputHullFaces() const = 0;
 
-	// num of hull verts returned from last call to Triangulate()
-	virtual int GetNumOutputHullVerts() const = 0;
+	// num of boundary verts returned from last call to Triangulate()
+	virtual int GetNumBoundaryVerts() const = 0;
 
-	virtual const DelaBella_Vertex* GetVertexArray(int* num_verts, int* advance_bytes) const = 0;
+	virtual const DelaBella_Vertex*   GetVertexArray(int* num_verts, int* advance_bytes) const = 0;
 	virtual const DelaBella_Triangle* GetFirstDelaunayTriangle() const = 0; // valid only if Triangulate() > 0
 	virtual const DelaBella_Triangle* GetFirstHullTriangle() const = 0; // valid only if Triangulate() > 0
-	virtual const DelaBella_Vertex*   GetFirstHullVertex() const = 0; // if Triangulate() < 0 it is list, otherwise closed contour! 
+	virtual const DelaBella_Vertex*   GetFirstBoundaryVertex() const = 0; // if Triangulate() < 0 it is list, otherwise closed contour! 
 };
 #else
 void* DelaBella_Create();

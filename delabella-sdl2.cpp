@@ -45,10 +45,10 @@ static uint64_t uSec()
 	uint64_t n = c.QuadPart;
 	uint64_t d = f.QuadPart;
 	uint64_t m = 1000000;
-	// calc n*m/d carefully!
+	// calc microseconds = n*m/d carefully!
 	// naive mul/div would work only for upto 5h on 1GHz freq
 	// we exploit fact that m*d fits in uint64 (upto 18THz freq)
-	// so n%d*m fits as well
+	// so n%d*m fits as well,
 	return n / d * m + n % d * m / d;
 	#else
 	timespec ts;
@@ -148,7 +148,7 @@ int main(int argc, char* argv[])
     uint64_t t2 = uSec();
 	int verts = idb->Triangulate(points, &cloud.data()->x, &cloud.data()->y, sizeof(MyPoint));
 	int tris_delabella = verts / 3;
-    int contour = idb->GetNumOutputHullVerts();
+    int contour = idb->GetNumBoundaryVerts();
 
     uint64_t t3 = uSec();
     printf("elapsed %d ms\n", (int)((t3-t2)/1000));
@@ -229,60 +229,155 @@ int main(int argc, char* argv[])
     }
     glUnmapBuffer(GL_ARRAY_BUFFER);
 
+    int vert_num, vert_adv;
+    const char* base = (char*)idb->GetVertexArray(&vert_num,&vert_adv);
+
+    // pure indices, without: center points, restarts, loop closing
+    // points may be a bit too much (cuza duplicates)
+    int voronoi_indices = 2 * (vert_num + tris_delabella - 1) + contour;
+    int voronoi_vertices = tris_delabella + contour;
+
+    // add primitive restarts
+    voronoi_indices += vert_num; // num of all verts (no dups)
+
+    int ibo_voronoi_idx = 0;
+    GLuint vbo_voronoi, ibo_voronoi;
+	glGenBuffers( 1, &vbo_voronoi );
+	glGenBuffers( 1, &ibo_voronoi );
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_voronoi);
+    glBufferData( GL_ARRAY_BUFFER, sizeof(GLfloat[3]) * voronoi_vertices, 0, GL_STATIC_DRAW );
+    GLfloat* vbo_voronoi_ptr = (GLfloat*)glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_voronoi);
+    glBufferData( GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * voronoi_indices, 0, GL_STATIC_DRAW );
+    GLuint* ibo_voronoi_ptr = (GLuint*)glMapBuffer(GL_ELEMENT_ARRAY_BUFFER, GL_WRITE_ONLY);
+
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, ibo_delabella );
     glBufferData( GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delabella + sizeof(GLuint) * contour, 0, GL_STATIC_DRAW );
     GLuint* ibo_ptr = (GLuint*)glMapBuffer( GL_ELEMENT_ARRAY_BUFFER, GL_WRITE_ONLY);
 	const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
 	for (int i = 0; i<tris_delabella; i++)
 	{
-        ibo_ptr[3*i+0] = (GLuint)dela->v[0]->i;
-        ibo_ptr[3*i+1] = (GLuint)dela->v[1]->i;
-        ibo_ptr[3*i+2] = (GLuint)dela->v[2]->i;
+        int v0 = dela->v[0]->i;
+        int v1 = dela->v[1]->i;
+        int v2 = dela->v[2]->i;
+
+        ibo_ptr[3*i+0] = (GLuint)v0;
+        ibo_ptr[3*i+1] = (GLuint)v1;
+        ibo_ptr[3*i+2] = (GLuint)v2;
+
+        // calc voronoi cell boundary vertex
+        double x1 = cloud[v0].x, y1 = cloud[v0].y;
+        double x2 = cloud[v1].x, y2 = cloud[v1].y;
+        double x3 = cloud[v2].x, y3 = cloud[v2].y;
+
+        double x12 = x1-x2, x23 = x2-x3, x31 = x3-x1;
+        double y12 = y1-y2, y23 = y2-y3, y31 = y3-y1;
+
+        double cx = (x1*x1 * y23 + x2*x2 * y31 + x3*x3 * y12 - y12 * y23 * y31) /
+                    (2 * (x1 * y23 + x2 * y31 + x3 * y12));
+
+        double cy = (y1*y1 * x23 + y2*y2 * x31 + y3*y3 * x12 - x12 * x23 * x31) / 
+                    (2 * (y1 * x23 + y2 * x31 + y3 * x12));
+
+        // put it into vbo_voronoi at 'i'
+        vbo_voronoi_ptr[3*i+0] = cx;
+        vbo_voronoi_ptr[3*i+1] = cy;
+        vbo_voronoi_ptr[3*i+2] = 1.0;
+
 		dela = dela->next;
 	}
 
-	const DelaBella_Vertex* vert = idb->GetFirstHullVertex();
+	const DelaBella_Vertex* prev = idb->GetFirstBoundaryVertex();
+    const DelaBella_Vertex* vert = prev->next;
     int contour_min = points-1;
     int contour_max = 0;
-    for (int i = 3*tris_delabella; i<3*tris_delabella+contour; i++)    
+    for (int i = 0; i<contour; i++)    
     {
-        if (!vert)
-        {
-            // contour degeneration detected
-            contour = i-3*tris_delabella;
-            break;
-        }
-        ibo_ptr[i] = (GLuint)vert->i;
+        ibo_ptr[i + 3*tris_delabella] = (GLuint)vert->i;
         contour_min = vert->i < contour_min ? vert->i : contour_min;
         contour_max = vert->i > contour_max ? vert->i : contour_max;
+
+        double nx = cloud[prev->i].y - cloud[vert->i].y;
+        double ny = cloud[vert->i].x - cloud[prev->i].x;
+        double nd = 1.0/sqrt(nx*nx + ny*ny);
+        nx *= nd;
+        ny *= nd;
+
+        // put infinite edge normal to vbo_voronoi at tris_delabella + 'i'
+        vbo_voronoi_ptr[3*(tris_delabella+i)+0] = nx;
+        vbo_voronoi_ptr[3*(tris_delabella+i)+1] = ny;
+        vbo_voronoi_ptr[3*(tris_delabella+i)+2] = 0.0;
+
+        // create special-fan / line_strip in ibo_voronoi around this boundary vertex
+        ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)i;
+
+        // iterate all dela faces around prev
+        // add their voro-vert index == dela face index
+        DelaBella_Iterator it;
+        const DelaBella_Triangle* t = prev->StartIterator(&it); // it starts at random face, requires sync
+        while (1)
+        {
+            if (t->GetSignature()<0)
+            {
+                if (t->v[0] == prev && t->v[1] == vert ||
+                    t->v[1] == prev && t->v[2] == vert ||
+                    t->v[2] == prev && t->v[0] == vert)
+                    break;
+            }
+            t = it.Next();
+        }
+
+        while (t->GetSignature()<0)
+        {
+            ibo_voronoi_ptr[ibo_voronoi_idx++] = t->GetListIndex();
+            t = it.Next();
+        }
+
+        ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)( i==0 ? contour-1 : i-1 ); // loop-wrapping!
+        ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)~0; // primitive restart
+
+        prev = vert;
         vert = vert->next;
     }
 
-    printf("contour min:%d max:%d\n",contour_min,contour_max);
+    int voronoi_strip_indices = ibo_voronoi_idx;
 
-    // handle every vertex once (thanks to v->sew)
-    int order_max = 0;
-    int vert_num, vert_adv;
-    const char* base = (char*)idb->GetVertexArray(&vert_num,&vert_adv);
-    for (int i = 0; i<vert_num; i++)
+    // finally, for all internal vertices
+    for (int i = 0; i<vert_num; i++) // we ommit duplicated points!
     {
         const DelaBella_Vertex* vert = (const DelaBella_Vertex*)(base + i*vert_adv);
-        DelaBella_Iterator it;
 
-        int order = 0;
-        const DelaBella_Triangle* face = vert->StartIterator(&it);
-        const DelaBella_Triangle* loop = face;
+        // note: all and only bondary verts have a next pointer != 0
+        // (they form an endless loop)
+        if (vert->next)
+            continue;
+
+        // create regular-fan / line_loop in ibo_voronoi around this internal vertex
+        DelaBella_Iterator it;
+        const DelaBella_Triangle* t = vert->StartIterator(&it);
+        const DelaBella_Triangle* e = t;
         do
         {
-            order++;
-            face = it.Next();
-        } while (face != loop);
+            assert(t->GetSignature()<0);
+            ibo_voronoi_ptr[ibo_voronoi_idx++] = t->GetListIndex();
+            t = it.Next();
+        } while (t!=e);
         
-        order_max = order > order_max ? order : order_max;
+        ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)~0; // primitive restart
     }
 
-    printf("order max: %d\n",order_max);
+    int voronoi_loop_indices = ibo_voronoi_idx - voronoi_strip_indices;
 
+    // TODO: FIX CONTOUR BUILDING FOR TRIVIAL 3-POINTS CASE !!!
+    assert(ibo_voronoi_idx == voronoi_indices);
+
+    printf("contour min:%d max:%d\n",contour_min,contour_max);
+
+    glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER); // ibo_delabella
+
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_voronoi);
+    glUnmapBuffer(GL_ARRAY_BUFFER);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_voronoi);
     glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
 
     glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, ibo_delaunator );
@@ -299,9 +394,6 @@ int main(int argc, char* argv[])
     // now, everything is copied to gl, free delabella
     idb->Destroy();
 
-    // hello ancient world
-    glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
-
     int vpw, vph;
     SDL_GL_GetDrawableSize(window, &vpw, &vph);
 
@@ -313,6 +405,10 @@ int main(int argc, char* argv[])
     int drag_x, drag_y, drag_zoom;
     double drag_cx, drag_cy;
     int drag = 0;
+
+
+    glPrimitiveRestartIndex((GLuint)~0);
+    glEnable(GL_PRIMITIVE_RESTART);
 
     for( ;; )
     {
@@ -465,6 +561,10 @@ int main(int argc, char* argv[])
         glCullFace(GL_BACK);
         glFrontFace(GL_CW);
 
+        // hello ancient world
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
+
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_delabella);
 
         glColor4f(0.2f,0.2f,0.2f,1.0f);
@@ -481,11 +581,39 @@ int main(int argc, char* argv[])
         glDrawRangeElements(GL_TRIANGLES, 0,points-1, tris_delabella * 3, GL_UNSIGNED_INT, 0);
 
         // delaunator
+        /*
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_delaunator);
         glColor4f(1.0f,1.0f,1.0f,1.0f);
         glLineWidth(1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         glDrawRangeElements(GL_TRIANGLES, 0,points-1, tris_delaunator * 3, GL_UNSIGNED_INT, 0);
+        */
+
+        // voronoi!
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_voronoi);
+        glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
+
+        const static GLfloat z2w[16]=
+        {
+            1,0,0,0,
+            0,1,0,0,
+            0,0,0,1,
+            0,0,0,0
+        };
+
+        glLoadMatrixf(z2w);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_voronoi);
+
+        // first, draw open cells
+        glColor4f(0.0f,0.0f,1.0f,1.0f);
+        //static int alter = 0;
+        //if (alter++ & 1)
+        //    glDrawElements(GL_LINE_STRIP, voronoi_strip_indices, GL_UNSIGNED_INT, (GLuint*)0);
+
+        // then closed cells
+        glColor4f(0.0f,1.0f,0.0f,1.0f);
+        glDrawElements(GL_LINE_LOOP, voronoi_loop_indices, GL_UNSIGNED_INT, (GLuint*)0 + voronoi_strip_indices);
 
         SDL_GL_SwapWindow(window);
         SDL_Delay(15);
