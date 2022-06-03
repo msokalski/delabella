@@ -303,18 +303,23 @@ int main(int argc, char* argv[])
         nx *= nd;
         ny *= nd;
 
+
         // put infinite edge normal to vbo_voronoi at tris_delabella + 'i'
-        vbo_voronoi_ptr[3*(tris_delabella+i)+0] = nx;
-        vbo_voronoi_ptr[3*(tris_delabella+i)+1] = ny;
-        vbo_voronoi_ptr[3*(tris_delabella+i)+2] = 0.0;
+        //double mx = 0.5 * (cloud[prev->i].x + cloud[vert->i].x);
+        //double my = 0.5 * (cloud[prev->i].y + cloud[vert->i].y);
+        vbo_voronoi_ptr[3*(tris_delabella+i)+0] = nx; 
+        vbo_voronoi_ptr[3*(tris_delabella+i)+1] = ny; 
+        vbo_voronoi_ptr[3*(tris_delabella+i)+2] = 0.0;             
 
         // create special-fan / line_strip in ibo_voronoi around this boundary vertex
-        ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)i;
+        ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)i + tris_delabella;
 
         // iterate all dela faces around prev
         // add their voro-vert index == dela face index
         DelaBella_Iterator it;
-        const DelaBella_Triangle* t = prev->StartIterator(&it); // it starts at random face, requires sync
+        const DelaBella_Triangle* t = prev->StartIterator(&it); 
+
+        // it starts at random face, so lookup the prev->vert edge
         while (1)
         {
             if (t->GetSignature()<0)
@@ -327,13 +332,14 @@ int main(int argc, char* argv[])
             t = it.Next();
         }
 
+        // now iterate around, till we're inside the boundary
         while (t->GetSignature()<0)
         {
             ibo_voronoi_ptr[ibo_voronoi_idx++] = t->GetListIndex();
             t = it.Next();
         }
 
-        ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)( i==0 ? contour-1 : i-1 ); // loop-wrapping!
+        ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)( i==0 ? contour-1 : i-1 ) + tris_delabella; // loop-wrapping!
         ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)~0; // primitive restart
 
         prev = vert;
@@ -571,14 +577,20 @@ int main(int argc, char* argv[])
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         glDrawRangeElements(GL_TRIANGLES, 0,points-1, tris_delabella*3, GL_UNSIGNED_INT, 0);
 
-        glColor4f(1.0f,0.0f,0.0f,1.0f);
-        glLineWidth(3.0f);
-        glDrawRangeElements(GL_LINE_LOOP, contour_min, contour_max, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella*3);
+        // put verts over fill
+        glColor4f(1.0f,1.0f,0.0f,1.0f);
+        glPointSize(3.0f);
+        glDrawArrays(GL_POINTS, 0, points);
+        glPointSize(1.0f);
 
-        glColor4f(1.0f,0.0f,1.0f,1.0f);
-        glLineWidth(1.0f);
+        glColor4f(0.5f,0.5f,0.5f,1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         glDrawRangeElements(GL_TRIANGLES, 0,points-1, tris_delabella * 3, GL_UNSIGNED_INT, 0);
+
+        glColor4f(1.0f,0.0f,0.0f,1.0f);
+        //glLineWidth(3.0f);
+        glDrawRangeElements(GL_LINE_LOOP, contour_min, contour_max, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella*3);
+        //glLineWidth(1.0f);
 
         // delaunator
         /*
@@ -593,6 +605,12 @@ int main(int argc, char* argv[])
         glBindBuffer(GL_ARRAY_BUFFER, vbo_voronoi);
         glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
 
+        // voro-verts in back
+        glColor4f(1.0f,1.0f,0.0f,1.0f);
+        glPointSize(3.0f);
+        glDrawArrays(GL_POINTS, 0, tris_delabella);
+        glPointSize(1.0f);        
+
         const static GLfloat z2w[16]=
         {
             1,0,0,0,
@@ -606,13 +624,10 @@ int main(int argc, char* argv[])
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_voronoi);
 
         // first, draw open cells
-        glColor4f(0.0f,0.0f,1.0f,1.0f);
-        //static int alter = 0;
-        //if (alter++ & 1)
-        //    glDrawElements(GL_LINE_STRIP, voronoi_strip_indices, GL_UNSIGNED_INT, (GLuint*)0);
+        glColor4f(0.0f,0.75f,0.0f,1.0f);
+        glDrawElements(GL_LINE_STRIP, voronoi_strip_indices, GL_UNSIGNED_INT, (GLuint*)0);
 
         // then closed cells
-        glColor4f(0.0f,1.0f,0.0f,1.0f);
         glDrawElements(GL_LINE_LOOP, voronoi_loop_indices, GL_UNSIGNED_INT, (GLuint*)0 + voronoi_strip_indices);
 
         SDL_GL_SwapWindow(window);
