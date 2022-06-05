@@ -586,6 +586,7 @@ int main(int argc, char* argv[])
         glColor4f(0.5f,0.5f,0.5f,1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         glDrawRangeElements(GL_TRIANGLES, 0,points-1, tris_delabella * 3, GL_UNSIGNED_INT, 0);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
         glColor4f(1.0f,0.0f,0.0f,1.0f);
         //glLineWidth(3.0f);
@@ -625,10 +626,10 @@ int main(int argc, char* argv[])
 
         // first, draw open cells
         glColor4f(0.0f,0.75f,0.0f,1.0f);
-        glDrawElements(GL_LINE_STRIP, voronoi_strip_indices, GL_UNSIGNED_INT, (GLuint*)0);
+        glDrawElements(GL_LINE_STRIP/*GL_POLYGON*/, voronoi_strip_indices, GL_UNSIGNED_INT, (GLuint*)0);
 
         // then closed cells
-        glDrawElements(GL_LINE_LOOP, voronoi_loop_indices, GL_UNSIGNED_INT, (GLuint*)0 + voronoi_strip_indices);
+        glDrawElements(GL_LINE_LOOP/*GL_POLYGON*/, voronoi_loop_indices, GL_UNSIGNED_INT, (GLuint*)0 + voronoi_strip_indices);
 
         SDL_GL_SwapWindow(window);
         SDL_Delay(15);
