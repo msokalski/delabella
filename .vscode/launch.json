@@ -9,9 +9,9 @@
             "type": "cppdbg",
             "request": "launch",
 
-            "program": "/home/user/delabella/delabella-xa-sdl2",
+            "program": "/home/user/delabella/delabella-sdl2",
             //"args": [ "circle.xy" ],
-            "args": [ "100000" ],
+            "args": [ "1000000" ],
             "stopAtEntry": false,
             "cwd": "/home/user/delabella",
             "environment": [],

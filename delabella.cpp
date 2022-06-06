@@ -14,17 +14,6 @@ static Unsigned28 s14sqr(const Signed14& s)
 	return (Unsigned28)((Signed29)s*(Signed29)s);
 }
 
-/*
-struct Norm
-{
-	~Norm() {} // prevents leaks from crude-xa
-
-	Signed45 x;
-	Signed45 y;
-	Signed31 z;
-};
-*/
-
 typedef DelaBella_Triangle::Circumcenter Norm;
 
 struct Vect
