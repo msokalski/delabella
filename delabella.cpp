@@ -14,6 +14,7 @@ static Unsigned28 s14sqr(const Signed14& s)
 	return (Unsigned28)((Signed29)s*(Signed29)s);
 }
 
+/*
 struct Norm
 {
 	~Norm() {} // prevents leaks from crude-xa
@@ -22,6 +23,9 @@ struct Norm
 	Signed45 y;
 	Signed31 z;
 };
+*/
+
+typedef DelaBella_Triangle::Circumcenter Norm;
 
 struct Vect
 {
@@ -96,7 +100,7 @@ struct CDelaBella : IDelaBella
 
 	struct Face : DelaBella_Triangle
 	{
-		Norm n;
+		// Norm n;
 
 		static Face* Alloc(Face** from)
 		{
@@ -171,6 +175,7 @@ struct CDelaBella : IDelaBella
 	Face* first_dela_face;
 	Face* first_hull_face;
 	Vert* first_boundary_vert;
+	Vert* first_internal_vert;
 
 	int inp_verts;
 	int out_verts;
@@ -225,6 +230,7 @@ struct CDelaBella : IDelaBella
 				if (errlog_proc)
 					errlog_proc(errlog_file, "[WRN] all input points are colinear, returning single segment!\n");
 				first_boundary_vert = vert_alloc + 0;
+				first_internal_vert = 0;
 				vert_alloc[0].next = (DelaBella_Vertex*)vert_alloc + 1;
 				vert_alloc[1].next = 0;
 			}
@@ -233,6 +239,7 @@ struct CDelaBella : IDelaBella
 				if (errlog_proc)
 					errlog_proc(errlog_file, "[WRN] all input points are identical, returning signle point!\n");
 				first_boundary_vert = vert_alloc + 0;
+				first_internal_vert = 0;
 				vert_alloc[0].next = 0;
 			}
 
@@ -360,6 +367,7 @@ struct CDelaBella : IDelaBella
 				if (errlog_proc)
 					errlog_proc(errlog_file, "[WRN] all input points are colinear, returning segment list!\n");
 				first_boundary_vert = head;
+				first_internal_vert = 0;
 				last->next = 0; // break contour, make it a list
 				return -points;
 			}
@@ -400,6 +408,7 @@ struct CDelaBella : IDelaBella
 						tail->next = head;
 
 						first_boundary_vert = last;
+						first_internal_vert = 0;
 					}
 					else
 					{
@@ -411,6 +420,7 @@ struct CDelaBella : IDelaBella
 						first_hull_face->v[2] = last;
 
 						first_boundary_vert = head;
+						first_internal_vert = 0;
 					}
 
 					first_dela_face->n = first_dela_face->cross();
@@ -773,25 +783,16 @@ struct CDelaBella : IDelaBella
 
 			if (f->n.z < 0)
 			{
-				f->sign[0] = -1;
-				f->sign[1] = i;  // store index in dela list
+				f->index = i;  // store index in dela list
 				*prev_dela = f;
 				prev_dela = (Face**)&f->next;
 				i++;
 			}
 			else
-			if (f->n.z > 0)
 			{
-				f->sign[0] = +1;
-				f->sign[1] = others; // store index in hull list
+				f->index = others; // store index in hull list
 				*prev_hull = f;
 				prev_hull = (Face**)&f->next;
-				others++;
-			}
-			else
-			{
-				f->sign[0] = 0;
-				f->sign[1] = others; // todo: separate degen list!
 				others++;
 			}
 		}
@@ -814,12 +815,12 @@ struct CDelaBella : IDelaBella
 
 		while (1)
 		{
-			if (t->sign[0]<0)
+			if (t->n.z < 0)
 			{
 				int pr = it.around-1; if (pr<0) pr = 2;
 				int nx = it.around+1; if (nx>2) nx = 0;
 
-				if (t->f[pr]->sign[0] >= 0)
+				if (t->f[pr]->n.z >= 0)
 				{
 					// let's move from: v to t->v[nx]
 					v->next = t->v[nx];
@@ -835,6 +836,20 @@ struct CDelaBella : IDelaBella
 			t = it.Next();
 			assert(t!=e);
 		}
+
+		// link all other verts into internal list
+		first_internal_vert = 0;
+		Vert** prev_inter = &first_internal_vert;
+		for (int j=0; j<points; j++)
+		{
+			if (!vert_alloc[j].next)
+			{
+				Vert* next = vert_alloc+j;
+				*prev_inter = next;
+				prev_inter = (Vert**)&next->next;
+			}
+		}
+
 
 		return 3*i;
 	}
@@ -982,7 +997,7 @@ struct CDelaBella : IDelaBella
 	}
 
 	// num of verts returned from last call to Triangulate()
-	virtual int GetNumOutputVerts() const
+	virtual int GetNumOutputIndices() const
 	{
 		return out_verts;
 	}
@@ -997,13 +1012,10 @@ struct CDelaBella : IDelaBella
 		return out_verts < 0 ? -out_verts : out_boundary_verts;
 	}
 
-	virtual const DelaBella_Vertex* GetVertexArray(int* num_verts, int* advance_bytes) const
+	virtual int GetNumInternalVerts() const
 	{
-		*num_verts = unique_points;
-		*advance_bytes = sizeof(Vert);
-		return vert_alloc;
+		return out_verts < 0 ? 0 : unique_points - out_boundary_verts;
 	}
-
 
 	virtual const DelaBella_Triangle* GetFirstDelaunayTriangle() const
 	{
@@ -1018,6 +1030,11 @@ struct CDelaBella : IDelaBella
 	virtual const DelaBella_Vertex* GetFirstBoundaryVertex() const
 	{
 		return first_boundary_vert;
+	}
+
+	virtual const DelaBella_Vertex* GetFirstInternalVertex() const
+	{
+		return first_internal_vert;
 	}
 
 	virtual void SetErrLog(int(*proc)(void* stream, const char* fmt, ...), void* stream)
@@ -1090,9 +1107,9 @@ int   DelaBella_GetNumInputPoints(void* db)
 	return ((IDelaBella*)db)->GetNumInputPoints();
 }
 
-int   DelaBella_GetNumOutputVerts(void* db)
+int   DelaBella_GetNumOutputIndices(void* db)
 {
-	return ((IDelaBella*)db)->GetNumOutputVerts();
+	return ((IDelaBella*)db)->GetNumOutputIndices();
 }
 
 int   Delabella_GetNumOutputHullFaces(void* db);

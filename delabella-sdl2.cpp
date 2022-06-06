@@ -94,7 +94,6 @@ int main(int argc, char* argv[])
         for (int i=0; i<n; i++)
         {
             MyPoint p = { d(gen), d(gen) };
-            //p.y=p.x*0.3;
             cloud.push_back(p);
         }
 	}
@@ -149,6 +148,7 @@ int main(int argc, char* argv[])
 	int verts = idb->Triangulate(points, &cloud.data()->x, &cloud.data()->y, sizeof(MyPoint));
 	int tris_delabella = verts / 3;
     int contour = idb->GetNumBoundaryVerts();
+    int non_contour = idb->GetNumInternalVerts();
 
     uint64_t t3 = uSec();
     printf("elapsed %d ms\n", (int)((t3-t2)/1000));
@@ -229,9 +229,7 @@ int main(int argc, char* argv[])
     }
     glUnmapBuffer(GL_ARRAY_BUFFER);
 
-    int vert_num, vert_adv;
-    const char* base = (char*)idb->GetVertexArray(&vert_num,&vert_adv);
-
+    int vert_num = contour + non_contour;
     // pure indices, without: center points, restarts, loop closing
     // points may be a bit too much (cuza duplicates)
     int voronoi_indices = 2 * (vert_num + tris_delabella - 1) + contour;
@@ -265,23 +263,9 @@ int main(int argc, char* argv[])
         ibo_ptr[3*i+1] = (GLuint)v1;
         ibo_ptr[3*i+2] = (GLuint)v2;
 
-        // calc voronoi cell boundary vertex
-        double x1 = cloud[v0].x, y1 = cloud[v0].y;
-        double x2 = cloud[v1].x, y2 = cloud[v1].y;
-        double x3 = cloud[v2].x, y3 = cloud[v2].y;
-
-        double x12 = x1-x2, x23 = x2-x3, x31 = x3-x1;
-        double y12 = y1-y2, y23 = y2-y3, y31 = y3-y1;
-
-        double cx = (x1*x1 * y23 + x2*x2 * y31 + x3*x3 * y12 - y12 * y23 * y31) /
-                    (2 * (x1 * y23 + x2 * y31 + x3 * y12));
-
-        double cy = (y1*y1 * x23 + y2*y2 * x31 + y3*y3 * x12 - x12 * x23 * x31) / 
-                    (2 * (y1 * x23 + y2 * x31 + y3 * x12));
-
         // put it into vbo_voronoi at 'i'
-        vbo_voronoi_ptr[3*i+0] = cx;
-        vbo_voronoi_ptr[3*i+1] = cy;
+        vbo_voronoi_ptr[3*i+0] = -0.5 * (double)dela->n.x / (double)dela->n.z;
+        vbo_voronoi_ptr[3*i+1] = -0.5 * (double)dela->n.y / (double)dela->n.z;
         vbo_voronoi_ptr[3*i+2] = 1.0;
 
 		dela = dela->next;
@@ -299,17 +283,11 @@ int main(int argc, char* argv[])
 
         double nx = cloud[prev->i].y - cloud[vert->i].y;
         double ny = cloud[vert->i].x - cloud[prev->i].x;
-        double nd = 1.0/sqrt(nx*nx + ny*ny);
-        nx *= nd;
-        ny *= nd;
-
 
         // put infinite edge normal to vbo_voronoi at tris_delabella + 'i'
-        //double mx = 0.5 * (cloud[prev->i].x + cloud[vert->i].x);
-        //double my = 0.5 * (cloud[prev->i].y + cloud[vert->i].y);
         vbo_voronoi_ptr[3*(tris_delabella+i)+0] = nx; 
         vbo_voronoi_ptr[3*(tris_delabella+i)+1] = ny; 
-        vbo_voronoi_ptr[3*(tris_delabella+i)+2] = 0.0;             
+        vbo_voronoi_ptr[3*(tris_delabella+i)+2] = 0.0;
 
         // create special-fan / line_strip in ibo_voronoi around this boundary vertex
         ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)i + tris_delabella;
@@ -322,7 +300,7 @@ int main(int argc, char* argv[])
         // it starts at random face, so lookup the prev->vert edge
         while (1)
         {
-            if (t->GetSignature()<0)
+            if (t->n.z<0)
             {
                 if (t->v[0] == prev && t->v[1] == vert ||
                     t->v[1] == prev && t->v[2] == vert ||
@@ -333,9 +311,9 @@ int main(int argc, char* argv[])
         }
 
         // now iterate around, till we're inside the boundary
-        while (t->GetSignature()<0)
+        while (t->n.z<0)
         {
-            ibo_voronoi_ptr[ibo_voronoi_idx++] = t->GetListIndex();
+            ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index;
             t = it.Next();
         }
 
@@ -349,27 +327,23 @@ int main(int argc, char* argv[])
     int voronoi_strip_indices = ibo_voronoi_idx;
 
     // finally, for all internal vertices
-    for (int i = 0; i<vert_num; i++) // we ommit duplicated points!
+    vert = idb->GetFirstInternalVertex();
+    for (int i = 0; i<non_contour; i++)
     {
-        const DelaBella_Vertex* vert = (const DelaBella_Vertex*)(base + i*vert_adv);
-
-        // note: all and only bondary verts have a next pointer != 0
-        // (they form an endless loop)
-        if (vert->next)
-            continue;
-
         // create regular-fan / line_loop in ibo_voronoi around this internal vertex
         DelaBella_Iterator it;
         const DelaBella_Triangle* t = vert->StartIterator(&it);
         const DelaBella_Triangle* e = t;
         do
         {
-            assert(t->GetSignature()<0);
-            ibo_voronoi_ptr[ibo_voronoi_idx++] = t->GetListIndex();
+            assert(t->n.z<0);
+            ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index;
             t = it.Next();
         } while (t!=e);
         
         ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)~0; // primitive restart
+
+        vert = vert->next;
     }
 
     int voronoi_loop_indices = ibo_voronoi_idx - voronoi_strip_indices;
@@ -642,6 +616,10 @@ int main(int argc, char* argv[])
     SDL_GL_DeleteContext( context );
     SDL_DestroyWindow( window );
     SDL_Quit();
+
+    #ifdef XA_VAL_LEAKS
+    printf("LEAKED %d allocs\n", xa_leaks(0));
+    #endif
 
 	return 0;
 }

@@ -63,7 +63,7 @@ struct DelaBella_Vertex
 {
 	int i; // index of original point
 	Signed14 x,y; // coordinates (input copy)
-	DelaBella_Vertex* next; // next silhouette vertex
+	DelaBella_Vertex* next; // next in internal / boundary set of vertices
 	DelaBella_Triangle* sew; // one of triangles sharing this vertex
 
 	inline const DelaBella_Triangle* StartIterator(DelaBella_Iterator* it/*not_null*/) const;
@@ -74,47 +74,34 @@ struct DelaBella_Triangle
 	DelaBella_Vertex* v[3]; // 3 vertices spanning this triangle
 	DelaBella_Triangle* f[3]; // 3 adjacent faces, f[i] is at the edge opposite to vertex v[i]
 	DelaBella_Triangle* next; // next triangle (of delaunay set or hull set)
-	int sign[0]; // [0] is made to overlap this field over other private data
 
-	// -1: dela_triange, 0: wall triangle (degenerated), 1: hull_triange
-	int GetSignature() const
+	struct Circumcenter
 	{
-		return sign[0];
-	}
+		~Circumcenter() {} // prevents leaks from crude-xa
+		Signed45 x; // voronoi vertex = {x/(-2*z),y/(-2*z)}
+		Signed45 y; // keeping it as a ratio avoids any rounding
+		Signed31 z; // additionally, if z<0 this is delaunay triangle
+	} n; 
 
-	// n-th item index in containing list (GetSignature() identifies list)
-	int GetListIndex() const
-	{
-		return sign[1];
-	}
+	int index; // list index
 
 /*
-  av(0)        v[1]        av(2)
+               v[1]
     +-----------+-----------+
 	 \         /.\         /
       \ f[0]  /. .\  f[2] /
- 	   \     /. . .\  ___/___ around(0)->prev
+ 	   \     /. . .\  _--/--> iterator.around(0)->prev
         \   /. this.\/  /
 	     \ /. . . . /\ / 
 	 v[2] +--------\--+ v[0]
 	       \        \/ 
-            \  f[1] /\___ around(0)->next
+            \  f[1] /'--> iterator.around(0)->next
              \     /
               \   /
 			   \ /
                 +
-		      av(1)
 */
 
-	DelaBella_Vertex* GetAdjacentVertex(int e/*0,1,2*/) const
-	{
-		DelaBella_Triangle* af = f[e];
-		if (af->f[0] == this)
-			return af->v[0];
-		if (af->f[1] == this)
-			return af->v[1];
-		return af->v[2];
-	}
 
 	inline const DelaBella_Triangle* StartIterator(DelaBella_Iterator* it/*not_null*/, int around/*0,1,2*/) const;
 };
@@ -217,19 +204,22 @@ struct IDelaBella
 	// num of points passed to last call to Triangulate()
 	virtual int GetNumInputPoints() const = 0;
 
-	// num of verts returned from last call to Triangulate()
-	virtual int GetNumOutputVerts() const = 0;
+	// num of indices returned from last call to Triangulate()
+	virtual int GetNumOutputIndices() const = 0;
 
-	// num of hull faces returned from last call to Triangulate()
+	// num of hull faces (non delaunay triangles)
 	virtual int GetNumOutputHullFaces() const = 0;
 
-	// num of boundary verts returned from last call to Triangulate()
+	// num of boundary vertices
 	virtual int GetNumBoundaryVerts() const = 0;
 
-	virtual const DelaBella_Vertex*   GetVertexArray(int* num_verts, int* advance_bytes) const = 0;
+	// num of internal vertices
+	virtual int GetNumInternalVerts() const = 0;
+
 	virtual const DelaBella_Triangle* GetFirstDelaunayTriangle() const = 0; // valid only if Triangulate() > 0
 	virtual const DelaBella_Triangle* GetFirstHullTriangle() const = 0; // valid only if Triangulate() > 0
 	virtual const DelaBella_Vertex*   GetFirstBoundaryVertex() const = 0; // if Triangulate() < 0 it is list, otherwise closed contour! 
+	virtual const DelaBella_Vertex*   GetFirstInternalVertex() const = 0;
 
 	// search api
 	// virtual const DelaBella_Query* CreateHashedVoronoiQuadTree();
@@ -238,7 +228,7 @@ struct IDelaBella
 
 	// legend:
 	// dela_verts: number of input points, optionally excluding duplicated ones (num_verts from GetVertexArray())
-	// dela_tris: number of returned triangles (verts/3) from Triangulate() or GetNumOutputVerts()
+	// dela_tris: number of returned triangles (verts/3) from Triangulate() or GetNumOutputIndices()
 	// boundary_verts: GetNumBoundaryVerts()
 	
 	virtual int GetNumVoronoiVertices(bool center) const { return 0; }
@@ -269,7 +259,7 @@ int   DelaBella_TriangulateFloat(void* db, int points, float* x, float* y = 0, i
 int   DelaBella_TriangulateDouble(void* db, int points, double* x, double* y = 0, int advance_bytes = 0);
 int   DelaBella_TriangulateLongDouble(void* db, int points, long double* x, long double* y = 0, int advance_bytes = 0);
 int   DelaBella_GetNumInputPoints(void* db);
-int   DelaBella_GetNumOutputVerts(void* db);
+int   DelaBella_GetNumOutputIndices(void* db);
 int   Delabella_GetNumOutputHullFaces(void* db);
 int   Delabella_GetNumOutputHullVerts(void* db);
 const DelaBella_Triangle* GetFirstDelaunayTriangle(void* db);
