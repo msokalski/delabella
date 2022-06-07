@@ -216,14 +216,13 @@ int main(int argc, char* argv[])
 
     int points = cloud.size();
 
+    #ifdef DELAUNATOR
     std::vector<double> coords;
     for (int i=0; i<points; i++)
     {
         coords.push_back(cloud[i].x);
         coords.push_back(cloud[i].y);
     }
-
-    #ifdef DELAUNATOR
     uint64_t t0 = uSec();
     printf("running delaunator...\n");
     delaunator::Delaunator d(coords);
