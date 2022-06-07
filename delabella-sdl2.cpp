@@ -7,6 +7,8 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <assert.h>
+
 #include <vector>
 
 #define GL_GLEXT_PROTOTYPES
@@ -22,8 +24,9 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #include <GL/glext.h>
 
 // competitor
-#include <assert.h>
+#ifdef DELAUNATOR
 #include "delaunator/delaunator-header-only.hpp"
+#endif
 
 
 int errlog(void* stream, const char* fmt, ...)
@@ -124,7 +127,7 @@ int main(int argc, char* argv[])
         coords.push_back(cloud[i].y);
     }
 
-    #if 1
+    #ifdef DELAUNATOR
     uint64_t t0 = uSec();
     printf("running delaunator...\n");
     delaunator::Delaunator d(coords);
@@ -295,10 +298,23 @@ int main(int argc, char* argv[])
     const char* title = "delablella";
     #endif
     SDL_Window * window = SDL_CreateWindow( title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+    if (!window)
+    {
+        printf("SDL_CreateWindow failed, terminating!\n");
+        idb->Destroy();
+        return -1;
+    }
+
     SDL_GLContext context = SDL_GL_CreateContext( window );
+    if (!context)
+    {
+        printf("SDL_GL_CreateContext failed, terminating!\n");
+        idb->Destroy();
+        return -1;
+    }
 
 	// create vbo and ibo
-    Buf vbo, ibo_delabella, ibo_delaunator;
+    Buf vbo, ibo_delabella;
 
 	vbo.Gen(GL_ARRAY_BUFFER, sizeof(GLfloat[3]) * points);
     GLfloat* vbo_ptr = (GLfloat*)vbo.Map();
@@ -439,6 +455,8 @@ int main(int argc, char* argv[])
     vbo_voronoi.Unmap();
     ibo_voronoi.Unmap();
 
+    #ifdef DELAUNATOR
+    Buf ibo_delaunator;
     ibo_delaunator.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delaunator);
     ibo_ptr = (GLuint*)ibo_delaunator.Map();
     for (int i = 0; i<tris_delaunator; i++)    
@@ -448,6 +466,7 @@ int main(int argc, char* argv[])
         ibo_ptr[3*i+2] = (GLuint)d.triangles[3*i+2];
     }
     ibo_delaunator.Unmap();
+    #endif
 
     // now, everything is copied to gl, free delabella
     idb->Destroy();
@@ -647,11 +666,13 @@ int main(int argc, char* argv[])
 
         // delaunator
         /*
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_delaunator);
+        #ifdef DELAUNATOR
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_delaunator.buf);
         glColor4f(1.0f,1.0f,1.0f,1.0f);
         glLineWidth(1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         glDrawRangeElements(GL_TRIANGLES, 0,points-1, tris_delaunator * 3, GL_UNSIGNED_INT, 0);
+        #endif
         */
 
         // voronoi!
@@ -689,7 +710,10 @@ int main(int argc, char* argv[])
 
     vbo.Del();
     ibo_delabella.Del();
+
+    #ifdef DELAUNATOR
     ibo_delaunator.Del();
+    #endif
 
     vbo_voronoi.Del();
     ibo_voronoi.Del();
