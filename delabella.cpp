@@ -14,7 +14,7 @@ static Unsigned28 s14sqr(const Signed14& s)
 	return (Unsigned28)((Signed29)s*(Signed29)s);
 }
 
-typedef DelaBella_Triangle::Circumcenter Norm;
+typedef DelaBella_Circumcenter Norm;
 
 struct Vect
 {

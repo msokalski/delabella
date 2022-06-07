@@ -66,22 +66,24 @@ struct DelaBella_Vertex
 	DelaBella_Vertex* next; // next in internal / boundary set of vertices
 	DelaBella_Triangle* sew; // one of triangles sharing this vertex
 
+	#ifdef __cplusplus
 	inline const DelaBella_Triangle* StartIterator(DelaBella_Iterator* it/*not_null*/) const;
+	#endif
 };
+
+struct DelaBella_Circumcenter
+{
+	Signed45 x; // voronoi vertex = {x/(-2*z),y/(-2*z)}
+	Signed45 y; // keeping it as a ratio avoids any rounding
+	Signed31 z; // additionally, if z<0 this is delaunay triangle
+}; 
 
 struct DelaBella_Triangle
 {
 	DelaBella_Vertex* v[3]; // 3 vertices spanning this triangle
 	DelaBella_Triangle* f[3]; // 3 adjacent faces, f[i] is at the edge opposite to vertex v[i]
 	DelaBella_Triangle* next; // next triangle (of delaunay set or hull set)
-
-	struct Circumcenter
-	{
-		~Circumcenter() {} // prevents leaks from crude-xa
-		Signed45 x; // voronoi vertex = {x/(-2*z),y/(-2*z)}
-		Signed45 y; // keeping it as a ratio avoids any rounding
-		Signed31 z; // additionally, if z<0 this is delaunay triangle
-	} n; 
+	DelaBella_Circumcenter n; // normal / circumcenter
 
 	int index; // list index
 
@@ -102,10 +104,12 @@ struct DelaBella_Triangle
                 +
 */
 
-
+	#ifdef __cplusplus
 	inline const DelaBella_Triangle* StartIterator(DelaBella_Iterator* it/*not_null*/, int around/*0,1,2*/) const;
+	#endif
 };
 
+#ifdef __cplusplus
 struct DelaBella_Iterator
 {
 	const DelaBella_Triangle* current;
@@ -118,10 +122,6 @@ struct DelaBella_Iterator
 			pivot = 0;
 
 		DelaBella_Triangle* next = current->f[pivot];
-
-		// we should not pass silhouette!
-		// ...
-
 		DelaBella_Vertex* v = current->v[around];
 
 		if (next->v[0] == v)
@@ -143,10 +143,6 @@ struct DelaBella_Iterator
 			pivot = 2;
 
 		DelaBella_Triangle* prev = current->f[pivot];
-
-		// we should not pass silhouette!
-		// ...
-
 		DelaBella_Vertex* v = current->v[around];
 
 		if (prev->v[0] == v)
@@ -182,7 +178,6 @@ inline const DelaBella_Triangle* DelaBella_Vertex::StartIterator(DelaBella_Itera
 	return sew;
 }
 
-#ifdef __cplusplus
 struct IDelaBella
 {
 	static IDelaBella* Create();
