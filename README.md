@@ -23,8 +23,12 @@ Added exact arithmetic (crude-xa) as option, you can enable it adding globally
 - delabella-sdl2
 - delabella-xa-sdl2 (this one requires crude-xa to be cloned inside delabella dir)
 Both use SDL2 library for rendering calculated triangulation using OpenGL
-They expect 'xy' input file passed as argument. 
-The file should simply contain all x y coordinates.
+They expect 'xy' input file passed as argument, file should contain space separated x y coordinates.
+
+![delabella-sdl2 1000](delabella-sdl2.png)
+
+Also you can simply pass a number of points (instead of xy file name) to be randomly generated.
+Use mouse to navifate (zoom: RMB / wheel, pan: LMB)
 
 ## delabella usage:
 
