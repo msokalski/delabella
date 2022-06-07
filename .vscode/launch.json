@@ -11,7 +11,7 @@
 
             "program": "/home/user/delabella/delabella-sdl2",
             //"args": [ "circle.xy" ],
-            "args": [ "1000" ],
+            "args": [ "10000" ],
             "stopAtEntry": false,
             "cwd": "/home/user/delabella",
             "environment": [],

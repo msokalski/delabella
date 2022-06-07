@@ -215,36 +215,6 @@ struct IDelaBella
 	virtual const DelaBella_Triangle* GetFirstHullTriangle() const = 0; // valid only if Triangulate() > 0
 	virtual const DelaBella_Vertex*   GetFirstBoundaryVertex() const = 0; // if Triangulate() < 0 it is list, otherwise closed contour! 
 	virtual const DelaBella_Vertex*   GetFirstInternalVertex() const = 0;
-
-	// search api
-	// virtual const DelaBella_Query* CreateHashedVoronoiQuadTree();
-
-	// Voronoi sub-api
-
-	// legend:
-	// dela_verts: number of input points, optionally excluding duplicated ones (num_verts from GetVertexArray())
-	// dela_tris: number of returned triangles (verts/3) from Triangulate() or GetNumOutputIndices()
-	// boundary_verts: GetNumBoundaryVerts()
-	
-	virtual int GetNumVoronoiVertices(bool center) const { return 0; }
-	// = dela_tris + boundary_verts + center * dela_verts
-	
-	virtual int GetNumVoronoiIndices(bool center, bool loop_open, bool loop_closed, bool suffix) const { return 0; } 
-	// = 2 * (dela_verts + dela_tris - 1) + boundary_verts 
-	//   + (center + suffix) * dela_verts 
-	//   + loop_closed * (dela_verts - boundary_verts) 
-	//   + loop_open * boundary_verts
-
-	virtual void BuildVoronoiDiagram(
-		float* x, float* y,    // [GetNumVoronoiVertices()]
-		int advance_bytes,     // x,y array advance bytes
-		int* index_buffer,     // [GetNumVoronoiIndices()]
-		int* num_site_indices, // [dela_verts], fills number of indices for every cell, (can be null)
-		bool center,           // add dela vertex (voro site center), into xy and index_buffer as each site's first indice 
-		bool loop_open,        // repeat looping indice after every open (boundary)site
-		bool loop_closed,      // repeat looping indice after every closed (internal) site
-		bool suffix            // add '-1' suffix after every site
-	) const {}			
 };
 #else
 void* DelaBella_Create();
