@@ -361,7 +361,10 @@ int main(int argc, char* argv[])
     // voronoi_indices += vert_num; // num of all verts (no dups)
 
     // 2 indices per segment, no restarts
-    voronoi_indices = 4 * (vert_num + tris_delabella - 1);
+    if (prim_restart)
+        voronoi_indices += vert_num;
+    else
+        voronoi_indices = 4 * (vert_num + tris_delabella - 1); // almost 2x bigger ehh
 
     int ibo_voronoi_idx = 0;
     Buf vbo_voronoi, ibo_voronoi;
@@ -434,12 +437,15 @@ int main(int argc, char* argv[])
         while (t->n.z<0)
         {
             ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // end
-            ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // begin of next line segment
+            if (!prim_restart)
+                ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // begin of next line segment
             t = it.Next();
         }
 
         ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)( i==0 ? contour-1 : i-1 ) + tris_delabella; // loop-wrapping!
-        //ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)~0; // primitive restart
+        
+        if (prim_restart)
+            ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)~0; // primitive restart
 
         prev = vert;
         vert = vert->next;
@@ -460,10 +466,12 @@ int main(int argc, char* argv[])
             assert(t->n.z<0);
             ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // begin
             t = it.Next();
-            ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // end
+            if (!prim_restart)
+                ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // end
         } while (t!=e);
         
-        // ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)~0; // primitive restart
+        if (prim_restart)
+            ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)~0; // primitive restart
 
         vert = vert->next;
     }
@@ -507,10 +515,11 @@ int main(int argc, char* argv[])
     double drag_cx, drag_cy;
     int drag = 0;
 
-    /*
-    glPrimitiveRestartIndex((GLuint)~0);
-    glEnable(GL_PRIMITIVE_RESTART);
-    */
+    if (prim_restart)
+    {
+        glPrimitiveRestartIndex((GLuint)~0);
+        glEnable(GL_PRIMITIVE_RESTART);
+    }
 
     for( ;; )
     {
@@ -722,12 +731,24 @@ int main(int argc, char* argv[])
 
         ibo_voronoi.Bind();
 
-        // first, draw open cells
         glColor4f(0.0f,0.75f,0.0f,1.0f);
-        glDrawElements(GL_LINES/*GL_LINE_STRIP GL_POLYGON*/, voronoi_strip_indices, GL_UNSIGNED_INT, (GLuint*)0);
 
-        // then closed cells
-        glDrawElements(GL_LINES/*GL_LINE_LOOP GL_POLYGON*/, voronoi_loop_indices, GL_UNSIGNED_INT, (GLuint*)0 + voronoi_strip_indices);
+        if (prim_restart)
+        {
+            // first, draw open cells
+            glDrawElements(GL_LINE_STRIP, voronoi_strip_indices, GL_UNSIGNED_INT, (GLuint*)0);
+
+            // then closed cells
+            glDrawElements(GL_LINE_LOOP, voronoi_loop_indices, GL_UNSIGNED_INT, (GLuint*)0 + voronoi_strip_indices);
+        }
+        else
+        {
+            // first, draw open cells
+            glDrawElements(GL_LINES, voronoi_strip_indices, GL_UNSIGNED_INT, (GLuint*)0);
+
+            // then closed cells
+            glDrawElements(GL_LINES, voronoi_loop_indices, GL_UNSIGNED_INT, (GLuint*)0 + voronoi_strip_indices);
+        }
 
         SDL_GL_SwapWindow(window);
         SDL_Delay(15);
