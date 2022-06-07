@@ -1,7 +1,7 @@
 {
     "tasks": [
         {
-            "label": "build",
+            "label": "my-build",
             "type": "shell",
             "command": "./build.sh",
             "problemMatcher": [ "$gcc" ],

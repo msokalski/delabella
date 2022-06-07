@@ -1,5 +1,15 @@
-g++ -O3 delabella.cpp delabella-sdl2.cpp -lSDL2 -lGL -o delabella-sdl2
+OPT="-std=c++17 -O3"
+
+if [ -d "delaunator" ]; then
+    OPT="$OPT -DDELAUNATOR"
+fi
+
+if [[ $OSTYPE == 'darwin'* ]]; then
+    OPT="$OPT -framework OpenGL"
+fi    
+
+g++ $OPT delabella.cpp delabella-sdl2.cpp -lSDL2 -lGL -o delabella-sdl2
 
 if [ -d "crude-xa" ]; then
-g++ -O3 -DCRUDE_XA delabella.cpp delabella-sdl2.cpp crude-xa/src/crude-xa.c -lSDL2 -lGL -o delabella-xa-sdl2
+    g++ $OPT -DCRUDE_XA -DXA_VAL_LEAKS delabella.cpp delabella-sdl2.cpp crude-xa/src/crude-xa.c -lSDL2 -lGL -o delabella-xa-sdl2
 fi
