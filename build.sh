@@ -1,4 +1,4 @@
-OPT="-std=c++17 -O3"
+OPT="-std=c++17 -g"
 
 if [ -d "delaunator" ]; then
     OPT="$OPT -DDELAUNATOR"
