@@ -360,12 +360,8 @@ int main(int argc, char* argv[])
     int voronoi_indices = 2 * (vert_num + tris_delabella - 1) + contour;
     int voronoi_vertices = tris_delabella + contour;
 
-    // add primitive restarts
-    // voronoi_indices += vert_num; // num of all verts (no dups)
-
-    // 2 indices per segment, no restarts
     if (prim_restart)
-        voronoi_indices += vert_num;
+        voronoi_indices += vert_num; // add primitive restarts
     else
         voronoi_indices = 4 * (vert_num + tris_delabella - 1); // almost 2x bigger ehh
 
