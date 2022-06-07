@@ -323,10 +323,14 @@ int main(int argc, char* argv[])
         while (ext)
         {
             ext = strstr(ext,"GL_NV_primitive_restart");
-            if (ext && (ext[23]==0 || ext[23]==' '))
+            if (ext)
             {
-                prim_restart = true;
-                break;
+                if (ext[23]==0 || ext[23]==' ')
+                {
+                    prim_restart = true;
+                    break;
+                }
+                ext += 23;
             }
         }
     }
