@@ -184,6 +184,97 @@ int main(int argc, char* argv[])
         }
     }
 
+    // wrap GL buffer, 
+    // so mapping works even if it doesnt
+    struct Buf
+    {
+        GLuint buf;
+        GLenum target;
+        GLsizei size;
+        void* map;
+        bool mapped;
+
+        Buf() : buf(0),target(0),size(0),map(0),mapped(false) {}
+
+        GLuint Gen(GLenum t, GLsizei s)
+        {
+            target = t;
+            size = s;
+
+            GLint push = 0;
+            if (target == GL_ARRAY_BUFFER)
+                glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &push);
+            else
+            if (target == GL_ELEMENT_ARRAY_BUFFER)
+                glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &push);
+
+            glGenBuffers(1, &buf);
+            glBindBuffer(target, buf);
+            glBufferData(target, size, 0, GL_STATIC_DRAW);
+
+            glBindBuffer(target, push);
+            return buf;
+        }
+
+        void Del()
+        {
+            Unmap();
+            glDeleteBuffers(1,&buf);
+        }
+
+        void* Map()
+        {
+            if (map)
+                return 0;
+
+            GLint push = 0;
+            if (target == GL_ARRAY_BUFFER)
+                glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &push);
+            else
+            if (target == GL_ELEMENT_ARRAY_BUFFER)
+                glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &push);
+
+            glBindBuffer(target, buf);
+            map = glMapBuffer(target, GL_WRITE_ONLY);
+            mapped = true;
+            if (!map)
+            {
+                map = malloc(size);
+                mapped = false;
+            }
+
+            glBindBuffer(target, push);
+            return map;
+        }
+
+        void Unmap()
+        {
+            if (!map)
+                return;
+
+            GLint push = 0;
+            if (target == GL_ARRAY_BUFFER)
+                glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &push);
+            else
+            if (target == GL_ELEMENT_ARRAY_BUFFER)
+                glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &push);
+
+            glBindBuffer(target, buf);
+            if (mapped)
+                glUnmapBuffer(target);
+            else
+            {
+                glBufferSubData(target, 0, size, map);
+                free(map);
+            }
+
+            map = 0;
+            mapped = false;
+
+            glBindBuffer(target, push);
+        }
+    };
+
     SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
@@ -207,14 +298,10 @@ int main(int argc, char* argv[])
     SDL_GLContext context = SDL_GL_CreateContext( window );
 
 	// create vbo and ibo
-    GLuint vbo, ibo_delabella, ibo_delaunator;
-	glGenBuffers( 1, &vbo );
-	glGenBuffers( 1, &ibo_delabella );
-	glGenBuffers( 1, &ibo_delaunator );
+    Buf vbo, ibo_delabella, ibo_delaunator;
 
-    glBindBuffer( GL_ARRAY_BUFFER, vbo );
-    glBufferData( GL_ARRAY_BUFFER, sizeof(GLfloat[3]) * points, 0, GL_STATIC_DRAW );
-    GLfloat* vbo_ptr = (GLfloat*)glMapBuffer( GL_ARRAY_BUFFER, GL_WRITE_ONLY);
+	vbo.Gen(GL_ARRAY_BUFFER, sizeof(GLfloat[3]) * points);
+    GLfloat* vbo_ptr = (GLfloat*)vbo.Map();
     float box[4]={(float)cloud[0].x, (float)cloud[0].y, (float)cloud[0].x, (float)cloud[0].y};
 	for (int i = 0; i<points; i++)
     {
@@ -227,7 +314,7 @@ int main(int argc, char* argv[])
         box[2] = fmax(box[2], (float)cloud[i].x);
         box[3] = fmax(box[3], (float)cloud[i].y);
     }
-    glUnmapBuffer(GL_ARRAY_BUFFER);
+    vbo.Unmap();
 
     int vert_num = contour + non_contour;
     // pure indices, without: center points, restarts, loop closing
@@ -239,20 +326,15 @@ int main(int argc, char* argv[])
     voronoi_indices += vert_num; // num of all verts (no dups)
 
     int ibo_voronoi_idx = 0;
-    GLuint vbo_voronoi, ibo_voronoi;
-	glGenBuffers( 1, &vbo_voronoi );
-	glGenBuffers( 1, &ibo_voronoi );
-    glBindBuffer(GL_ARRAY_BUFFER, vbo_voronoi);
-    glBufferData( GL_ARRAY_BUFFER, sizeof(GLfloat[3]) * voronoi_vertices, 0, GL_STATIC_DRAW );
-    GLfloat* vbo_voronoi_ptr = (GLfloat*)glMapBuffer(GL_ARRAY_BUFFER, GL_WRITE_ONLY);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_voronoi);
-    glBufferData( GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * voronoi_indices, 0, GL_STATIC_DRAW );
-    GLuint* ibo_voronoi_ptr = (GLuint*)glMapBuffer(GL_ELEMENT_ARRAY_BUFFER, GL_WRITE_ONLY);
+    Buf vbo_voronoi, ibo_voronoi;
+	vbo_voronoi.Gen(GL_ARRAY_BUFFER, sizeof(GLfloat[3]) * voronoi_vertices);
+	ibo_voronoi.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * voronoi_indices);
+    GLfloat* vbo_voronoi_ptr = (GLfloat*)vbo_voronoi.Map();
+    GLuint* ibo_voronoi_ptr = (GLuint*)ibo_voronoi.Map();
 
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, ibo_delabella );
-    glBufferData( GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delabella + sizeof(GLuint) * contour, 0, GL_STATIC_DRAW );
-    GLuint* ibo_ptr = (GLuint*)glMapBuffer( GL_ELEMENT_ARRAY_BUFFER, GL_WRITE_ONLY);
-	const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
+    ibo_delabella.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delabella + sizeof(GLuint) * contour);	
+    GLuint* ibo_ptr = (GLuint*)ibo_delabella.Map();
+    const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
 	for (int i = 0; i<tris_delabella; i++)
 	{
         int v0 = dela->v[0]->i;
@@ -353,23 +435,19 @@ int main(int argc, char* argv[])
 
     printf("contour min:%d max:%d\n",contour_min,contour_max);
 
-    glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER); // ibo_delabella
+    ibo_delabella.Unmap();
+    vbo_voronoi.Unmap();
+    ibo_voronoi.Unmap();
 
-    glBindBuffer(GL_ARRAY_BUFFER, vbo_voronoi);
-    glUnmapBuffer(GL_ARRAY_BUFFER);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_voronoi);
-    glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
-
-    glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, ibo_delaunator );
-    glBufferData( GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delaunator, 0, GL_STATIC_DRAW );
-    ibo_ptr = (GLuint*)glMapBuffer( GL_ELEMENT_ARRAY_BUFFER, GL_WRITE_ONLY);
+    ibo_delaunator.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delaunator);
+    ibo_ptr = (GLuint*)ibo_delaunator.Map();
     for (int i = 0; i<tris_delaunator; i++)    
     {
         ibo_ptr[3*i+0] = (GLuint)d.triangles[3*i+0];
         ibo_ptr[3*i+1] = (GLuint)d.triangles[3*i+1];
         ibo_ptr[3*i+2] = (GLuint)d.triangles[3*i+2];
     }
-    glUnmapBuffer(GL_ELEMENT_ARRAY_BUFFER);
+    ibo_delaunator.Unmap();
 
     // now, everything is copied to gl, free delabella
     idb->Destroy();
@@ -542,10 +620,10 @@ int main(int argc, char* argv[])
         glFrontFace(GL_CW);
 
         // hello ancient world
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo.buf);
         glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
 
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_delabella);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_delabella.buf);
 
         glColor4f(0.2f,0.2f,0.2f,1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -577,7 +655,7 @@ int main(int argc, char* argv[])
         */
 
         // voronoi!
-        glBindBuffer(GL_ARRAY_BUFFER, vbo_voronoi);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo_voronoi.buf);
         glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
 
         // voro-verts in back
@@ -596,7 +674,7 @@ int main(int argc, char* argv[])
 
         glLoadMatrixf(z2w);
 
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_voronoi);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_voronoi.buf);
 
         // first, draw open cells
         glColor4f(0.0f,0.75f,0.0f,1.0f);
@@ -609,9 +687,12 @@ int main(int argc, char* argv[])
         SDL_Delay(15);
     }
 
-    glDeleteBuffers(1,&vbo);
-    glDeleteBuffers(1,&ibo_delabella);
-    glDeleteBuffers(1,&ibo_delaunator);
+    vbo.Del();
+    ibo_delabella.Del();
+    ibo_delaunator.Del();
+
+    vbo_voronoi.Del();
+    ibo_voronoi.Del();
 
     SDL_GL_DeleteContext( context );
     SDL_DestroyWindow( window );
