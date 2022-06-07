@@ -60,6 +60,102 @@ static uint64_t uSec()
 	#endif
 }
 
+// wrap GL buffer, 
+// so mapping works even if it doesnt
+struct Buf
+{
+    GLuint buf;
+    GLenum target;
+    GLsizei size;
+    void* map;
+    bool mapped;
+
+    Buf() : buf(0),target(0),size(0),map(0),mapped(false) {}
+
+    GLuint Gen(GLenum t, GLsizei s)
+    {
+        target = t;
+        size = s;
+
+        GLint push = 0;
+        if (target == GL_ARRAY_BUFFER)
+            glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &push);
+        else
+        if (target == GL_ELEMENT_ARRAY_BUFFER)
+            glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &push);
+
+        glGenBuffers(1, &buf);
+        glBindBuffer(target, buf);
+        glBufferData(target, size, 0, GL_STATIC_DRAW);
+
+        glBindBuffer(target, push);
+        return buf;
+    }
+
+    void Del()
+    {
+        Unmap();
+        glDeleteBuffers(1,&buf);
+    }
+
+    void* Map()
+    {
+        if (map)
+            return 0;
+
+        GLint push = 0;
+        if (target == GL_ARRAY_BUFFER)
+            glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &push);
+        else
+        if (target == GL_ELEMENT_ARRAY_BUFFER)
+            glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &push);
+
+        glBindBuffer(target, buf);
+        map = glMapBuffer(target, GL_WRITE_ONLY);
+        mapped = true;
+        if (!map)
+        {
+            map = malloc(size);
+            mapped = false;
+        }
+
+        glBindBuffer(target, push);
+        return map;
+    }
+
+    void Unmap()
+    {
+        if (!map)
+            return;
+
+        GLint push = 0;
+        if (target == GL_ARRAY_BUFFER)
+            glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &push);
+        else
+        if (target == GL_ELEMENT_ARRAY_BUFFER)
+            glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &push);
+
+        glBindBuffer(target, buf);
+        if (mapped)
+            glUnmapBuffer(target);
+        else
+        {
+            glBufferSubData(target, 0, size, map);
+            free(map);
+        }
+
+        map = 0;
+        mapped = false;
+
+        glBindBuffer(target, push);
+    }
+
+    void Bind()
+    {
+        glBindBuffer(target,buf);
+    }
+};
+
 int main(int argc, char* argv[])
 {
 	if (argc<2)
@@ -187,102 +283,6 @@ int main(int argc, char* argv[])
         }
     }
 
-    // wrap GL buffer, 
-    // so mapping works even if it doesnt
-    struct Buf
-    {
-        GLuint buf;
-        GLenum target;
-        GLsizei size;
-        void* map;
-        bool mapped;
-
-        Buf() : buf(0),target(0),size(0),map(0),mapped(false) {}
-
-        GLuint Gen(GLenum t, GLsizei s)
-        {
-            target = t;
-            size = s;
-
-            GLint push = 0;
-            if (target == GL_ARRAY_BUFFER)
-                glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &push);
-            else
-            if (target == GL_ELEMENT_ARRAY_BUFFER)
-                glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &push);
-
-            glGenBuffers(1, &buf);
-            glBindBuffer(target, buf);
-            glBufferData(target, size, 0, GL_STATIC_DRAW);
-
-            glBindBuffer(target, push);
-            return buf;
-        }
-
-        void Del()
-        {
-            Unmap();
-            glDeleteBuffers(1,&buf);
-        }
-
-        void* Map()
-        {
-            if (map)
-                return 0;
-
-            GLint push = 0;
-            if (target == GL_ARRAY_BUFFER)
-                glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &push);
-            else
-            if (target == GL_ELEMENT_ARRAY_BUFFER)
-                glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &push);
-
-            glBindBuffer(target, buf);
-            map = glMapBuffer(target, GL_WRITE_ONLY);
-            mapped = true;
-            if (!map)
-            {
-                map = malloc(size);
-                mapped = false;
-            }
-
-            glBindBuffer(target, push);
-            return map;
-        }
-
-        void Unmap()
-        {
-            if (!map)
-                return;
-
-            GLint push = 0;
-            if (target == GL_ARRAY_BUFFER)
-                glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &push);
-            else
-            if (target == GL_ELEMENT_ARRAY_BUFFER)
-                glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &push);
-
-            glBindBuffer(target, buf);
-            if (mapped)
-                glUnmapBuffer(target);
-            else
-            {
-                glBufferSubData(target, 0, size, map);
-                free(map);
-            }
-
-            map = 0;
-            mapped = false;
-
-            glBindBuffer(target, push);
-        }
-
-        void Bind()
-        {
-            glBindBuffer(target,buf);
-        }
-    };
-
     SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
@@ -291,9 +291,9 @@ int main(int argc, char* argv[])
     SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
 
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-    //SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_COMPATIBILITY);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
 	// create viewer wnd
     int width = 800, height = 600;
