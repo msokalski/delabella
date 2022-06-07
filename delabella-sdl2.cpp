@@ -276,6 +276,11 @@ int main(int argc, char* argv[])
 
             glBindBuffer(target, push);
         }
+
+        void Bind()
+        {
+            glBindBuffer(target,buf);
+        }
     };
 
     SDL_Init(SDL_INIT_VIDEO);
@@ -639,10 +644,10 @@ int main(int argc, char* argv[])
         glFrontFace(GL_CW);
 
         // hello ancient world
-        glBindBuffer(GL_ARRAY_BUFFER, vbo.buf);
+        vbo.Bind();
         glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
 
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_delabella.buf);
+        ibo_delabella.Bind();
 
         glColor4f(0.2f,0.2f,0.2f,1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -667,7 +672,7 @@ int main(int argc, char* argv[])
         // delaunator
         /*
         #ifdef DELAUNATOR
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_delaunator.buf);
+        ibo_delaunator.Bind();
         glColor4f(1.0f,1.0f,1.0f,1.0f);
         glLineWidth(1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -676,7 +681,7 @@ int main(int argc, char* argv[])
         */
 
         // voronoi!
-        glBindBuffer(GL_ARRAY_BUFFER, vbo_voronoi.buf);
+        vbo_voronoi.Bind();
         glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
 
         // voro-verts in back
@@ -695,7 +700,7 @@ int main(int argc, char* argv[])
 
         glLoadMatrixf(z2w);
 
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_voronoi.buf);
+        ibo_voronoi.Bind();
 
         // first, draw open cells
         glColor4f(0.0f,0.75f,0.0f,1.0f);
