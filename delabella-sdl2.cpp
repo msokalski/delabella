@@ -34,7 +34,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #ifdef DELAUNATOR
 #include "delaunator/delaunator-header-only.hpp"
 #endif
-#ifndef __APPLE__
+
 PFNGLBINDBUFFERPROC glBindBuffer;
 PFNGLDELETEBUFFERSPROC glDeleteBuffers;
 PFNGLGENBUFFERSPROC glGenBuffers;
@@ -57,7 +57,7 @@ bool BindGL()
 	#undef BINDGL
 	return true;
 }
-#endif
+
 
 int errlog(void* stream, const char* fmt, ...)
 {
