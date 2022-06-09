@@ -3,6 +3,8 @@ DELABELLA - Delaunay triangulation library
 Copyright (C) 2018 GUMIX - Marcin Sokalski
 */
 
+#define _CRT_SECURE_NO_WARNINGS
+
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -11,23 +13,51 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #include <vector>
 
-#define GL_GLEXT_PROTOTYPES
-
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
+#undef main
 
 #include <random>
 
 #include "delabella.h"
 
 #include <GL/gl.h>
+
+#ifndef _WIN32
 #include <GL/glext.h>
+#else
+#pragma comment(lib,"OpenGL32.lib")
+#pragma comment(lib,"SDL2.lib")
+#endif
 
 // competitor
 #ifdef DELAUNATOR
 #include "delaunator/delaunator-header-only.hpp"
 #endif
-
+#ifndef __APPLE__
+PFNGLBINDBUFFERPROC glBindBuffer;
+PFNGLDELETEBUFFERSPROC glDeleteBuffers;
+PFNGLGENBUFFERSPROC glGenBuffers;
+PFNGLBUFFERDATAPROC glBufferData;
+PFNGLBUFFERSUBDATAPROC glBufferSubData;
+PFNGLMAPBUFFERPROC glMapBuffer;
+PFNGLUNMAPBUFFERPROC glUnmapBuffer;
+PFNGLPRIMITIVERESTARTINDEXPROC glPrimitiveRestartIndex;
+bool BindGL()
+{
+	#define BINDGL(proc) if ((*(void**)&proc = SDL_GL_GetProcAddress(#proc)) == 0) return false;
+	BINDGL(glBindBuffer);
+	BINDGL(glDeleteBuffers);
+	BINDGL(glGenBuffers);
+	BINDGL(glBufferData);
+	BINDGL(glBufferSubData);
+	BINDGL(glMapBuffer);
+	BINDGL(glUnmapBuffer);
+	BINDGL(glPrimitiveRestartIndex);
+	#undef BINDGL
+	return true;
+}
+#endif
 
 int errlog(void* stream, const char* fmt, ...)
 {
@@ -158,10 +188,14 @@ struct Buf
 
 int main(int argc, char* argv[])
 {
+	#ifdef _WIN32
+	SetProcessDPIAware();
+	#endif
+
 	if (argc<2)
 	{
-        printf("usage: delabella[-xa]-sdl2 <input.xy> [output.abc]\n");
-		printf("required argument (.xy file name) missing, terminating!\n");
+        printf("usage: %s <input.xy> [output.abc]\n", argc > 0 ? argv[0] : "<executable>");
+		printf("required argument (.xy file name / number of random points) missing, terminating!\n");
 		return -1;
 	}
 
@@ -301,7 +335,7 @@ int main(int argc, char* argv[])
     #else
     const char* title = "delablella";
     #endif
-    SDL_Window * window = SDL_CreateWindow( title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+    SDL_Window * window = SDL_CreateWindow( title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     if (!window)
     {
         printf("SDL_CreateWindow failed, terminating!\n");
@@ -316,6 +350,15 @@ int main(int argc, char* argv[])
         idb->Destroy();
         return -1;
     }
+
+	if (!BindGL())
+	{
+		printf("Can't bind to necessary GL functions, terminating!\n");
+		idb->Destroy();
+		return -1;
+	}
+
+	printf("preparing graphics...\n");
 
     bool prim_restart = false;
     {
@@ -480,8 +523,6 @@ int main(int argc, char* argv[])
     // TODO: FIX CONTOUR BUILDING FOR TRIVIAL 3-POINTS CASE !!!
     assert(ibo_voronoi_idx == voronoi_indices);
 
-    printf("contour min:%d max:%d\n",contour_min,contour_max);
-
     ibo_delabella.Unmap();
     vbo_voronoi.Unmap();
     ibo_voronoi.Unmap();
@@ -519,6 +560,8 @@ int main(int argc, char* argv[])
         glPrimitiveRestartIndex((GLuint)~0);
         glEnable(GL_PRIMITIVE_RESTART);
     }
+
+	printf("going interactive.\n");
 
     for( ;; )
     {
@@ -679,7 +722,7 @@ int main(int argc, char* argv[])
 
         glColor4f(0.2f,0.2f,0.2f,1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        glDrawRangeElements(GL_TRIANGLES, 0,points-1, tris_delabella*3, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_delabella*3, GL_UNSIGNED_INT, 0);
 
         // put verts over fill
         glColor4f(1.0f,1.0f,0.0f,1.0f);
@@ -689,24 +732,24 @@ int main(int argc, char* argv[])
 
         glColor4f(0.5f,0.5f,0.5f,1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glDrawRangeElements(GL_TRIANGLES, 0,points-1, tris_delabella * 3, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_delabella * 3, GL_UNSIGNED_INT, 0);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
         glColor4f(1.0f,0.0f,0.0f,1.0f);
         //glLineWidth(3.0f);
-        glDrawRangeElements(GL_LINE_LOOP, contour_min, contour_max, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella*3);
+        glDrawElements(GL_LINE_LOOP, /*contour_min, contour_max,*/ contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella*3);
         //glLineWidth(1.0f);
 
         // delaunator
-        /*
+		#if 0
         #ifdef DELAUNATOR
         ibo_delaunator.Bind();
         glColor4f(1.0f,1.0f,1.0f,1.0f);
         glLineWidth(1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glDrawRangeElements(GL_TRIANGLES, 0,points-1, tris_delaunator * 3, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_delaunator * 3, GL_UNSIGNED_INT, 0);
         #endif
-        */
+		#endif
 
         // voronoi!
         vbo_voronoi.Bind();
@@ -771,5 +814,6 @@ int main(int argc, char* argv[])
     printf("LEAKED %d allocs\n", xa_leaks(0));
     #endif
 
+	printf("exiting!\n");
 	return 0;
 }
