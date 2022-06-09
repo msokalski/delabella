@@ -35,15 +35,15 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #include "delaunator/delaunator-header-only.hpp"
 #endif
 
-PFNGLBINDBUFFERPROC glBindBuffer;
-PFNGLDELETEBUFFERSPROC glDeleteBuffers;
-PFNGLGENBUFFERSPROC glGenBuffers;
-PFNGLBUFFERDATAPROC glBufferData;
-PFNGLBUFFERSUBDATAPROC glBufferSubData;
-PFNGLMAPBUFFERPROC glMapBuffer;
-PFNGLUNMAPBUFFERPROC glUnmapBuffer;
-PFNGLPRIMITIVERESTARTINDEXPROC glPrimitiveRestartIndex;
-bool BindGL()
+PFNGLBINDBUFFERPROC glBindBuffer = 0;
+PFNGLDELETEBUFFERSPROC glDeleteBuffers = 0;
+PFNGLGENBUFFERSPROC glGenBuffers = 0;
+PFNGLBUFFERDATAPROC glBufferData = 0;
+PFNGLBUFFERSUBDATAPROC glBufferSubData = 0;
+PFNGLMAPBUFFERPROC glMapBuffer = 0;
+PFNGLUNMAPBUFFERPROC glUnmapBuffer = 0;
+PFNGLPRIMITIVERESTARTINDEXPROC glPrimitiveRestartIndex = 0;
+bool BindGL(bool prim_restart)
 {
 	#define BINDGL(proc) if ((*(void**)&proc = SDL_GL_GetProcAddress(#proc)) == 0) return false;
 	BINDGL(glBindBuffer);
@@ -53,7 +53,8 @@ bool BindGL()
 	BINDGL(glBufferSubData);
 	BINDGL(glMapBuffer);
 	BINDGL(glUnmapBuffer);
-	BINDGL(glPrimitiveRestartIndex);
+    if (prim_restart)
+	    BINDGL(glPrimitiveRestartIndex);
 	#undef BINDGL
 	return true;
 }
@@ -351,15 +352,6 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-	if (!BindGL())
-	{
-		printf("Can't bind to necessary GL functions, terminating!\n");
-		idb->Destroy();
-		return -1;
-	}
-
-	printf("preparing graphics...\n");
-
     bool prim_restart = false;
     {
         const char* ext = (const char*)glGetString(GL_EXTENSIONS);
@@ -377,6 +369,15 @@ int main(int argc, char* argv[])
             }
         }
     }
+
+	if (!BindGL(prim_restart))
+	{
+		printf("Can't bind to necessary GL functions, terminating!\n");
+		idb->Destroy();
+		return -1;
+	}
+
+	printf("preparing graphics...\n");
 
     // create vbo and ibo
     Buf vbo, ibo_delabella;
