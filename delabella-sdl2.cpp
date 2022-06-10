@@ -221,13 +221,13 @@ int main(int argc, char* argv[])
        	std::random_device rd{};
     	std::mt19937_64 gen{rd()};
 
-        //std::uniform_real_distribution</*long*/ double> d(-1.L,1.L);
-        std::normal_distribution</*long*/ double> d{0.0, 2.0};
-        //std::gamma_distribution</*long*/ double> d(0.1L,2.0L);
+        //std::uniform_real_distribution</*long*/ double> d(-1.0,1.0);
+        //std::normal_distribution</*long*/ double> d{0.0,2.0};
+        std::gamma_distribution</*long*/ double> d(0.1,2.0);
 
         for (int i=0; i<n; i++)
         {
-            MyPoint p = { d(gen), d(gen) };
+            MyPoint p = { d(gen) - 5.0, d(gen) - 5.0 };
             cloud.push_back(p);
         }
 	}
@@ -272,7 +272,11 @@ int main(int argc, char* argv[])
     }
     */
     #endif
-    
+
+	#ifdef CRUDE_XA
+	xa_pool_alloc(100);
+	#endif
+
 	IDelaBella* idb = IDelaBella::Create();
 	idb->SetErrLog(errlog, stdout);
 	
@@ -397,6 +401,8 @@ int main(int argc, char* argv[])
         box[3] = fmax(box[3], (float)cloud[i].y);
     }
     vbo.Unmap();
+
+	printf("box: x0:%f y0:%f x1:%f y1:%f\n", box[0], box[1], box[2], box[3]);
 
     int vert_num = contour + non_contour;
     // pure indices, without: center points, restarts, loop closing
@@ -542,7 +548,17 @@ int main(int argc, char* argv[])
     #endif
 
     // now, everything is copied to gl, free delabella
+	#ifdef CRUDE_XA
+	xa_pool_stat();
+	#endif
+
     idb->Destroy();
+
+	#ifdef CRUDE_XA
+	printf("--\n");
+	xa_pool_stat();
+	xa_pool_free();
+	#endif
 
     int vpw, vph;
     SDL_GL_GetDrawableSize(window, &vpw, &vph);
@@ -816,5 +832,6 @@ int main(int argc, char* argv[])
     #endif
 
 	printf("exiting!\n");
+
 	return 0;
 }

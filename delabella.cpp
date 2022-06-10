@@ -136,6 +136,14 @@ struct CDelaBella : IDelaBella
 				(Signed62)n.z * (Signed62)((Signed29)((Vert*)v[0])->z - (Signed29)p.z);
 		}
 
+		bool dotN(const Vert& p)
+		{
+			return
+				(Signed62)n.x * (Signed62)((Signed15)p.x - (Signed15)v[0]->x) +
+				(Signed62)n.y * (Signed62)((Signed15)p.y - (Signed15)v[0]->y) <
+				(Signed62)n.z * (Signed62)((Signed29)((Vert*)v[0])->z - (Signed29)p.z);
+		}
+
 		bool dotNP(const Vert& p)
 		{
 			return 
@@ -598,10 +606,17 @@ struct CDelaBella : IDelaBella
 
 		/////////////////////////////////////////////////////////////////////////
 		// ACTUAL ALGORITHM
-
+		int proc = -1;
 		for (; i < points; i++)
 		{
 			//ValidateHull(alloc, 2 * i - 4);
+
+			int _proc = i * 100 / points;
+			if (_proc != proc)
+			{
+				proc = _proc;
+				printf("%d%%\n", proc);
+			}
 
 			Vert* q = vert_alloc + i;
 			Vert* p = vert_alloc + i - 1;
@@ -611,6 +626,7 @@ struct CDelaBella : IDelaBella
 			//    simply iterate around last vertex using last added triange adjecency info
 			//while (f->dot(*q) <= 0)
 			while (f->dotNP(*q))
+			//while (f->dotN(*q)) // we want to consume coplanar faces
 			{
 				f = f->Next(p);
 				if (f == hull)
@@ -621,6 +637,7 @@ struct CDelaBella : IDelaBella
 					f = face_alloc + 2 * i - 4 - 1;
 					//while (f->dot(*q) <= 0)
 					while (f->dotNP(*q))
+					//while (f->dotN(*q)) // we want to consume coplanar faces
 					{
 						assert(f != face_alloc); // no face is visible? you must be kidding!
 						f--;
@@ -663,6 +680,7 @@ struct CDelaBella : IDelaBella
 						// if neighbor is not visible we have slihouette edge
 						//if (n->dot(*q) <= 0) 
 						if (n->dotNP(*q))
+						//if (n->dotN(*q)) // consuming coplanar faces
 						{
 							// build face
 							add++;
