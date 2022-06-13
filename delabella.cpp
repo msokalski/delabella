@@ -96,13 +96,11 @@ struct CDelaBella : IDelaBella
 			Face* f = *from;
 			*from = (Face*)f->next;
 			f->next = 0;
-			// init all arithmetics to 0
 			return f;
 		}
 
 		void Free(Face** to)
 		{
-			// free all arithmetics
 			next = *to;
 			*to = this;
 		}
@@ -606,18 +604,9 @@ struct CDelaBella : IDelaBella
 
 		/////////////////////////////////////////////////////////////////////////
 		// ACTUAL ALGORITHM
-		int proc = -1;
 		for (; i < points; i++)
 		{
 			//ValidateHull(alloc, 2 * i - 4);
-
-			int _proc = i * 100 / points;
-			if (_proc != proc)
-			{
-				proc = _proc;
-				printf("%d%%\n", proc);
-			}
-
 			Vert* q = vert_alloc + i;
 			Vert* p = vert_alloc + i - 1;
 			Face* f = hull;

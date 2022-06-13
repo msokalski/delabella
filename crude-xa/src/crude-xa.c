@@ -69,12 +69,13 @@ V* xa_add_check(const V* a, const V* b)
 	//assert(vcf == fc);
 	check("ADD",vcf, fc);
 
+	V* v = xa_add(a, b);
 
 	xa_free(va);
 	xa_free(vb);
 	xa_free(vc);
 
-	return xa_add(a,b);
+	return v;
 }
 
 V* xa_sub_check(const V* a, const V* b)
@@ -92,11 +93,13 @@ V* xa_sub_check(const V* a, const V* b)
 	//assert(vcf == fc);
 	check("SUB",vcf, fc);
 
+	V* v = xa_sub(a, b);
+
 	xa_free(va);
 	xa_free(vb);
 	xa_free(vc);
 
-	return xa_sub(a,b);
+	return v;
 }
 
 V* xa_mul_check(const V* a, const V* b)
@@ -114,11 +117,13 @@ V* xa_mul_check(const V* a, const V* b)
 	//assert(vcf == fc);
 	check("MUL",vcf, fc);
 
+	V* v = xa_mul(a, b);
+
 	xa_free(va);
 	xa_free(vb);
 	xa_free(vc);
 
-	return xa_mul(a,b);
+	return v;
 }
 
 #endif
@@ -222,13 +227,23 @@ int xa_pool_stat()
 
 void xa_pool_alloc(int s)
 {
-	xa_pool_free();
-	xa_pool_size = s;
-	if (s)
+	for (int i = s; i < xa_pool_size; i++)
 	{
-		xa_pool = (V**)malloc(sizeof(V*)*s);
-		memset(xa_pool, 0, sizeof(V*)*s);
+		V* v = xa_pool[i];
+		while (v)
+		{
+			V* n = *(V**)v;
+			free(v);
+			v = n;
+		}
 	}
+
+	xa_pool = (V**)realloc(xa_pool,sizeof(V*)*s);
+
+	if (s > xa_pool_size)
+		memset(xa_pool + xa_pool_size, 0, sizeof(V*)*(s - xa_pool_size));
+
+	xa_pool_size = s;
 }
 
 void xa_pool_free()
@@ -245,6 +260,7 @@ void xa_pool_free()
 	}
 
 	free(xa_pool);
+	xa_pool_size = 0;
 	xa_pool = 0;
 }
 
@@ -329,8 +345,8 @@ void xa_free(V* v)
 
 void xa_grab(V* v)
 {
-    if (v)
-        v->refs++;
+	if (v)
+		v->refs++;
 }
 
 int xa_extr_dec(const V* v, char **str)
@@ -1002,7 +1018,6 @@ V* xa_load(long double v)
 			ret->data[dig] = D_MASK((u << ((-shr) & 63)) & mask); //(D)((u << ((-shr) & 63)) & mask);
 	}
 
-	assert(ret->digs > 0 && ret->data[0] && ret->data[ret->digs - 1]);
 	return ret;
 }
 
@@ -1015,7 +1030,6 @@ V* xa_cpy(const V* v)
 	ret->sign = v->sign;
 	ret->quot = v->quot;
 
-	assert(ret->digs > 0 && ret->data[0] && ret->data[ret->digs - 1]);
 	return ret;
 }
 
@@ -1150,7 +1164,6 @@ static V* xa_add_abs(const V *a, const V *b)
 		else if (tail_b > a->quot)
 			memset(v->data + b->digs + b_ofs, 0, (tail_b - a->quot) * D_BYTES);
 
-		assert(v->digs > 0 && v->data[0] && v->data[v->digs-1]);
 		return v;
 	}
 
@@ -1161,6 +1174,7 @@ static V* xa_add_abs(const V *a, const V *b)
 
 	int adig = a->digs - 1;
 	int bdig = b->digs - 1;
+	int zero = 1;
 
 	if (tail_a == tail_b)
 	{
@@ -1168,7 +1182,6 @@ static V* xa_add_abs(const V *a, const V *b)
 		// to see how many zeros we can get there.
 		// we keep result of lowest significant non-zero digit and carry flag
 		// se we will be able to continue after allocating destination
-		int zero = 1;
 		while (adig >= 0 && bdig >= 0)
 		{
 			sum += a->data[adig--];
@@ -1224,8 +1237,14 @@ static V* xa_add_abs(const V *a, const V *b)
 			}
 		}
 
+		/*
+		// todo: fixme to avoid 0 digs allocs & reallocs to 1
 		if (!digs)
+		{
+			head++;
 			digs = 1;
+		}
+		*/
 	}
 
 	// we alloc V optimistically
@@ -1386,68 +1405,32 @@ static V* xa_add_abs(const V *a, const V *b)
 		// we've already started this case
 		// store current values and continue
 
-		v->data[dig--] = D_MASK(sum); //(D)(sum & mask);
-		sum >>= D_BITS;
-
-		if (a->quot >= b->quot)
+		if (!zero && dig>=0)
 		{
-			// [aaaaaaa...]
-			// [   [bbb...]
-
-			// sum aaa+bbb (possibly 0 len)
-			int num = digs - 1 - (a->quot - b->quot);
-			for (int i = 0; i < num; i++)
-			{
-				sum += a->data[adig--];
-				sum += b->data[bdig--];
-				v->data[dig--] = D_MASK(sum); //(D)(sum & mask);
-				sum >>= D_BITS;
-			}
-			// continue with [aaa (possibly 0 len)
-			num = a->quot - b->quot;
-			for (int i = 0; i < num; i++)
-			{
-				if (!sum)
-				{
-					// memcpy
-					// break
-					memcpy(v->data, a->data, (num-i) * D_BYTES);
-					break;
-				}
-				sum += a->data[adig--];
-				v->data[dig--] = D_MASK(sum); //(D)(sum & mask);
-				sum >>= D_BITS;
-			}
+			v->data[dig--] = D_MASK(sum); //(D)(sum & mask);
+			sum >>= D_BITS;
 		}
-		else
-		{
-			//     [aaa...]
-			// [bbbbbbb...]
 
-			// sum aaa+bbb (possibly 0 len)
-			int num = digs - 1 - (b->quot - a->quot);
-			for (int i = 0; i < num; i++)
-			{
-				sum += a->data[adig--];
-				sum += b->data[bdig--];
-				v->data[dig--] = D_MASK(sum); //(D)(sum & mask);
-				sum >>= D_BITS;
-			}
-			// continue with [bbb
-			num = b->quot - a->quot;
-			for (int i = 0; i < num; i++)
-			{
-				if (!sum)
-				{
-					// memcpy
-					// break
-					memcpy(v->data, b->data, (num-i) * D_BYTES);
-					break;
-				}
-				sum += b->data[bdig--];
-				v->data[dig--] = D_MASK(sum); //(D)(sum & mask);
-				sum >>= D_BITS;
-			}
+		while (adig >= 0 && bdig >= 0)
+		{
+			sum += a->data[adig--];
+			sum += b->data[bdig--];
+			v->data[dig--] = D_MASK(sum); //(D)(sum & mask);
+			sum >>= D_BITS;
+		}
+
+		while (adig >= 0)
+		{
+			sum += a->data[adig--];
+			v->data[dig--] = D_MASK(sum); //(D)(sum & mask);
+			sum >>= D_BITS;
+		}
+
+		while (bdig >= 0)
+		{
+			sum += b->data[bdig--];
+			v->data[dig--] = D_MASK(sum); //(D)(sum & mask);
+			sum >>= D_BITS;
 		}
 	}
 
@@ -1469,11 +1452,6 @@ static V* xa_add_abs(const V *a, const V *b)
 		v = r;
 	}
 
-	if (!(v->digs > 0 && v->data[0] && v->data[v->digs - 1]))
-	{
-		int a = 0;
-	}
-	//assert(v->digs > 0 && v->data[0] && v->data[v->digs - 1]);
 	return v;
 }
 
@@ -1553,7 +1531,6 @@ static V* xa_sub_abs(const V *a, const V *b)
 			v->quot = head - dig;
 			memcpy(v->data, a->data + dig, v->digs * D_BYTES);
 
-			assert(v->digs > 0 && v->data[0] && v->data[v->digs - 1]);
 			return v;
 		}
 
@@ -1619,7 +1596,7 @@ static V* xa_sub_abs(const V *a, const V *b)
 	// run borrowing algorithm on trimmed range (A is always bigger here but not neccessarily longer)
 	uint64_t sum = 0; // 0 - not borrowed, 1 - borrowed
 
-	if (tail_a >= b->quot)
+	if (tail_a >= b->quot && bdig>=0)
 	{
 		// not trimmed
 		// [aa] [bbbb]
@@ -1789,7 +1766,6 @@ static V* xa_sub_abs(const V *a, const V *b)
 		v = r;
 	}
 
-	assert(v->digs > 0 && v->data[0] && v->data[v->digs - 1]);
 	return v;
 }
 
@@ -1946,7 +1922,6 @@ V* xa_mul(const V *a, const V *b)
 		v = r;
 	}
 
-	assert(v->digs > 0 && v->data[0] && v->data[v->digs - 1]);
 	return v;
 }
 

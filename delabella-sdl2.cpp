@@ -286,12 +286,13 @@ int main(int argc, char* argv[])
 	int tris_delabella = verts / 3;
     int contour = idb->GetNumBoundaryVerts();
     int non_contour = idb->GetNumInternalVerts();
+	int vert_num = contour + non_contour;
 
     uint64_t t3 = uSec();
     printf("elapsed %d ms\n", (int)((t3-t2)/1000));
     printf("delabella triangles: %d\n", tris_delabella);
     printf("delabella contour: %d\n", contour);
-    printf("delabella is %s\n", tris_delabella == 2*points - 4 - (contour-2) ? "CORRECT" : "WRONG");
+    printf("delabella is %s\n", tris_delabella == 2* vert_num - 4 - (contour-2) ? "CORRECT" : "WRONG");
 
 
 	// if positive, all ok 
@@ -404,7 +405,6 @@ int main(int argc, char* argv[])
 
 	printf("box: x0:%f y0:%f x1:%f y1:%f\n", box[0], box[1], box[2], box[3]);
 
-    int vert_num = contour + non_contour;
     // pure indices, without: center points, restarts, loop closing
     // points may be a bit too much (cuza duplicates)
     int voronoi_indices = 2 * (vert_num + tris_delabella - 1) + contour;
@@ -549,16 +549,14 @@ int main(int argc, char* argv[])
 
     // now, everything is copied to gl, free delabella
 	#ifdef CRUDE_XA
-	xa_pool_stat();
+	printf("xa_pool_stats:\n");
+	xa_pool_stat(); // show pool overhead
+	// close pool before destroy so we won't move 
+	// everything unneccessarily to the pool
+	xa_pool_free(); 
 	#endif
 
     idb->Destroy();
-
-	#ifdef CRUDE_XA
-	printf("--\n");
-	xa_pool_stat();
-	xa_pool_free();
-	#endif
 
     int vpw, vph;
     SDL_GL_GetDrawableSize(window, &vpw, &vph);
