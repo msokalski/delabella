@@ -249,7 +249,7 @@ int main(int argc, char* argv[])
         fclose(f);
     }
 
-    int points = cloud.size();
+    int points = (int)cloud.size();
 
     #ifdef DELAUNATOR
     std::vector<double> coords;
@@ -394,7 +394,7 @@ int main(int argc, char* argv[])
     {
         vbo_ptr[3*i+0] = (GLfloat)cloud[i].x;
         vbo_ptr[3*i+1] = (GLfloat)cloud[i].y;
-        vbo_ptr[3*i+2] = i%5; // color
+        vbo_ptr[3*i+2] = (GLfloat)(1.0); // i%5; // color
 
         box[0] = fmin(box[0], (float)cloud[i].x);
         box[1] = fmin(box[1], (float)cloud[i].y);
@@ -436,9 +436,9 @@ int main(int argc, char* argv[])
         ibo_ptr[3*i+2] = (GLuint)v2;
 
         // put it into vbo_voronoi at 'i'
-        vbo_voronoi_ptr[3*i+0] = -0.5 * (double)dela->n.x / (double)dela->n.z;
-        vbo_voronoi_ptr[3*i+1] = -0.5 * (double)dela->n.y / (double)dela->n.z;
-        vbo_voronoi_ptr[3*i+2] = 1.0;
+        vbo_voronoi_ptr[3*i+0] = (GLfloat)(-0.5 * (double)dela->n.x / (double)dela->n.z);
+        vbo_voronoi_ptr[3*i+1] = (GLfloat)(-0.5 * (double)dela->n.y / (double)dela->n.z);
+        vbo_voronoi_ptr[3*i+2] = (GLfloat)(1.0);
 
 		dela = dela->next;
 	}
@@ -457,9 +457,9 @@ int main(int argc, char* argv[])
         double ny = cloud[vert->i].x - cloud[prev->i].x;
 
         // put infinite edge normal to vbo_voronoi at tris_delabella + 'i'
-        vbo_voronoi_ptr[3*(tris_delabella+i)+0] = nx; 
-        vbo_voronoi_ptr[3*(tris_delabella+i)+1] = ny; 
-        vbo_voronoi_ptr[3*(tris_delabella+i)+2] = 0.0;
+        vbo_voronoi_ptr[3*(tris_delabella+i)+0] = (GLfloat)(nx);
+        vbo_voronoi_ptr[3*(tris_delabella+i)+1] = (GLfloat)(ny);
+        vbo_voronoi_ptr[3*(tris_delabella+i)+2] = (GLfloat)(0.0);
 
         // create special-fan / line_strip in ibo_voronoi around this boundary vertex
         ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)i + tris_delabella; // begin
