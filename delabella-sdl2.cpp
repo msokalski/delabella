@@ -5,6 +5,8 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #define _CRT_SECURE_NO_WARNINGS
 
+#define DELAUNATOR
+
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -549,8 +551,6 @@ int main(int argc, char* argv[])
 
     // now, everything is copied to gl, free delabella
 	#ifdef CRUDE_XA
-	printf("xa_pool_stats:\n");
-	xa_pool_stat(); // show pool overhead
 	// close pool before destroy so we won't move 
 	// everything unneccessarily to the pool
 	xa_pool_free(); 

@@ -183,8 +183,13 @@ struct CDelaBella : IDelaBella
 
 	int Prepare(int* start, Face** hull, int* out_hull_faces, Face** cache)
 	{
+		if (errlog_proc)
+			errlog_proc(errlog_file, "[PRO] sorting vertices\n");
 		int points = inp_verts;
 		std::sort(vert_alloc, vert_alloc + points);
+
+		if (errlog_proc)
+			errlog_proc(errlog_file, "[PRO] looking for duplicates\n");
 
 		// rmove dups
 		{
@@ -213,7 +218,7 @@ struct CDelaBella : IDelaBella
 			if (points - w)
 			{
 				if (errlog_proc)
-					errlog_proc(errlog_file, "[WRN] detected %d dups in xy array!\n", points - w);
+					errlog_proc(errlog_file, "[WRN] detected %d duplicates in xy array!\n", points - w);
 				points = w;
 			}
 		}
@@ -604,8 +609,22 @@ struct CDelaBella : IDelaBella
 
 		/////////////////////////////////////////////////////////////////////////
 		// ACTUAL ALGORITHM
+
+		int pro = 0;
 		for (; i < points; i++)
 		{
+			if (i >= pro)
+			{
+				int p = (int)((uint64_t)100 * i / points);
+				pro = (int)((uint64_t)(p+1) * points / 100);
+				if (pro >= points)
+					pro = points - 1;
+				if (i == points - 1)
+					p = 100;
+				if (errlog_proc)
+					errlog_proc(errlog_file, "\r[PRO] %d%%%s", p, p==100?"\n" : "");
+			}
+
 			//ValidateHull(alloc, 2 * i - 4);
 			Vert* q = vert_alloc + i;
 			Vert* p = vert_alloc + i - 1;
@@ -762,6 +781,9 @@ struct CDelaBella : IDelaBella
 			vert_alloc[j].sew = 0;
 		}
 
+		if (errlog_proc)
+			errlog_proc(errlog_file, "[PRO] postprocessing triangles\n");
+
 		int others = 0;
 
 		i = 0;
@@ -799,6 +821,9 @@ struct CDelaBella : IDelaBella
 		*prev_dela = 0;
 		*prev_hull = 0;
 
+		if (errlog_proc)
+			errlog_proc(errlog_file, "[PRO] postprocessing edges\n");
+
 		// let's trace boudary contour, at least one vertex of first_hull_face
 		// must be shared with dela face, find that dela face
 		DelaBella_Iterator it;
@@ -833,6 +858,9 @@ struct CDelaBella : IDelaBella
 			assert(t!=e);
 		}
 
+		if (errlog_proc)
+			errlog_proc(errlog_file, "[PRO] postprocessing vertices\n");
+
 		// link all other verts into internal list
 		first_internal_vert = 0;
 		Vert** prev_inter = &first_internal_vert;
@@ -845,7 +873,6 @@ struct CDelaBella : IDelaBella
 				prev_inter = (Vert**)&next->next;
 			}
 		}
-
 
 		return 3*i;
 	}

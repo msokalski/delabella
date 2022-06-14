@@ -199,32 +199,6 @@ int xa_leaks(int* bytes)
 static int xa_pool_size = 0;
 static V** xa_pool;
 
-int xa_pool_stat()
-{
-	int bytes = 0;
-	for (int i = 0; i < xa_pool_size; i++)
-	{
-		int n = 0;
-		V* v = xa_pool[i];
-		while (v)
-		{
-			n++;
-			v = *(V**)v;
-		}
-
-		if (n)
-		{
-			int s = sizeof(V) + i * D_BYTES - D_BYTES;
-			bytes += n*s;
-			printf("%d : %d\n", i, n);
-		}
-	}
-
-	printf("%d bytes\n", bytes);
-
-	return bytes;
-}
-
 void xa_pool_alloc(int s)
 {
 	for (int i = s; i < xa_pool_size; i++)
@@ -277,7 +251,7 @@ V* xa_alloc(int digs)
 	static int id = 1;
 	if (id == break_id)
 	{
-		printf(" ");
+		printf("break alloc %d\n", break_id);
 	}
 
 	Head* q = (Head*)malloc(s+head_bytes);
@@ -1570,8 +1544,11 @@ static V* xa_sub_abs(const V *a, const V *b)
 		if (dig == num)
 		{
 			// continue with longer till contains 0s
-			while (dig < digs && !a->data[dig])
+			while (dig < digs && !a->data[adig])
+			{
+				adig--;
 				dig++;
+			}
 		}
 
 		// trim
@@ -1756,6 +1733,7 @@ static V* xa_sub_abs(const V *a, const V *b)
 
 		head-=clip;
 		digs-=clip;
+
 		V *r = xa_alloc(digs);
 		r->sign = swapped ? 1 : 0;
 		r->quot = head;
