@@ -11,13 +11,13 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 // its about 50x slower than regular floating point setup
 // but if you need it it's priceless!
 #include "crude-xa/src/crude-xa.h"
-typedef XA_REF Signed14;   // BITS			xy coords
-typedef XA_REF Signed15;   // BITS + 1		vect::xy
-typedef XA_REF Unsigned28; // 2xBITS		z coord
-typedef XA_REF Signed29;   // 2xBITS + 1	vect::z
-typedef XA_REF Signed31;   // 2xBITS + 3	norm::z
-typedef XA_REF Signed45;   // 3xBITS + 3	norm::xy
-typedef XA_REF Signed62;   // 4xBITS + 6	dot(vect,norm)
+typedef double Signed14;   // BITS			xy coords
+typedef double Signed15;   // BITS + 1		vect::xy
+typedef double Unsigned28; // 2xBITS		z coord
+typedef double Signed29;   // 2xBITS + 1	vect::z
+typedef double Signed31;   // 2xBITS + 3	norm::z
+typedef double Signed45;   // 3xBITS + 3	norm::xy
+typedef double Signed62;   // 4xBITS + 6	dot(vect,norm)
 #else
 // regular floating point setup
 /*

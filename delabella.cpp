@@ -35,6 +35,10 @@ IDelaBella::~IDelaBella()
 {
 }
 
+int total_tests = 0;
+int inexact_tests = 0;
+int approx_tests = 0;
+
 struct CDelaBella : IDelaBella
 {
 	struct Face;
@@ -142,19 +146,112 @@ struct CDelaBella : IDelaBella
 				(Signed62)n.z * (Signed62)((Signed29)((Vert*)v[0])->z - (Signed29)p.z);
 		}
 
+		// test
 		bool dotNP(const Vert& p)
 		{
-			return 
-				(Signed62)n.x * (Signed62)((Signed15)p.x - (Signed15)v[0]->x) + 
-				(Signed62)n.y * (Signed62)((Signed15)p.y - (Signed15)v[0]->y) <= 
-				(Signed62)n.z * (Signed62)((Signed29)((Vert*)v[0])->z - (Signed29)p.z);
+			double approx_dot = n.x * (p.x - v[0]->x) + n.y * (p.y - v[0]->y) + n.z * (p.z - ((Vert*)v[0])->z);
+
+			double err = fabs(p.x) + fabs(p.y) + /*fabs*/(p.z) +
+				fabs(v[0]->x) + fabs(v[0]->y) + /*fabs*/(((Vert*)v[0])->z) +
+				fabs(v[1]->x) + fabs(v[1]->y) + /*fabs*/(((Vert*)v[1])->z) +
+				fabs(v[2]->x) + fabs(v[2]->y) + /*fabs*/(((Vert*)v[2])->z);
+
+			err *= 0x1P-47; // prove it's safe!
+
+			if (approx_dot + err < 0)
+				return true;
+			if (approx_dot - err > 0)
+				return false;
+
+			XA_REF px = p.x;
+			XA_REF py = p.y;
+
+			XA_REF adx = (XA_REF)v[0]->x - px;
+			XA_REF ady = (XA_REF)v[0]->y - py;
+			XA_REF bdx = (XA_REF)v[1]->x - px;
+			XA_REF bdy = (XA_REF)v[1]->y - py;
+			XA_REF cdx = (XA_REF)v[2]->x - px;
+			XA_REF cdy = (XA_REF)v[2]->y - py;
+
+			// swapped!
+			XA_REF abdet = bdx * ady - adx * bdy;
+			XA_REF bcdet = cdx * bdy - bdx * cdy;
+			XA_REF cadet = adx * cdy - cdx * ady;
+
+			XA_REF alift = adx * adx + ady * ady;
+			XA_REF blift = bdx * bdx + bdy * bdy;
+			XA_REF clift = cdx * cdx + cdy * cdy;
+
+			// 29 ops
+
+			return alift * bcdet + blift * cadet + clift * abdet <= 0;
 		}
 
+		#if 0 // ERR ESTIMATION LAB
+		bool dotNP(const Vert& p)
+		{
+			//double adx, ady, bdx, bdy, cdx, cdy;
+			//double abdet, bcdet, cadet;
+			//double alift, blift, clift;
+
+			XA_REF px = p.x;
+			XA_REF py = p.y;
+
+			XA_REF adx = (XA_REF)v[0]->x - px;
+			XA_REF ady = (XA_REF)v[0]->y - py;
+			XA_REF bdx = (XA_REF)v[1]->x - px;
+			XA_REF bdy = (XA_REF)v[1]->y - py;
+			XA_REF cdx = (XA_REF)v[2]->x - px;
+			XA_REF cdy = (XA_REF)v[2]->y - py;
+
+			// swapped!
+			XA_REF abdet = bdx * ady - adx * bdy;
+			XA_REF bcdet = cdx * bdy - bdx * cdy;
+			XA_REF cadet = adx * cdy - cdx * ady;
+
+			XA_REF alift = adx * adx + ady * ady;
+			XA_REF blift = bdx * bdx + bdy * bdy;
+			XA_REF clift = cdx * cdx + cdy * cdy;
+
+			// 29 ops
+
+			bool exact =  alift * bcdet + blift * cadet + clift * abdet <= 0;
+			double exact_dot = alift * bcdet + blift * cadet + clift * abdet;
+
+			// 8 ops
+
+			bool approx = n.x * (p.x - v[0]->x) + n.y * (p.y - v[0]->y) <=  n.z * (((Vert*)v[0])->z - p.z);
+			double approx_dot = n.x * (p.x - v[0]->x) + n.y * (p.y - v[0]->y) + n.z * (p.z - ((Vert*)v[0])->z);
+
+			double err = fabs(p.x) + fabs(p.y) + /*fabs*/(p.z) +
+				fabs(v[0]->x) + fabs(v[0]->y) + /*fabs*/(((Vert*)v[0])->z) +
+				fabs(v[1]->x) + fabs(v[1]->y) + /*fabs*/(((Vert*)v[1])->z) +
+				fabs(v[2]->x) + fabs(v[2]->y) + /*fabs*/(((Vert*)v[2])->z);
+
+			err *= 0x1P-47; // prove it's safe!
+
+			if (approx_dot + err < 0 || approx_dot - err > 0)
+			{
+				approx_tests++;
+				assert(exact == approx);
+			}
+
+			if (exact != approx)
+				inexact_tests++;
+
+			total_tests++;
+
+			return exact;
+		}
+		#endif
+
+		/*
 		Signed62 dot(const Vert& p) const // dot
 		{
 			Vect d = p - *(Vert*)v[0];
 			return (Signed62)n.x * (Signed62)d.x + (Signed62)n.y * (Signed62)d.y + (Signed62)n.z * (Signed62)d.z;
 		}
+		*/
 
 		Norm cross() const // cross of diffs
 		{
@@ -873,6 +970,8 @@ struct CDelaBella : IDelaBella
 				prev_inter = (Vert**)&next->next;
 			}
 		}
+
+		printf("%d / %d was inexact and %d did not need exact test\n", inexact_tests, total_tests, approx_tests);
 
 		return 3*i;
 	}

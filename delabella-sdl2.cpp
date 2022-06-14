@@ -230,6 +230,7 @@ int main(int argc, char* argv[])
         for (int i=0; i<n; i++)
         {
             MyPoint p = { d(gen) - 5.0, d(gen) - 5.0 };
+			//MyPoint p = { d(gen), d(gen) };
             cloud.push_back(p);
         }
 	}
