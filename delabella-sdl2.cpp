@@ -224,13 +224,13 @@ int main(int argc, char* argv[])
     	std::mt19937_64 gen{rd()};
 
         //std::uniform_real_distribution</*long*/ double> d(-1.0,1.0);
-        std::normal_distribution</*long*/ double> d{0.0,2.0};
-        //std::gamma_distribution</*long*/ double> d(0.1,2.0);
+        //std::normal_distribution</*long*/ double> d{0.0,2.0};
+        std::gamma_distribution</*long*/ double> d(0.1,2.0);
 
         for (int i=0; i<n; i++)
         {
-            //MyPoint p = { d(gen) - 5.0, d(gen) - 5.0 };
-			MyPoint p = { d(gen), d(gen) };
+            MyPoint p = { d(gen) - 5.0, d(gen) - 5.0 };
+			//MyPoint p = { d(gen), d(gen) };
             cloud.push_back(p);
         }
 	}
@@ -387,17 +387,27 @@ int main(int argc, char* argv[])
 
 	printf("preparing graphics...\n");
 
+	typedef GLfloat gl_t;
+	GLenum gl_e = GL_FLOAT;
+	#define glLoadMatrix(m) glLoadMatrixf(m)
+
+	// useless until glVertexAttribLPointer and accompanying shader using dmat/dvec/double arithmetic is being used
+	// typedef GLdouble gl_t;
+	// GLenum gl_e = GL_DOUBLE;
+	// #define glLoadMatrix(m) glLoadMatrixd(m)
+
+
     // create vbo and ibo
     Buf vbo, ibo_delabella;
 
-	vbo.Gen(GL_ARRAY_BUFFER, sizeof(GLfloat[3]) * points);
-    GLfloat* vbo_ptr = (GLfloat*)vbo.Map();
+	vbo.Gen(GL_ARRAY_BUFFER, sizeof(gl_t[3]) * points);
+    gl_t* vbo_ptr = (gl_t*)vbo.Map();
     float box[4]={(float)cloud[0].x, (float)cloud[0].y, (float)cloud[0].x, (float)cloud[0].y};
 	for (int i = 0; i<points; i++)
     {
-        vbo_ptr[3*i+0] = (GLfloat)cloud[i].x;
-        vbo_ptr[3*i+1] = (GLfloat)cloud[i].y;
-        vbo_ptr[3*i+2] = (GLfloat)(1.0); // i%5; // color
+        vbo_ptr[3*i+0] = (gl_t)cloud[i].x;
+        vbo_ptr[3*i+1] = (gl_t)cloud[i].y;
+        vbo_ptr[3*i+2] = (gl_t)(1.0); // i%5; // color
 
         box[0] = fmin(box[0], (float)cloud[i].x);
         box[1] = fmin(box[1], (float)cloud[i].y);
@@ -420,9 +430,9 @@ int main(int argc, char* argv[])
 
     int ibo_voronoi_idx = 0;
     Buf vbo_voronoi, ibo_voronoi;
-	vbo_voronoi.Gen(GL_ARRAY_BUFFER, sizeof(GLfloat[3]) * voronoi_vertices);
+	vbo_voronoi.Gen(GL_ARRAY_BUFFER, sizeof(gl_t[3]) * voronoi_vertices);
 	ibo_voronoi.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * voronoi_indices);
-    GLfloat* vbo_voronoi_ptr = (GLfloat*)vbo_voronoi.Map();
+    gl_t* vbo_voronoi_ptr = (gl_t*)vbo_voronoi.Map();
     GLuint* ibo_voronoi_ptr = (GLuint*)ibo_voronoi.Map();
 
     ibo_delabella.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delabella + sizeof(GLuint) * contour);	
@@ -441,23 +451,16 @@ int main(int argc, char* argv[])
         // put it into vbo_voronoi at 'i'
 
 		// almost exact in hybrid
-		vbo_voronoi_ptr[3 * i + 0] = (GLfloat)dela->n.x;
-		vbo_voronoi_ptr[3 * i + 1] = (GLfloat)dela->n.y;
-		vbo_voronoi_ptr[3 * i + 2] = (GLfloat)(-2.0*dela->n.z);
-
 		/*
-		double x, y;
-		dela->VoronoiVert(&x, &y);
-		vbo_voronoi_ptr[3 * i + 0] = (GLfloat)x;
-		vbo_voronoi_ptr[3 * i + 1] = (GLfloat)y;
-		vbo_voronoi_ptr[3 * i + 2] = (GLfloat)(1.0);
+		vbo_voronoi_ptr[3 * i + 0] = (gl_t)dela->n.x;
+		vbo_voronoi_ptr[3 * i + 1] = (gl_t)dela->n.y;
+		vbo_voronoi_ptr[3 * i + 2] = (gl_t)(-2.0*dela->n.z);
 		*/
 
-		/*
-        vbo_voronoi_ptr[3*i+0] = (GLfloat)(-0.5 * (double)dela->n.x / (double)dela->n.z);
-        vbo_voronoi_ptr[3*i+1] = (GLfloat)(-0.5 * (double)dela->n.y / (double)dela->n.z);
-        vbo_voronoi_ptr[3*i+2] = (GLfloat)(1.0);
-		*/
+		// less jumping on extreme zooming
+        vbo_voronoi_ptr[3*i+0] = (gl_t)(-0.5 * (double)dela->n.x / (double)dela->n.z);
+        vbo_voronoi_ptr[3*i+1] = (gl_t)(-0.5 * (double)dela->n.y / (double)dela->n.z);
+        vbo_voronoi_ptr[3*i+2] = (gl_t)(1.0);
 
 		dela = dela->next;
 	}
@@ -473,9 +476,11 @@ int main(int argc, char* argv[])
         contour_max = vert->i > contour_max ? vert->i : contour_max;
 
         // put infinite edge normal to vbo_voronoi at tris_delabella + 'i'
-        vbo_voronoi_ptr[3*(tris_delabella+i)+0] = (GLfloat)(prev->x);
-        vbo_voronoi_ptr[3*(tris_delabella+i)+1] = (GLfloat)(prev->y);
-        vbo_voronoi_ptr[3*(tris_delabella+i)+2] = (GLfloat)(0.0);
+
+		// coords are overwritten with edge normals in edge postproc!
+        vbo_voronoi_ptr[3*(tris_delabella+i)+0] = (gl_t)(prev->x);
+        vbo_voronoi_ptr[3*(tris_delabella+i)+1] = (gl_t)(prev->y);
+        vbo_voronoi_ptr[3*(tris_delabella+i)+2] = (gl_t)(0.0);
 
         // create special-fan / line_strip in ibo_voronoi around this boundary vertex
         ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)i + tris_delabella; // begin
@@ -745,7 +750,9 @@ int main(int argc, char* argv[])
 
         // hello ancient world
         vbo.Bind();
-        glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
+        //glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
+		glVertexPointer(3, gl_e, 0, 0);
+		glEnableClientState(GL_VERTEX_ARRAY);
 
         ibo_delabella.Bind();
 
@@ -782,9 +789,11 @@ int main(int argc, char* argv[])
 
         // voronoi!
         vbo_voronoi.Bind();
-        glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
+        //glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
+		glVertexPointer(3, gl_e, 0, 0);
+		glEnableClientState(GL_VERTEX_ARRAY);
 
-        const static GLfloat z2w[16]=
+        const static gl_t z2w[16]=
         {
             1,0,0,0,
             0,1,0,0,
@@ -792,7 +801,7 @@ int main(int argc, char* argv[])
             0,0,0,0
         };
 
-        glLoadMatrixf(z2w);
+        glLoadMatrix(z2w);
 
 		// voro-verts in back
 		glColor4f(1.0f, 1.0f, 0.0f, 1.0f);
