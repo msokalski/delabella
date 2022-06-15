@@ -223,14 +223,14 @@ int main(int argc, char* argv[])
        	std::random_device rd{};
     	std::mt19937_64 gen{rd()};
 
-        //std::uniform_real_distribution</*long*/ double> d(-1.0,1.0);
+        std::uniform_real_distribution</*long*/ double> d(-1.0,1.0);
         //std::normal_distribution</*long*/ double> d{0.0,2.0};
-        std::gamma_distribution</*long*/ double> d(0.1,2.0);
+        //std::gamma_distribution</*long*/ double> d(0.1,2.0);
 
         for (int i=0; i<n; i++)
         {
-            MyPoint p = { d(gen) - 5.0, d(gen) - 5.0 };
-			//MyPoint p = { d(gen), d(gen) };
+            //MyPoint p = { d(gen) - 5.0, d(gen) - 5.0 };
+			MyPoint p = { d(gen), d(gen) };
             cloud.push_back(p);
         }
 	}
@@ -277,7 +277,7 @@ int main(int argc, char* argv[])
     #endif
 
 	#ifdef CRUDE_XA
-	xa_pool_alloc(100);
+	xa_pool_alloc(1000);
 	#endif
 
 	IDelaBella* idb = IDelaBella::Create();

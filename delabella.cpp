@@ -46,6 +46,8 @@ struct CDelaBella : IDelaBella
 	struct Vert : DelaBella_Vertex
 	{
 		Unsigned28 z;
+		double e;
+
 		//Face* sew; now it is inherited!
 
 		Vect operator - (const Vert& v) const // diff
@@ -94,6 +96,7 @@ struct CDelaBella : IDelaBella
 	struct Face : DelaBella_Triangle
 	{
 		// Norm n;
+		double e;
 
 		static Face* Alloc(Face** from)
 		{
@@ -150,17 +153,11 @@ struct CDelaBella : IDelaBella
 		bool dotNP(const Vert& p)
 		{
 			double approx_dot = n.x * (p.x - v[0]->x) + n.y * (p.y - v[0]->y) + n.z * (p.z - ((Vert*)v[0])->z);
+			double approx_err = (e + p.e) * 0x1P-47; // prove it's safe!
 
-			double err = fabs(p.x) + fabs(p.y) + /*fabs*/(p.z) +
-				fabs(v[0]->x) + fabs(v[0]->y) + /*fabs*/(((Vert*)v[0])->z) +
-				fabs(v[1]->x) + fabs(v[1]->y) + /*fabs*/(((Vert*)v[1])->z) +
-				fabs(v[2]->x) + fabs(v[2]->y) + /*fabs*/(((Vert*)v[2])->z);
-
-			err *= 0x1P-47; // prove it's safe!
-
-			if (approx_dot + err < 0)
+			if (approx_dot < -approx_err)
 				return true;
-			if (approx_dot - err > 0)
+			if (approx_dot > +approx_err)
 				return false;
 
 			XA_REF px = p.x;
@@ -173,18 +170,10 @@ struct CDelaBella : IDelaBella
 			XA_REF cdx = (XA_REF)v[2]->x - px;
 			XA_REF cdy = (XA_REF)v[2]->y - py;
 
-			// swapped!
-			XA_REF abdet = bdx * ady - adx * bdy;
-			XA_REF bcdet = cdx * bdy - bdx * cdy;
-			XA_REF cadet = adx * cdy - cdx * ady;
-
-			XA_REF alift = adx * adx + ady * ady;
-			XA_REF blift = bdx * bdx + bdy * bdy;
-			XA_REF clift = cdx * cdx + cdy * cdy;
-
-			// 29 ops
-
-			return alift * bcdet + blift * cadet + clift * abdet <= 0;
+			return 
+				(adx * adx + ady * ady) * (cdx * bdy - bdx * cdy) +
+				(bdx * bdx + bdy * bdy) * (adx * cdy - cdx * ady) <=
+				(cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady); // re-swapped
 		}
 
 		#if 0 // ERR ESTIMATION LAB
@@ -253,9 +242,10 @@ struct CDelaBella : IDelaBella
 		}
 		*/
 
-		Norm cross() const // cross of diffs
+		void cross() // cross of diffs
 		{
-			return (*(Vert*)v[1] - *(Vert*)v[0]).cross(*(Vert*)v[2] - *(Vert*)v[0]);
+			n = (*(Vert*)v[1] - *(Vert*)v[0]).cross(*(Vert*)v[2] - *(Vert*)v[0]);
+			e = ((Vert*)v[0])->e + ((Vert*)v[1])->e + ((Vert*)v[2])->e;
 		}
 	};
 
@@ -376,7 +366,7 @@ struct CDelaBella : IDelaBella
 		f.v[0] = vert_alloc + 0;
 		f.v[1] = vert_alloc + 1;
 		f.v[2] = vert_alloc + 2;
-		f.n = f.cross();
+		f.cross();
 
 		bool colinear = f.n.z == 0;
 		int i = 3;
@@ -520,8 +510,8 @@ struct CDelaBella : IDelaBella
 						first_internal_vert = 0;
 					}
 
-					first_dela_face->n = first_dela_face->cross();
-					first_hull_face->n = first_hull_face->cross();
+					first_dela_face->cross();
+					first_hull_face->cross();
 
 					return 3;
 				}
@@ -550,7 +540,7 @@ struct CDelaBella : IDelaBella
 				first_side->v[0] = p;
 				first_side->v[1] = n;
 				first_side->v[2] = q;
-				first_side->n = first_side->cross();
+				first_side->cross();
 				*hull = first_side;
 
 				p = n;
@@ -566,13 +556,13 @@ struct CDelaBella : IDelaBella
 					base->v[0] = n;
 					base->v[1] = p;
 					base->v[2] = last;
-					base->n = base->cross();
+					base->cross();
 
 					Face* side = Face::Alloc(cache);
 					side->v[0] = p;
 					side->v[1] = n;
 					side->v[2] = q;
-					side->n = side->cross();
+					side->cross();
 
 					side->f[2] = base;
 					base->f[2] = side;
@@ -597,7 +587,7 @@ struct CDelaBella : IDelaBella
 				last_side->v[0] = p;
 				last_side->v[1] = n;
 				last_side->v[2] = q;
-				last_side->n = last_side->cross();
+				last_side->cross();
 
 				last_side->f[1] = prev_side;
 				prev_side->f[0] = last_side;
@@ -622,7 +612,7 @@ struct CDelaBella : IDelaBella
 				first_side->v[0] = n;
 				first_side->v[1] = p;
 				first_side->v[2] = q;
-				first_side->n = first_side->cross();
+				first_side->cross();
 				*hull = first_side;
 
 				p = n;
@@ -638,13 +628,13 @@ struct CDelaBella : IDelaBella
 					base->v[0] = p;
 					base->v[1] = n;
 					base->v[2] = last;
-					base->n = base->cross();
+					base->cross();
 
 					Face* side = Face::Alloc(cache);
 					side->v[0] = n;
 					side->v[1] = p;
 					side->v[2] = q;
-					side->n = side->cross();
+					side->cross();
 
 					side->f[2] = base;
 					base->f[2] = side;
@@ -669,7 +659,7 @@ struct CDelaBella : IDelaBella
 				last_side->v[0] = n;
 				last_side->v[1] = p;
 				last_side->v[2] = q;
-				last_side->n = last_side->cross();
+				last_side->cross();
 
 				last_side->f[0] = prev_side;
 				prev_side->f[1] = last_side;
@@ -802,7 +792,7 @@ struct CDelaBella : IDelaBella
 							s->v[1] = b;
 							s->v[2] = q;
 
-							s->n = s->cross();
+							s->cross();
 							s->f[2] = n;
 
 							// change neighbour's adjacency from old visible face to cone side
@@ -1031,6 +1021,7 @@ struct CDelaBella : IDelaBella
 			v->x = (Signed14)*(const float*)((const char*)x + i*advance_bytes);
 			v->y = (Signed14)*(const float*)((const char*)y + i*advance_bytes);
 			v->z = s14sqr(v->x) + s14sqr(v->y);
+			v->e = fabs(v->x) + fabs(v->y) + v->z;
 		}
 		
 		out_hull_faces = 0;
@@ -1060,6 +1051,7 @@ struct CDelaBella : IDelaBella
 			v->x = (Signed14)*(const double*)((const char*)x + i*advance_bytes);
 			v->y = (Signed14)*(const double*)((const char*)y + i*advance_bytes);
 			v->z = s14sqr(v->x) + s14sqr(v->y);
+			v->e = fabs(v->x) + fabs(v->y) + v->z;
 		}
 
 		out_hull_faces = 0;
@@ -1089,6 +1081,7 @@ struct CDelaBella : IDelaBella
 			v->x = (Signed14)*(const long double*)((const char*)x + i*advance_bytes);
 			v->y = (Signed14)*(const long double*)((const char*)y + i*advance_bytes);
 			v->z = s14sqr(v->x) + s14sqr(v->y);
+			v->e = fabs(v->x) + fabs(v->y) + v->z;
 		}
 
 		out_hull_faces = 0;
