@@ -814,7 +814,7 @@ int main(int argc, char* argv[])
 
         if (prim_restart)
         {
-            // first, draw open cells
+            // first, draw open cells, maybe split infinite lines to separate call? (so we could color them differently)
             glDrawElements(GL_LINE_STRIP, voronoi_strip_indices, GL_UNSIGNED_INT, (GLuint*)0);
 
             // then closed cells
@@ -822,8 +822,8 @@ int main(int argc, char* argv[])
         }
         else
         {
-            // first, draw open cells
-            glDrawElements(GL_LINES, voronoi_strip_indices, GL_UNSIGNED_INT, (GLuint*)0);
+			// first, draw open cells, maybe split infinite lines to separate call? (so we could color them differently)
+			glDrawElements(GL_LINES, voronoi_strip_indices, GL_UNSIGNED_INT, (GLuint*)0);
 
             // then closed cells
             glDrawElements(GL_LINES, voronoi_loop_indices, GL_UNSIGNED_INT, (GLuint*)0 + voronoi_strip_indices);
