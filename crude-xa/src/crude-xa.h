@@ -372,13 +372,17 @@ struct XA_REF
 		return r;
 	}
 
-	const XA_VAL* operator -> () const
+	XA_VAL* operator -> () const
 	{
-		static const XA_VAL null{/*sign:*/0,/*digs:*/0,/*quot:*/0,/*refs:*/1,/*data:*/{(XA_DIG)0}};
+		static XA_VAL null{/*sign:*/0,/*digs:*/0,/*quot:*/0,/*refs:*/1,/*data:*/{(XA_DIG)0}};
+
 		if (v)
 			return v;
 		else
+		{
+			null.quot = 0;
 			return &null;
+		}
 	}
 
     // todo

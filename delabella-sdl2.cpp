@@ -17,7 +17,6 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
-#undef main
 
 #include <random>
 
@@ -30,6 +29,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #else
 #pragma comment(lib,"OpenGL32.lib")
 #pragma comment(lib,"SDL2.lib")
+#undef main // on windows SDL does this weird thing
 #endif
 
 // competitor
@@ -223,8 +223,8 @@ int main(int argc, char* argv[])
        	std::random_device rd{};
     	std::mt19937_64 gen{rd()};
 
-        std::uniform_real_distribution</*long*/ double> d(-1.0,1.0);
-        //std::normal_distribution</*long*/ double> d{0.0,2.0};
+        //std::uniform_real_distribution</*long*/ double> d(-1.0,1.0);
+        std::normal_distribution</*long*/ double> d{0.0,2.0};
         //std::gamma_distribution</*long*/ double> d(0.1,2.0);
 
         for (int i=0; i<n; i++)
@@ -439,9 +439,25 @@ int main(int argc, char* argv[])
         ibo_ptr[3*i+2] = (GLuint)v2;
 
         // put it into vbo_voronoi at 'i'
+
+		// almost exact in hybrid
+		vbo_voronoi_ptr[3 * i + 0] = (GLfloat)dela->n.x;
+		vbo_voronoi_ptr[3 * i + 1] = (GLfloat)dela->n.y;
+		vbo_voronoi_ptr[3 * i + 2] = (GLfloat)(-2.0*dela->n.z);
+
+		/*
+		double x, y;
+		dela->VoronoiVert(&x, &y);
+		vbo_voronoi_ptr[3 * i + 0] = (GLfloat)x;
+		vbo_voronoi_ptr[3 * i + 1] = (GLfloat)y;
+		vbo_voronoi_ptr[3 * i + 2] = (GLfloat)(1.0);
+		*/
+
+		/*
         vbo_voronoi_ptr[3*i+0] = (GLfloat)(-0.5 * (double)dela->n.x / (double)dela->n.z);
         vbo_voronoi_ptr[3*i+1] = (GLfloat)(-0.5 * (double)dela->n.y / (double)dela->n.z);
         vbo_voronoi_ptr[3*i+2] = (GLfloat)(1.0);
+		*/
 
 		dela = dela->next;
 	}
@@ -456,12 +472,9 @@ int main(int argc, char* argv[])
         contour_min = vert->i < contour_min ? vert->i : contour_min;
         contour_max = vert->i > contour_max ? vert->i : contour_max;
 
-        double nx = cloud[prev->i].y - cloud[vert->i].y;
-        double ny = cloud[vert->i].x - cloud[prev->i].x;
-
         // put infinite edge normal to vbo_voronoi at tris_delabella + 'i'
-        vbo_voronoi_ptr[3*(tris_delabella+i)+0] = (GLfloat)(nx);
-        vbo_voronoi_ptr[3*(tris_delabella+i)+1] = (GLfloat)(ny);
+        vbo_voronoi_ptr[3*(tris_delabella+i)+0] = (GLfloat)(prev->x);
+        vbo_voronoi_ptr[3*(tris_delabella+i)+1] = (GLfloat)(prev->y);
         vbo_voronoi_ptr[3*(tris_delabella+i)+2] = (GLfloat)(0.0);
 
         // create special-fan / line_strip in ibo_voronoi around this boundary vertex
@@ -771,12 +784,6 @@ int main(int argc, char* argv[])
         vbo_voronoi.Bind();
         glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
 
-        // voro-verts in back
-        glColor4f(1.0f,1.0f,0.0f,1.0f);
-        glPointSize(3.0f);
-        glDrawArrays(GL_POINTS, 0, tris_delabella);
-        glPointSize(1.0f);        
-
         const static GLfloat z2w[16]=
         {
             1,0,0,0,
@@ -787,6 +794,11 @@ int main(int argc, char* argv[])
 
         glLoadMatrixf(z2w);
 
+		// voro-verts in back
+		glColor4f(1.0f, 1.0f, 0.0f, 1.0f);
+		glPointSize(3.0f);
+		glDrawArrays(GL_POINTS, 0, tris_delabella);
+		glPointSize(1.0f);
         ibo_voronoi.Bind();
 
         glColor4f(0.0f,0.75f,0.0f,1.0f);

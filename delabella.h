@@ -62,7 +62,7 @@ struct DelaBella_Iterator;
 struct DelaBella_Vertex
 {
 	int i; // index of original point
-	Signed14 x,y; // coordinates (input copy)
+	Signed14 x,y; // coordinates (input copy) -> changed to edge normal during postprocessing
 	DelaBella_Vertex* next; // next in internal / boundary set of vertices
 	DelaBella_Triangle* sew; // one of triangles sharing this vertex
 

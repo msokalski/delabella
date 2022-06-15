@@ -46,7 +46,7 @@ struct CDelaBella : IDelaBella
 	struct Vert : DelaBella_Vertex
 	{
 		Unsigned28 z;
-		double e;
+		//double e;
 
 		//Face* sew; now it is inherited!
 
@@ -153,7 +153,23 @@ struct CDelaBella : IDelaBella
 		bool dotNP(const Vert& p)
 		{
 			double approx_dot = n.x * (p.x - v[0]->x) + n.y * (p.y - v[0]->y) + n.z * (p.z - ((Vert*)v[0])->z);
-			double approx_err = (e + p.e) * 0x1P-47; // prove it's safe!
+			//double approx_err = (e + p.e) * 0x1P-52; // * 0x1P-47; // prove it's safe!
+
+			double approx_err = 0x1P-45 * (
+				/*
+				fabs(v[1]->x - v[0]->x) +
+				fabs(v[1]->y - v[0]->y) +
+				fabs(((Vert*)v[1])->z - ((Vert*)v[0])->z) +
+				fabs(v[2]->x - v[0]->x) +
+				fabs(v[2]->y - v[0]->y) +
+				fabs(((Vert*)v[2])->z - ((Vert*)v[0])->z) +
+				*/
+				this->e +
+				fabs(p.x - v[0]->x) +
+				fabs(p.y - v[0]->y) +
+				fabs(p.z - ((Vert*)v[0])->z)
+				);
+
 
 			if (approx_dot < -approx_err)
 				return true;
@@ -245,7 +261,13 @@ struct CDelaBella : IDelaBella
 		void cross() // cross of diffs
 		{
 			n = (*(Vert*)v[1] - *(Vert*)v[0]).cross(*(Vert*)v[2] - *(Vert*)v[0]);
-			e = ((Vert*)v[0])->e + ((Vert*)v[1])->e + ((Vert*)v[2])->e;
+			//e = ((Vert*)v[0])->e + ((Vert*)v[1])->e + ((Vert*)v[2])->e;
+			e = fabs(v[1]->x - v[0]->x) +
+				fabs(v[1]->y - v[0]->y) +
+				fabs(((Vert*)v[1])->z - ((Vert*)v[0])->z) +
+				fabs(v[2]->x - v[0]->x) +
+				fabs(v[2]->y - v[0]->y) +
+				fabs(((Vert*)v[2])->z - ((Vert*)v[0])->z);
 		}
 	};
 
@@ -886,6 +908,44 @@ struct CDelaBella : IDelaBella
 			((Vert*)f->v[1])->sew = f;
 			((Vert*)f->v[2])->sew = f;
 
+			// recalc triangle normal as accurately as possible
+			{
+				XA_REF x0 = f->v[0]->x, y0 = f->v[0]->y, z0 = x0 * x0 + y0 * y0;
+				XA_REF x1 = f->v[1]->x, y1 = f->v[1]->y/*, z1 = x1 * x1 + y1 * y1*/;
+				XA_REF x2 = f->v[2]->x, y2 = f->v[2]->y/*, z2 = x2 * x2 + y2 * y2*/;
+
+				XA_REF v1x = x1 - x0, v1y = y1 - y0, v1z = /*z1*/x1 * x1 + y1 * y1 - z0;
+				XA_REF v2x = x2 - x0, v2y = y2 - y0, v2z = /*z2*/x2 * x2 + y2 * y2 - z0;
+
+				// maybe attach these values temporarily to f
+				// so we could sort triangles and build polygons?
+				XA_REF nx = v1y * v2z - v1z * v2y;
+				XA_REF ny = v1z * v2x - v1x * v2z;
+				XA_REF nz = v1x * v2y - v1y * v2x;
+
+				int exponent = (nx->quot + ny->quot + 2 * nz->quot + 2) / 4;
+				nx->quot -= exponent;
+				ny->quot -= exponent;
+				nz->quot -= exponent;
+
+				f->n.x = (double)nx;
+				f->n.y = (double)ny;
+
+				if (f->n.z < 0 && nz >= 0 || f->n.z >= 0 && nz < 0)
+					printf("fixed!\n");
+
+				f->n.z = (double)nz;
+
+				if (nz != 0 && f->n.z == 0)
+					f->n.z = nz->sign ? -FLT_MIN : FLT_MIN;
+
+				if (nx != 0 && f->n.x == 0)
+					f->n.x = nx->sign ? -FLT_MIN: FLT_MIN;
+
+				if (ny != 0 && f->n.y == 0)
+					f->n.y = ny->sign ? -FLT_MIN : FLT_MIN;
+			}
+
 			if (f->n.z < 0)
 			{
 				f->index = i;  // store index in dela list
@@ -921,6 +981,9 @@ struct CDelaBella : IDelaBella
 		first_boundary_vert = (Vert*)v;
 		out_boundary_verts = 1;
 
+		double wrap_x = v->x;
+		double wrap_y = v->y;
+
 		while (1)
 		{
 			if (t->n.z < 0)
@@ -930,6 +993,20 @@ struct CDelaBella : IDelaBella
 
 				if (t->f[pr]->n.z >= 0)
 				{
+					// change x,y to the edge's normal as accurately as possible
+					{
+						bool wrap = t->v[nx] == first_boundary_vert;
+						XA_REF px = v->x, py = v->y;
+						XA_REF vx = wrap ? wrap_x : t->v[nx]->x, vy = wrap ? wrap_y : t->v[nx]->y;
+						XA_REF nx = py - vy;
+						XA_REF ny = vx - px;
+						int exponent = (nx->quot + ny->quot + 1) / 2;
+						nx->quot -= exponent;
+						ny->quot -= exponent;
+						v->x = (double)nx;
+						v->y = (double)ny;
+					}
+
 					// let's move from: v to t->v[nx]
 					v->next = t->v[nx];
 					v = v->next;
@@ -1021,7 +1098,7 @@ struct CDelaBella : IDelaBella
 			v->x = (Signed14)*(const float*)((const char*)x + i*advance_bytes);
 			v->y = (Signed14)*(const float*)((const char*)y + i*advance_bytes);
 			v->z = s14sqr(v->x) + s14sqr(v->y);
-			v->e = fabs(v->x) + fabs(v->y) + v->z;
+			//v->e = fabs(v->x) + fabs(v->y) + v->z;
 		}
 		
 		out_hull_faces = 0;
@@ -1051,7 +1128,7 @@ struct CDelaBella : IDelaBella
 			v->x = (Signed14)*(const double*)((const char*)x + i*advance_bytes);
 			v->y = (Signed14)*(const double*)((const char*)y + i*advance_bytes);
 			v->z = s14sqr(v->x) + s14sqr(v->y);
-			v->e = fabs(v->x) + fabs(v->y) + v->z;
+			//v->e = fabs(v->x) + fabs(v->y) + v->z;
 		}
 
 		out_hull_faces = 0;
@@ -1081,7 +1158,7 @@ struct CDelaBella : IDelaBella
 			v->x = (Signed14)*(const long double*)((const char*)x + i*advance_bytes);
 			v->y = (Signed14)*(const long double*)((const char*)y + i*advance_bytes);
 			v->z = s14sqr(v->x) + s14sqr(v->y);
-			v->e = fabs(v->x) + fabs(v->y) + v->z;
+			//v->e = fabs(v->x) + fabs(v->y) + v->z;
 		}
 
 		out_hull_faces = 0;
