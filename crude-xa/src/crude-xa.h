@@ -91,6 +91,11 @@ struct XA_REF
         v=0;
     }
 
+	int cmp(const XA_REF& w) const
+	{
+		return xa_cmp(v, w.v);
+	}
+
 	operator long double () const
 	{
 		return xa_extr(v);
@@ -434,5 +439,181 @@ inline std::ostream& operator << (std::ostream& os, const XA_REF& w)
 	free(str);
 	return os;
 }
+
+#include <math.h>
+struct IA_VAL
+{
+	IA_VAL() : lo(0), hi(0) {}
+	IA_VAL(double d) : lo(d), hi(d) {}
+	IA_VAL(const IA_VAL& v) : lo(v.lo), hi(v.hi) {}
+
+	inline void explode()
+	{
+		lo = lo > 0 ? lo * (1.0 - 4 * DBL_EPSILON) : lo < 0 ? lo * (1.0 + 4 * DBL_EPSILON) : -DBL_MIN;
+		hi = hi > 0 ? hi * (1.0 + 4 * DBL_EPSILON) : hi < 0 ? hi * (1.0 - 4 * DBL_EPSILON) : +DBL_MIN;
+	}
+
+	operator double() const
+	{
+		return (lo + hi) / 2;
+	}
+
+	/*
+	IA_VAL operator + (double d) const
+	{
+		IA_VAL r;
+		r.lo = nexttoward(lo + d, -INFINITY);
+		r.hi = nexttoward(hi + d, +INFINITY);
+		return r;
+	}
+	*/
+
+	IA_VAL operator + (const IA_VAL& v) const
+	{
+		IA_VAL r;
+		r.lo = lo + v.lo;
+		r.hi = hi + v.hi;
+		r.explode();
+		assert(r.lo < r.hi);
+		return r;
+	}
+
+	/*
+	IA_VAL operator - (double d) const
+	{
+		IA_VAL r;
+		r.lo = nexttoward(lo - d, -INFINITY);
+		r.hi = nexttoward(hi - d, +INFINITY);
+		return r;
+	}
+	*/
+
+	IA_VAL operator - (const IA_VAL& v) const
+	{
+		IA_VAL r;
+		r.lo = lo - v.hi;
+		r.hi = hi - v.lo;
+		r.explode();
+		assert(r.lo < r.hi);
+		return r;
+	}
+
+	/*
+	IA_VAL operator * (double d) const
+	{
+		IA_VAL r;
+		if (d == 0)
+			return r;
+		if (d < 0)
+		{
+			r.lo = nexttoward(r.hi * d, -INFINITY);
+			r.hi = nexttoward(r.lo * d, +INFINITY);
+			return r;
+		}
+		r.lo = nexttoward(r.lo * d, -INFINITY);
+		r.hi = nexttoward(r.hi * d, +INFINITY);
+		return r;
+	}
+	*/
+
+	IA_VAL operator * (const IA_VAL& v) const
+	{
+		IA_VAL r;
+
+		if (lo >= 0)
+		{
+			if (v.lo >= 0)	// +    +    +    +
+			{
+				r.lo = lo * v.lo * (1.0 - 4 * DBL_EPSILON);
+				r.hi = hi * v.hi * (1.0 + 4 * DBL_EPSILON);
+			}
+			else
+			if (v.hi < 0)	// +    +    -    -
+			{
+				r.lo = hi * v.hi * (1.0 + 4 * DBL_EPSILON);
+				r.hi = lo * v.hi * (1.0 - 4 * DBL_EPSILON);
+			}
+			else			// +    +    -    +
+			{
+				r.lo = hi * v.lo * (1.0 + 4 * DBL_EPSILON);
+				r.hi = hi * v.hi * (1.0 + 4 * DBL_EPSILON);
+			}
+		}
+		else
+		if (hi < 0)
+		{
+			if (v.lo >= 0)	// -    -    +    +
+			{
+				r.lo = lo * v.hi * (1.0 + 4 * DBL_EPSILON);
+				r.hi = hi * v.lo * (1.0 - 4 * DBL_EPSILON);
+			}
+			else
+			if (v.hi < 0)	// -    -    -    -
+			{
+				r.lo = hi * v.hi * (1.0 - 4 * DBL_EPSILON);
+				r.hi = lo * v.lo * (1.0 + 4 * DBL_EPSILON);
+			}
+			else			// -    -    -    +
+			{
+				r.lo = lo * v.hi * (1.0 + 4 * DBL_EPSILON);
+				r.hi = hi * v.lo * (1.0 + 4 * DBL_EPSILON);
+			}
+		}
+		else
+		{
+			if (v.lo >= 0)	// -    +    +    +
+			{
+				r.lo = lo * v.hi * (1.0 + 4 * DBL_EPSILON);
+				r.hi = hi * v.hi * (1.0 + 4 * DBL_EPSILON);
+			}
+			else
+			if (v.hi < 0)	// -    +    -    -
+			{
+				r.lo = hi * v.lo * (1.0 + 4 * DBL_EPSILON);
+				r.hi = lo * v.lo * (1.0 + 4 * DBL_EPSILON);
+			}
+			else			// -    +    -    +
+			{
+				r.lo = std::min(lo * v.hi, hi * v.lo) * (1.0 + 4 * DBL_EPSILON);
+				r.hi = std::max(lo * v.lo, hi * v.hi) * (1.0 + 4 * DBL_EPSILON);
+			}
+		}
+
+		assert(r.lo < r.hi);
+		return r;
+	}
+
+	bool operator < (int i) const
+	{
+		return hi < i;
+	}
+
+	bool operator < (double d) const
+	{
+		return hi < d;
+	}
+
+	bool operator < (const IA_VAL& v) const
+	{
+		return hi < v.lo;
+	}
+
+	bool operator > (int i) const
+	{
+		return lo > i;
+	}
+
+	bool operator > (double d) const
+	{
+		return lo > d;
+	}
+
+	bool operator > (const IA_VAL& v) const
+	{
+		return lo > v.hi;
+	}
+
+	double lo, hi;
+};
 
 #endif

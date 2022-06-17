@@ -36,8 +36,7 @@ IDelaBella::~IDelaBella()
 }
 
 int total_tests = 0;
-int inexact_tests = 0;
-int approx_tests = 0;
+int exact_tests = 0;
 
 struct CDelaBella : IDelaBella
 {
@@ -46,9 +45,6 @@ struct CDelaBella : IDelaBella
 	struct Vert : DelaBella_Vertex
 	{
 		Unsigned28 z;
-		//double e;
-
-		//Face* sew; now it is inherited!
 
 		Vect operator - (const Vert& v) const // diff
 		{
@@ -73,9 +69,9 @@ struct CDelaBella : IDelaBella
 		{
 			const Vert* va = (const Vert*)a;
 			const Vert* vb = (const Vert*)b;
-			if (va->z < vb->z)
+			if (va->x* va->x + va->y * va->y < vb->x * vb->x + vb->y * vb->y)
 				return -1;
-			if (va->z > vb->z)
+			if (va->x * va->x + va->y * va->y > vb->x * vb->x + vb->y * vb->y)
 				return 1;
 			if (va->y < vb->y)
 				return -1;
@@ -95,9 +91,6 @@ struct CDelaBella : IDelaBella
 
 	struct Face : DelaBella_Triangle
 	{
-		// Norm n;
-		double e;
-
 		static Face* Alloc(Face** from)
 		{
 			Face* f = *from;
@@ -125,55 +118,62 @@ struct CDelaBella : IDelaBella
 			return 0;
 		}
 
+		int sign() const
+		{
+			total_tests++;
+
+			// try aprox
+			if (n.z < 0)
+				return -1;
+			if (n.z > 0)
+				return +1;
+
+			exact_tests++;
+
+			// calc exact
+			XA_REF x0 = v[0]->x, y0 = v[0]->y;
+			XA_REF x1 = v[1]->x, y1 = v[1]->y;
+			XA_REF x2 = v[2]->x, y2 = v[2]->y;
+
+			XA_REF v1x = x1 - x0, v1y = y1 - y0;
+			XA_REF v2x = x2 - x0, v2y = y2 - y0;
+
+			return (v1x * v2y).cmp(v1y * v2x);
+		}
+
+
 		bool dot0(const Vert& p)
 		{
-			return 
-				(Signed62)n.x * (Signed62)((Signed15)p.x - (Signed15)v[0]->x) + 
-				(Signed62)n.y * (Signed62)((Signed15)p.y - (Signed15)v[0]->y) == 
-				(Signed62)n.z * (Signed62)((Signed29)((Vert*)v[0])->z - (Signed29)p.z);
+			total_tests++;
+			exact_tests++;
+			//always exact
+			XA_REF px = p.x;
+			XA_REF py = p.y;
+
+			XA_REF adx = (XA_REF)v[0]->x - px;
+			XA_REF ady = (XA_REF)v[0]->y - py;
+			XA_REF bdx = (XA_REF)v[1]->x - px;
+			XA_REF bdy = (XA_REF)v[1]->y - py;
+			XA_REF cdx = (XA_REF)v[2]->x - px;
+			XA_REF cdy = (XA_REF)v[2]->y - py;
+
+			return
+				(adx * adx + ady * ady) * (cdx * bdy - bdx * cdy) +
+				(bdx * bdx + bdy * bdy) * (adx * cdy - cdx * ady) ==
+				(cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady);
 		}
 
 		bool dotP(const Vert& p)
 		{
-			return 
-				(Signed62)n.x * (Signed62)((Signed15)p.x - (Signed15)v[0]->x) + 
-				(Signed62)n.y * (Signed62)((Signed15)p.y - (Signed15)v[0]->y) > 
-				(Signed62)n.z * (Signed62)((Signed29)((Vert*)v[0])->z - (Signed29)p.z);
-		}
+			Vect pv = p - *(Vert*)v[0];
+			Signed62 approx_dot =
+				(Signed62)n.x * (Signed62)pv.x +
+				(Signed62)n.y * (Signed62)pv.y +
+				(Signed62)n.z * (Signed62)pv.z;
 
-		bool dotN(const Vert& p)
-		{
-			return
-				(Signed62)n.x * (Signed62)((Signed15)p.x - (Signed15)v[0]->x) +
-				(Signed62)n.y * (Signed62)((Signed15)p.y - (Signed15)v[0]->y) <
-				(Signed62)n.z * (Signed62)((Signed29)((Vert*)v[0])->z - (Signed29)p.z);
-		}
-
-		// test
-		bool dotNP(const Vert& p)
-		{
-			double approx_dot = n.x * (p.x - v[0]->x) + n.y * (p.y - v[0]->y) + n.z * (p.z - ((Vert*)v[0])->z);
-			//double approx_err = (e + p.e) * 0x1P-52; // * 0x1P-47; // prove it's safe!
-
-			double approx_err = 0x1P-45 * (
-				/*
-				fabs(v[1]->x - v[0]->x) +
-				fabs(v[1]->y - v[0]->y) +
-				fabs(((Vert*)v[1])->z - ((Vert*)v[0])->z) +
-				fabs(v[2]->x - v[0]->x) +
-				fabs(v[2]->y - v[0]->y) +
-				fabs(((Vert*)v[2])->z - ((Vert*)v[0])->z) +
-				*/
-				this->e +
-				fabs(p.x - v[0]->x) +
-				fabs(p.y - v[0]->y) +
-				fabs(p.z - ((Vert*)v[0])->z)
-				);
-
-
-			if (approx_dot < -approx_err)
+			if (approx_dot > 0)
 				return true;
-			if (approx_dot > +approx_err)
+			if (approx_dot < 0)
 				return false;
 
 			XA_REF px = p.x;
@@ -186,10 +186,86 @@ struct CDelaBella : IDelaBella
 			XA_REF cdx = (XA_REF)v[2]->x - px;
 			XA_REF cdy = (XA_REF)v[2]->y - py;
 
-			return 
+			return
+				(adx * adx + ady * ady) * (cdx * bdy - bdx * cdy) +
+				(bdx * bdx + bdy * bdy) * (adx * cdy - cdx * ady) >
+				(cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady); // re-swapped
+		}
+
+		bool dotN(const Vert& p)
+		{
+			Vect pv = p - *(Vert*)v[0];
+			Signed62 approx_dot =
+				(Signed62)n.x * (Signed62)pv.x +
+				(Signed62)n.y * (Signed62)pv.y +
+				(Signed62)n.z * (Signed62)pv.z;
+
+			if (approx_dot < 0)
+				return true;
+			if (approx_dot > 0)
+				return false;
+
+			XA_REF px = p.x;
+			XA_REF py = p.y;
+
+			XA_REF adx = (XA_REF)v[0]->x - px;
+			XA_REF ady = (XA_REF)v[0]->y - py;
+			XA_REF bdx = (XA_REF)v[1]->x - px;
+			XA_REF bdy = (XA_REF)v[1]->y - py;
+			XA_REF cdx = (XA_REF)v[2]->x - px;
+			XA_REF cdy = (XA_REF)v[2]->y - py;
+
+			return
+				(adx * adx + ady * ady) * (cdx * bdy - bdx * cdy) +
+				(bdx * bdx + bdy * bdy) * (adx * cdy - cdx * ady) <
+				(cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady); // re-swapped
+		}
+
+		// test
+		bool dotNP(const Vert& p)
+		{
+			Vect pv = p - *(Vert*)v[0];
+			Signed62 approx_dot = 
+				(Signed62)n.x * (Signed62)pv.x + 
+				(Signed62)n.y * (Signed62)pv.y + 
+				(Signed62)n.z * (Signed62)pv.z;
+
+			total_tests++;
+
+			#ifndef DB_AUTO_TEST
+			if (approx_dot < 0)
+				return true;
+			if (approx_dot > 0)
+				return false;
+			exact_tests++;
+			#endif
+
+			XA_REF px = p.x;
+			XA_REF py = p.y;
+
+			XA_REF adx = (XA_REF)v[0]->x - px;
+			XA_REF ady = (XA_REF)v[0]->y - py;
+			XA_REF bdx = (XA_REF)v[1]->x - px;
+			XA_REF bdy = (XA_REF)v[1]->y - py;
+			XA_REF cdx = (XA_REF)v[2]->x - px;
+			XA_REF cdy = (XA_REF)v[2]->y - py;
+
+			bool ret = 
 				(adx * adx + ady * ady) * (cdx * bdy - bdx * cdy) +
 				(bdx * bdx + bdy * bdy) * (adx * cdy - cdx * ady) <=
 				(cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady); // re-swapped
+
+			#ifdef DB_AUTO_TEST
+			if (approx_dot < 0)
+				assert(ret);
+			else
+			if (approx_dot > 0)
+				assert(!ret);
+			else
+				exact_tests++;
+			#endif
+
+			return ret;
 		}
 
 		#if 0 // ERR ESTIMATION LAB
@@ -261,13 +337,6 @@ struct CDelaBella : IDelaBella
 		void cross() // cross of diffs
 		{
 			n = (*(Vert*)v[1] - *(Vert*)v[0]).cross(*(Vert*)v[2] - *(Vert*)v[0]);
-			//e = ((Vert*)v[0])->e + ((Vert*)v[1])->e + ((Vert*)v[2])->e;
-			e = fabs(v[1]->x - v[0]->x) +
-				fabs(v[1]->y - v[0]->y) +
-				fabs(((Vert*)v[1])->z - ((Vert*)v[0])->z) +
-				fabs(v[2]->x - v[0]->x) +
-				fabs(v[2]->y - v[0]->y) +
-				fabs(((Vert*)v[2])->z - ((Vert*)v[0])->z);
 		}
 	};
 
@@ -390,7 +459,7 @@ struct CDelaBella : IDelaBella
 		f.v[2] = vert_alloc + 2;
 		f.cross();
 
-		bool colinear = f.n.z == 0;
+		bool colinear = f.sign() == 0;
 		int i = 3;
 
 		/////////////////////////////////////////////////////////////////////////
@@ -731,7 +800,7 @@ struct CDelaBella : IDelaBella
 				if (i == points - 1)
 					p = 100;
 				if (errlog_proc)
-					errlog_proc(errlog_file, "\r[PRO] %d%%%s", p, p==100?"\n" : "");
+					errlog_proc(errlog_file, "\r[PRO] %d%% [XA:%d/%d]%s", p, exact_tests, total_tests, p==100?"\n" : "");
 			}
 
 			//ValidateHull(alloc, 2 * i - 4);
@@ -748,6 +817,7 @@ struct CDelaBella : IDelaBella
 				f = f->Next(p);
 				if (f == hull)
 				{
+					printf(".");
 					// if no visible face can be located at last vertex,
 					// let's run through all faces (approximately last to first),
 					// yes this is emergency fallback and should not ever happen.
@@ -931,11 +1001,16 @@ struct CDelaBella : IDelaBella
 				f->n.x = (double)nx;
 				f->n.y = (double)ny;
 
+				/*
+				// needed?
 				if (f->n.z < 0 && nz >= 0 || f->n.z >= 0 && nz < 0)
 					printf("fixed!\n");
+				*/
 
 				f->n.z = (double)nz;
 
+				/*
+				// needed?
 				if (nz != 0 && f->n.z == 0)
 					f->n.z = nz->sign ? -FLT_MIN : FLT_MIN;
 
@@ -944,6 +1019,7 @@ struct CDelaBella : IDelaBella
 
 				if (ny != 0 && f->n.y == 0)
 					f->n.y = ny->sign ? -FLT_MIN : FLT_MIN;
+				*/
 			}
 
 			if (f->n.z < 0)
@@ -991,7 +1067,7 @@ struct CDelaBella : IDelaBella
 				int pr = it.around-1; if (pr<0) pr = 2;
 				int nx = it.around+1; if (nx>2) nx = 0;
 
-				if (t->f[pr]->n.z >= 0)
+				if (!(t->f[pr]->n.z < 0))
 				{
 					// change x,y to the edge's normal as accurately as possible
 					{
@@ -1037,8 +1113,6 @@ struct CDelaBella : IDelaBella
 				prev_inter = (Vert**)&next->next;
 			}
 		}
-
-		printf("%d / %d was inexact and %d did not need exact test\n", inexact_tests, total_tests, approx_tests);
 
 		return 3*i;
 	}
