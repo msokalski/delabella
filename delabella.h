@@ -6,18 +6,20 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #ifndef DELABELLA_H
 #define DELABELLA_H
 
+#define DB_AUTO_TEST
+
 #ifdef CRUDE_XA
 // exact arithmetic floating point configuration
 // its about 50x slower than regular floating point setup
 // but if you need it it's priceless!
 #include "crude-xa/src/crude-xa.h"
 typedef double Signed14;   // BITS			xy coords
-typedef double Signed15;   // BITS + 1		vect::xy
-typedef double Unsigned28; // 2xBITS		z coord
-typedef double Signed29;   // 2xBITS + 1	vect::z
-typedef double Signed31;   // 2xBITS + 3	norm::z
-typedef double Signed45;   // 3xBITS + 3	norm::xy
-typedef double Signed62;   // 4xBITS + 6	dot(vect,norm)
+typedef IA_VAL Signed15;   // BITS + 1		vect::xy
+typedef IA_VAL Unsigned28; // 2xBITS		z coord
+typedef IA_VAL Signed29;   // 2xBITS + 1	vect::z
+typedef IA_VAL Signed31;   // 2xBITS + 3	norm::z
+typedef IA_VAL Signed45;   // 3xBITS + 3	norm::xy
+typedef IA_VAL Signed62;   // 4xBITS + 6	dot(vect,norm)
 #else
 // regular floating point setup
 /*
