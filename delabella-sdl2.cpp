@@ -5,7 +5,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #define _CRT_SECURE_NO_WARNINGS
 
-#define DELAUNATOR
+//#define DELAUNATOR
 
 #include <math.h>
 #include <stdlib.h>
@@ -23,6 +23,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #include "delabella.h"
 
 #include <GL/gl.h>
+
 
 #ifndef _WIN32
 #include <GL/glext.h>
@@ -192,7 +193,7 @@ struct Buf
 int main(int argc, char* argv[])
 {
 	#ifdef _WIN32
-	SetProcessDPIAware();
+	//SetProcessDPIAware();
 	#endif
 
 	if (argc<2)
@@ -264,7 +265,7 @@ int main(int argc, char* argv[])
     uint64_t t0 = uSec();
     printf("running delaunator...\n");
     delaunator::Delaunator d(coords);
-    int tris_delaunator = d.triangles.size() / 3;
+    int tris_delaunator = (int)d.triangles.size() / 3;
     uint64_t t1 = uSec();
     printf("elapsed %d ms\n", (int)((t1-t0)/1000));
     printf("delaunator triangles: %d\n", tris_delaunator);
@@ -855,3 +856,4 @@ int main(int argc, char* argv[])
 
 	return 0;
 }
+

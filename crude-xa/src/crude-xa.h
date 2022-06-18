@@ -385,6 +385,11 @@ struct XA_REF
 		}
 	}
 
+	const XA_REF eval() const
+	{
+		return *this;
+	}
+
     // todo
     // friend std::istream& operator >> (std::istream& is, XA_REF& w);
 
@@ -434,5 +439,32 @@ inline std::ostream& operator << (std::ostream& os, const XA_REF& w)
 	free(str);
 	return os;
 }
+
+template <typename A, typename B>
+struct XA_ADD
+{
+	XA_ADD(const A& a, const B& b) : a(a), b(b) {}
+	XA_REF eval() { return a.eval() + b.eval(); }
+	A a;
+	B b;
+};
+
+template <typename A, typename B>
+struct XA_SUB
+{
+	XA_SUB(const A& a, const B& b) : a(a), b(b) {}
+	XA_REF eval() { return a.eval() - b.eval(); }
+	A a;
+	B b;
+};
+
+template <typename A, typename B>
+struct XA_MUL
+{
+	XA_MUL(const A& a, const B& b) : a(a), b(b) {}
+	XA_REF eval() { return a.eval() * b.eval(); }
+	A a;
+	B b;
+};
 
 #endif
