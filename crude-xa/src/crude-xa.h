@@ -450,7 +450,6 @@ struct IA_VAL
 	#define lower (1.0 - 1 * DBL_EPSILON)
 	#define upper (1.0 + 1 * DBL_EPSILON)
 
-
 	inline void explode()
 	{
 		lo = lo > 0 ? lo * lower : lo < 0 ? lo * upper : -DBL_MIN;
