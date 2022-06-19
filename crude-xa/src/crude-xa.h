@@ -447,10 +447,14 @@ struct IA_VAL
 	IA_VAL(double d) : lo(d), hi(d) {}
 	IA_VAL(const IA_VAL& v) : lo(v.lo), hi(v.hi) {}
 
+	#define lower (1.0 - 1 * DBL_EPSILON)
+	#define upper (1.0 + 1 * DBL_EPSILON)
+
+
 	inline void explode()
 	{
-		lo = lo > 0 ? lo * (1.0 - 4 * DBL_EPSILON) : lo < 0 ? lo * (1.0 + 4 * DBL_EPSILON) : -DBL_MIN;
-		hi = hi > 0 ? hi * (1.0 + 4 * DBL_EPSILON) : hi < 0 ? hi * (1.0 - 4 * DBL_EPSILON) : +DBL_MIN;
+		lo = lo > 0 ? lo * lower : lo < 0 ? lo * upper : -DBL_MIN;
+		hi = hi > 0 ? hi * upper : hi < 0 ? hi * lower : +DBL_MIN;
 	}
 
 	operator double() const
@@ -458,35 +462,17 @@ struct IA_VAL
 		return (lo + hi) / 2;
 	}
 
-	/*
-	IA_VAL operator + (double d) const
-	{
-		IA_VAL r;
-		r.lo = nexttoward(lo + d, -INFINITY);
-		r.hi = nexttoward(hi + d, +INFINITY);
-		return r;
-	}
-	*/
-
 	IA_VAL operator + (const IA_VAL& v) const
 	{
 		IA_VAL r;
 		r.lo = lo + v.lo;
 		r.hi = hi + v.hi;
 		r.explode();
+		#ifdef XA_AUTO_TEST
 		assert(r.lo < r.hi);
+		#endif
 		return r;
 	}
-
-	/*
-	IA_VAL operator - (double d) const
-	{
-		IA_VAL r;
-		r.lo = nexttoward(lo - d, -INFINITY);
-		r.hi = nexttoward(hi - d, +INFINITY);
-		return r;
-	}
-	*/
 
 	IA_VAL operator - (const IA_VAL& v) const
 	{
@@ -494,27 +480,11 @@ struct IA_VAL
 		r.lo = lo - v.hi;
 		r.hi = hi - v.lo;
 		r.explode();
+		#ifdef XA_AUTO_TEST
 		assert(r.lo < r.hi);
+		#endif
 		return r;
 	}
-
-	/*
-	IA_VAL operator * (double d) const
-	{
-		IA_VAL r;
-		if (d == 0)
-			return r;
-		if (d < 0)
-		{
-			r.lo = nexttoward(r.hi * d, -INFINITY);
-			r.hi = nexttoward(r.lo * d, +INFINITY);
-			return r;
-		}
-		r.lo = nexttoward(r.lo * d, -INFINITY);
-		r.hi = nexttoward(r.hi * d, +INFINITY);
-		return r;
-	}
-	*/
 
 	IA_VAL operator * (const IA_VAL& v) const
 	{
@@ -524,19 +494,19 @@ struct IA_VAL
 		{
 			if (v.lo >= 0)	// +    +    +    +
 			{
-				r.lo = lo * v.lo * (1.0 - 4 * DBL_EPSILON);
-				r.hi = hi * v.hi * (1.0 + 4 * DBL_EPSILON);
+				r.lo = lo * v.lo * lower - DBL_MIN;
+				r.hi = hi * v.hi * upper + DBL_MIN;
 			}
 			else
 			if (v.hi < 0)	// +    +    -    -
 			{
-				r.lo = hi * v.hi * (1.0 + 4 * DBL_EPSILON);
-				r.hi = lo * v.hi * (1.0 - 4 * DBL_EPSILON);
+				r.lo = hi * v.hi * upper - DBL_MIN;
+				r.hi = lo * v.hi * lower + DBL_MIN;
 			}
 			else			// +    +    -    +
 			{
-				r.lo = hi * v.lo * (1.0 + 4 * DBL_EPSILON);
-				r.hi = hi * v.hi * (1.0 + 4 * DBL_EPSILON);
+				r.lo = hi * v.lo * upper - DBL_MIN;
+				r.hi = hi * v.hi * upper + DBL_MIN;
 			}
 		}
 		else
@@ -544,42 +514,44 @@ struct IA_VAL
 		{
 			if (v.lo >= 0)	// -    -    +    +
 			{
-				r.lo = lo * v.hi * (1.0 + 4 * DBL_EPSILON);
-				r.hi = hi * v.lo * (1.0 - 4 * DBL_EPSILON);
+				r.lo = lo * v.hi * upper - DBL_MIN;
+				r.hi = hi * v.lo * lower + DBL_MIN;
 			}
 			else
 			if (v.hi < 0)	// -    -    -    -
 			{
-				r.lo = hi * v.hi * (1.0 - 4 * DBL_EPSILON);
-				r.hi = lo * v.lo * (1.0 + 4 * DBL_EPSILON);
+				r.lo = hi * v.hi * lower - DBL_MIN;
+				r.hi = lo * v.lo * upper + DBL_MIN;
 			}
 			else			// -    -    -    +
 			{
-				r.lo = lo * v.hi * (1.0 + 4 * DBL_EPSILON);
-				r.hi = hi * v.lo * (1.0 + 4 * DBL_EPSILON);
+				r.lo = lo * v.hi * upper - DBL_MIN;
+				r.hi = hi * v.lo * upper + DBL_MIN;
 			}
 		}
 		else
 		{
 			if (v.lo >= 0)	// -    +    +    +
 			{
-				r.lo = lo * v.hi * (1.0 + 4 * DBL_EPSILON);
-				r.hi = hi * v.hi * (1.0 + 4 * DBL_EPSILON);
+				r.lo = lo * v.hi * upper - DBL_MIN;
+				r.hi = hi * v.hi * upper + DBL_MIN;
 			}
 			else
 			if (v.hi < 0)	// -    +    -    -
 			{
-				r.lo = hi * v.lo * (1.0 + 4 * DBL_EPSILON);
-				r.hi = lo * v.lo * (1.0 + 4 * DBL_EPSILON);
+				r.lo = hi * v.lo * upper - DBL_MIN;
+				r.hi = lo * v.lo * upper + DBL_MIN;
 			}
 			else			// -    +    -    +
 			{
-				r.lo = std::min(lo * v.hi, hi * v.lo) * (1.0 + 4 * DBL_EPSILON);
-				r.hi = std::max(lo * v.lo, hi * v.hi) * (1.0 + 4 * DBL_EPSILON);
+				r.lo = std::min(lo * v.hi, hi * v.lo) * upper - DBL_MIN;
+				r.hi = std::max(lo * v.lo, hi * v.hi) * upper + DBL_MIN;
 			}
 		}
 
+		#ifdef XA_AUTO_TEST
 		assert(r.lo < r.hi);
+		#endif
 		return r;
 	}
 

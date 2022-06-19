@@ -6,7 +6,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #ifndef DELABELLA_H
 #define DELABELLA_H
 
-#define DB_AUTO_TEST
+//#define DB_AUTO_TEST
 
 #ifdef CRUDE_XA
 // exact arithmetic floating point configuration

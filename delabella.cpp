@@ -817,7 +817,7 @@ struct CDelaBella : IDelaBella
 				f = f->Next(p);
 				if (f == hull)
 				{
-					printf(".");
+					//printf(".");
 					// if no visible face can be located at last vertex,
 					// let's run through all faces (approximately last to first),
 					// yes this is emergency fallback and should not ever happen.
