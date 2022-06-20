@@ -903,7 +903,7 @@ struct CDelaBella : IDelaBella
 
 			bool nz_neg;
 			// recalc triangle normal as accurately as possible on ALL triangles
-			#if 1
+			#if 0
 			{
 				XA_REF x0 = f->v[0]->x, y0 = f->v[0]->y, z0 = x0 * x0 + y0 * y0;
 				XA_REF x1 = f->v[1]->x, y1 = f->v[1]->y/*, z1 = x1 * x1 + y1 * y1*/;
@@ -1005,7 +1005,7 @@ struct CDelaBella : IDelaBella
 				{
 					bool wrap = t->v[nx] == first_boundary_vert;
 					// change x,y to the edge's normal as accurately as possible
-					#if 1
+					#if 0
 					{
 						// exact edge normal
 						XA_REF px = v->x, py = v->y;
