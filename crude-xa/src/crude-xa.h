@@ -447,13 +447,21 @@ struct IA_VAL
 	IA_VAL(double d) : lo(d), hi(d) {}
 	IA_VAL(const IA_VAL& v) : lo(v.lo), hi(v.hi) {}
 
-	#define lower (1.0 - 1 * DBL_EPSILON)
-	#define upper (1.0 + 1 * DBL_EPSILON)
+	#define lower (1.0 - 0.5 * DBL_EPSILON)
+	#define upper (1.0 + 1.0 * DBL_EPSILON)
 
 	inline void explode()
 	{
-		lo = lo > 0 ? lo * lower : lo < 0 ? lo * upper : -DBL_MIN;
-		hi = hi > 0 ? hi * upper : hi < 0 ? hi * lower : +DBL_MIN;
+		/*
+		lo = lo >= 0 ? lo * lower - DBL_MIN : lo * upper - DBL_MIN;
+		hi = hi >= 0 ? hi * upper + DBL_MIN : hi * lower + DBL_MIN;
+		*/
+		// test
+		double l = lo >= 0 ? lo * lower - DBL_MIN : lo * upper - DBL_MIN;
+		double h = hi >= 0 ? hi * upper + DBL_MIN : hi * lower + DBL_MIN;
+		assert(l<lo && h>hi);
+		lo = l;
+		hi = h;
 	}
 
 	operator double() const
@@ -491,18 +499,19 @@ struct IA_VAL
 
 		if (lo >= 0)
 		{
-			if (v.lo >= 0)	// +    +    +    +
+			if (v.lo >= 0)	// +    +    +    +  ->  +    +
 			{
 				r.lo = lo * v.lo * lower - DBL_MIN;
 				r.hi = hi * v.hi * upper + DBL_MIN;
 			}
 			else
-			if (v.hi < 0)	// +    +    -    -
+			if (v.hi < 0)	// +    +    -    -  ->  -    -
 			{
-				r.lo = hi * v.hi * upper - DBL_MIN;
+				//r.lo = hi * v.hi * upper - DBL_MIN;
+				r.lo = hi * v.lo * upper - DBL_MIN;
 				r.hi = lo * v.hi * lower + DBL_MIN;
 			}
-			else			// +    +    -    +
+			else			// +    +    -    +  ->  -    +
 			{
 				r.lo = hi * v.lo * upper - DBL_MIN;
 				r.hi = hi * v.hi * upper + DBL_MIN;
@@ -511,37 +520,38 @@ struct IA_VAL
 		else
 		if (hi < 0)
 		{
-			if (v.lo >= 0)	// -    -    +    +
+			if (v.lo >= 0)	// -    -    +    +  ->  -    -
 			{
 				r.lo = lo * v.hi * upper - DBL_MIN;
 				r.hi = hi * v.lo * lower + DBL_MIN;
 			}
 			else
-			if (v.hi < 0)	// -    -    -    -
+			if (v.hi < 0)	// -    -    -    -  ->  +    +
 			{
 				r.lo = hi * v.hi * lower - DBL_MIN;
 				r.hi = lo * v.lo * upper + DBL_MIN;
 			}
-			else			// -    -    -    +
+			else			// -    -    -    +  ->  -    +
 			{
 				r.lo = lo * v.hi * upper - DBL_MIN;
-				r.hi = hi * v.lo * upper + DBL_MIN;
+				//r.hi = hi * v.lo * upper + DBL_MIN;
+				r.hi = lo * v.lo * upper + DBL_MIN;
 			}
 		}
 		else
 		{
-			if (v.lo >= 0)	// -    +    +    +
+			if (v.lo >= 0)	// -    +    +    +  ->  -    +
 			{
 				r.lo = lo * v.hi * upper - DBL_MIN;
 				r.hi = hi * v.hi * upper + DBL_MIN;
 			}
 			else
-			if (v.hi < 0)	// -    +    -    -
+			if (v.hi < 0)	// -    +    -    -  ->  -    +
 			{
 				r.lo = hi * v.lo * upper - DBL_MIN;
 				r.hi = lo * v.lo * upper + DBL_MIN;
 			}
-			else			// -    +    -    +
+			else			// -    +    -    +  ->  -    +
 			{
 				r.lo = std::min(lo * v.hi, hi * v.lo) * upper - DBL_MIN;
 				r.hi = std::max(lo * v.lo, hi * v.hi) * upper + DBL_MIN;

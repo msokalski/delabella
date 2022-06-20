@@ -5,7 +5,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #define _CRT_SECURE_NO_WARNINGS
 
-#define DELAUNATOR
+//#define DELAUNATOR
 
 #include <math.h>
 #include <stdlib.h>
@@ -296,8 +296,9 @@ int main(int argc, char* argv[])
     printf("elapsed %d ms\n", (int)((t3-t2)/1000));
     printf("delabella triangles: %d\n", tris_delabella);
     printf("delabella contour: %d\n", contour);
-    printf("delabella is %s\n", tris_delabella == 2* vert_num - 4 - (contour-2) ? "CORRECT" : "WRONG");
-
+    printf("delabella is %s\n%d triangles / %d expected\n", 
+        tris_delabella == 2* vert_num - 4 - (contour-2) ? "CORRECT" : "WRONG",
+        tris_delabella, 2 * vert_num - 4 - (contour - 2));
 
 	// if positive, all ok 
 	if (verts<=0)
@@ -494,7 +495,7 @@ int main(int argc, char* argv[])
         // it starts at random face, so lookup the prev->vert edge
         while (1)
         {
-            if (t->n.z<0)
+            if (t->index >= 0)
             {
                 if (t->v[0] == prev && t->v[1] == vert ||
                     t->v[1] == prev && t->v[2] == vert ||
@@ -505,7 +506,7 @@ int main(int argc, char* argv[])
         }
 
         // now iterate around, till we're inside the boundary
-        while (t->n.z<0)
+        while (t->index >= 0)
         {
             ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // end
             if (!prim_restart)
@@ -534,7 +535,7 @@ int main(int argc, char* argv[])
         const DelaBella_Triangle* e = t;
         do
         {
-            assert(t->n.z<0);
+            assert(t->index>=0);
             ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // begin
             t = it.Next();
             if (!prim_restart)

@@ -35,9 +35,6 @@ IDelaBella::~IDelaBella()
 {
 }
 
-int total_tests = 0;
-int exact_tests = 0;
-
 struct CDelaBella : IDelaBella
 {
 	struct Face;
@@ -120,15 +117,11 @@ struct CDelaBella : IDelaBella
 
 		int sign() const
 		{
-			total_tests++;
-
 			// try aprox
 			if (n.z < 0)
 				return -1;
 			if (n.z > 0)
 				return +1;
-
-			exact_tests++;
 
 			// calc exact
 			XA_REF x0 = v[0]->x, y0 = v[0]->y;
@@ -144,9 +137,7 @@ struct CDelaBella : IDelaBella
 
 		bool dot0(const Vert& p)
 		{
-			total_tests++;
-			exact_tests++;
-			//always exact
+			//always exact?
 			XA_REF px = p.x;
 			XA_REF py = p.y;
 
@@ -224,20 +215,20 @@ struct CDelaBella : IDelaBella
 		// test
 		bool dotNP(const Vert& p)
 		{
-			Vect pv = p - *(Vert*)v[0];
-			Signed62 approx_dot = 
-				(Signed62)n.x * (Signed62)pv.x + 
-				(Signed62)n.y * (Signed62)pv.y + 
-				(Signed62)n.z * (Signed62)pv.z;
-
-			total_tests++;
+			Vect pv = 
+			{ 
+				(Signed15)p.x - (Signed15)v[0]->x,
+				(Signed15)p.y - (Signed15)v[0]->y,
+				(Signed29)(*(Vert*)(v[0])).z - (Signed29)p.z // z filp!
+			};
+			Signed62 approx_dot_xy = (Signed62)n.x * (Signed62)pv.x + (Signed62)n.y * (Signed62)pv.y;
+			Signed62 approx_dot_z = (Signed62)n.z * (Signed62)pv.z;
 
 			#ifndef DB_AUTO_TEST
-			if (approx_dot < 0)
+			if (approx_dot_xy < approx_dot_z)
 				return true;
-			if (approx_dot > 0)
+			if (approx_dot_xy > approx_dot_z)
 				return false;
-			exact_tests++;
 			#endif
 
 			XA_REF px = p.x;
@@ -256,83 +247,15 @@ struct CDelaBella : IDelaBella
 				(cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady); // re-swapped
 
 			#ifdef DB_AUTO_TEST
-			if (approx_dot < 0)
+			if (approx_dot_xy < approx_dot_z)
 				assert(ret);
 			else
-			if (approx_dot > 0)
+			if (approx_dot_xy > approx_dot_z)
 				assert(!ret);
-			else
-				exact_tests++;
 			#endif
 
 			return ret;
 		}
-
-		#if 0 // ERR ESTIMATION LAB
-		bool dotNP(const Vert& p)
-		{
-			//double adx, ady, bdx, bdy, cdx, cdy;
-			//double abdet, bcdet, cadet;
-			//double alift, blift, clift;
-
-			XA_REF px = p.x;
-			XA_REF py = p.y;
-
-			XA_REF adx = (XA_REF)v[0]->x - px;
-			XA_REF ady = (XA_REF)v[0]->y - py;
-			XA_REF bdx = (XA_REF)v[1]->x - px;
-			XA_REF bdy = (XA_REF)v[1]->y - py;
-			XA_REF cdx = (XA_REF)v[2]->x - px;
-			XA_REF cdy = (XA_REF)v[2]->y - py;
-
-			// swapped!
-			XA_REF abdet = bdx * ady - adx * bdy;
-			XA_REF bcdet = cdx * bdy - bdx * cdy;
-			XA_REF cadet = adx * cdy - cdx * ady;
-
-			XA_REF alift = adx * adx + ady * ady;
-			XA_REF blift = bdx * bdx + bdy * bdy;
-			XA_REF clift = cdx * cdx + cdy * cdy;
-
-			// 29 ops
-
-			bool exact =  alift * bcdet + blift * cadet + clift * abdet <= 0;
-			double exact_dot = alift * bcdet + blift * cadet + clift * abdet;
-
-			// 8 ops
-
-			bool approx = n.x * (p.x - v[0]->x) + n.y * (p.y - v[0]->y) <=  n.z * (((Vert*)v[0])->z - p.z);
-			double approx_dot = n.x * (p.x - v[0]->x) + n.y * (p.y - v[0]->y) + n.z * (p.z - ((Vert*)v[0])->z);
-
-			double err = fabs(p.x) + fabs(p.y) + /*fabs*/(p.z) +
-				fabs(v[0]->x) + fabs(v[0]->y) + /*fabs*/(((Vert*)v[0])->z) +
-				fabs(v[1]->x) + fabs(v[1]->y) + /*fabs*/(((Vert*)v[1])->z) +
-				fabs(v[2]->x) + fabs(v[2]->y) + /*fabs*/(((Vert*)v[2])->z);
-
-			err *= 0x1P-47; // prove it's safe!
-
-			if (approx_dot + err < 0 || approx_dot - err > 0)
-			{
-				approx_tests++;
-				assert(exact == approx);
-			}
-
-			if (exact != approx)
-				inexact_tests++;
-
-			total_tests++;
-
-			return exact;
-		}
-		#endif
-
-		/*
-		Signed62 dot(const Vert& p) const // dot
-		{
-			Vect d = p - *(Vert*)v[0];
-			return (Signed62)n.x * (Signed62)d.x + (Signed62)n.y * (Signed62)d.y + (Signed62)n.z * (Signed62)d.z;
-		}
-		*/
 
 		void cross() // cross of diffs
 		{
@@ -459,7 +382,7 @@ struct CDelaBella : IDelaBella
 		f.v[2] = vert_alloc + 2;
 		f.cross();
 
-		bool colinear = f.sign() == 0;
+		bool colinear = f.sign() == 0; // hybrid
 		int i = 3;
 
 		/////////////////////////////////////////////////////////////////////////
@@ -800,7 +723,7 @@ struct CDelaBella : IDelaBella
 				if (i == points - 1)
 					p = 100;
 				if (errlog_proc)
-					errlog_proc(errlog_file, "\r[PRO] %d%% [XA:%d/%d]%s", p, exact_tests, total_tests, p==100?"\n" : "");
+					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation%s", p, p>=100 ? "":"%", p>=100?"\n":"");
 			}
 
 			//ValidateHull(alloc, 2 * i - 4);
@@ -978,7 +901,9 @@ struct CDelaBella : IDelaBella
 			((Vert*)f->v[1])->sew = f;
 			((Vert*)f->v[2])->sew = f;
 
-			// recalc triangle normal as accurately as possible
+			bool nz_neg;
+			// recalc triangle normal as accurately as possible on ALL triangles
+			#if 1
 			{
 				XA_REF x0 = f->v[0]->x, y0 = f->v[0]->y, z0 = x0 * x0 + y0 * y0;
 				XA_REF x1 = f->v[1]->x, y1 = f->v[1]->y/*, z1 = x1 * x1 + y1 * y1*/;
@@ -1020,9 +945,18 @@ struct CDelaBella : IDelaBella
 				if (ny != 0 && f->n.y == 0)
 					f->n.y = ny->sign ? -FLT_MIN : FLT_MIN;
 				*/
-			}
 
-			if (f->n.z < 0)
+				nz_neg = nz < 0;
+			}
+			#else
+			{
+				// calc xa only where necessary
+				nz_neg = f->sign() < 0; // hybrid
+			}
+			#endif
+
+
+			if (nz_neg)
 			{
 				f->index = i;  // store index in dela list
 				*prev_dela = f;
@@ -1031,7 +965,7 @@ struct CDelaBella : IDelaBella
 			}
 			else
 			{
-				f->index = others; // store index in hull list
+				f->index = ~others; // store index in hull list (~ to mark it is not dela)
 				*prev_hull = f;
 				prev_hull = (Face**)&f->next;
 				others++;
@@ -1062,16 +996,18 @@ struct CDelaBella : IDelaBella
 
 		while (1)
 		{
-			if (t->n.z < 0)
+			if (t->index >= 0)
 			{
 				int pr = it.around-1; if (pr<0) pr = 2;
 				int nx = it.around+1; if (nx>2) nx = 0;
 
-				if (!(t->f[pr]->n.z < 0))
+				if (t->f[pr]->index < 0)
 				{
+					bool wrap = t->v[nx] == first_boundary_vert;
 					// change x,y to the edge's normal as accurately as possible
+					#if 1
 					{
-						bool wrap = t->v[nx] == first_boundary_vert;
+						// exact edge normal
 						XA_REF px = v->x, py = v->y;
 						XA_REF vx = wrap ? wrap_x : t->v[nx]->x, vy = wrap ? wrap_y : t->v[nx]->y;
 						XA_REF nx = py - vy;
@@ -1082,6 +1018,16 @@ struct CDelaBella : IDelaBella
 						v->x = (double)nx;
 						v->y = (double)ny;
 					}
+					#else
+					{
+						// approx edge normal
+						double vx = wrap ? wrap_x : t->v[nx]->x, vy = wrap ? wrap_y : t->v[nx]->y;
+						double nx = v->y - vy;
+						double ny = vx - v->x;
+						v->x = nx;
+						v->y = ny;
+					}
+					#endif
 
 					// let's move from: v to t->v[nx]
 					v->next = t->v[nx];

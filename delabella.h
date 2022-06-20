@@ -87,7 +87,7 @@ struct DelaBella_Triangle
 	DelaBella_Triangle* next; // next triangle (of delaunay set or hull set)
 	DelaBella_Circumcenter n; // normal / circumcenter
 
-	int index; // list index
+	int index; // list index, if negative it is ~index'th in hull set 
 
 /*
                v[1]
