@@ -63,10 +63,10 @@ struct DelaBella_Iterator;
 
 struct DelaBella_Vertex
 {
-	int i; // index of original point
-	Signed14 x,y; // coordinates (input copy) -> changed to edge normal during postprocessing
 	DelaBella_Vertex* next; // next in internal / boundary set of vertices
 	DelaBella_Triangle* sew; // one of triangles sharing this vertex
+	Signed14 x, y; // coordinates (input copy) -> changed to edge normal during postprocessing
+	int i; // index of original point
 
 	#ifdef __cplusplus
 	inline const DelaBella_Triangle* StartIterator(DelaBella_Iterator* it/*not_null*/) const;
@@ -82,10 +82,10 @@ struct DelaBella_Circumcenter
 
 struct DelaBella_Triangle
 {
+	DelaBella_Circumcenter n; // normal / circumcenter
 	DelaBella_Vertex* v[3]; // 3 vertices spanning this triangle
 	DelaBella_Triangle* f[3]; // 3 adjacent faces, f[i] is at the edge opposite to vertex v[i]
 	DelaBella_Triangle* next; // next triangle (of delaunay set or hull set)
-	DelaBella_Circumcenter n; // normal / circumcenter
 
 	int index; // list index, if negative it is ~index'th in hull set 
 

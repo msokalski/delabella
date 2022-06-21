@@ -440,23 +440,7 @@ inline std::ostream& operator << (std::ostream& os, const XA_REF& w)
 	return os;
 }
 
-#include <math.h>
-
-//#define USE_SSE2
-
-#define lower (1.0 - 0.5 * DBL_EPSILON)
-#define upper (1.0 + 1.0 * DBL_EPSILON)
-
-#ifdef USE_SSE2
-#include <immintrin.h>
-static __m128d np = _mm_set_pd(DBL_MIN, -DBL_MIN);
-static __m128d ul = _mm_set_pd(lower, upper);
-static __m128d lu = _mm_set_pd(upper, lower);
-static __m128d uu = _mm_set_pd(upper, upper);
-
-#define shuffle(mm,i) _mm_castsi128_pd(_mm_shuffle_epi32(_mm_castpd_si128(mm),i))
-#endif
-
+//#include <math.h> // (nexttoward)
 
 struct IA_VAL
 {
@@ -464,17 +448,57 @@ struct IA_VAL
 	IA_VAL(double d) : lo(d), hi(d) {}
 	IA_VAL(const IA_VAL& v) : lo(v.lo), hi(v.hi) {}
 
-	inline void explode()
+	static double inflate_neg_lo(double lo)
+	{
+		//return nexttoward(lo, -INFINITY);
+		return lo * (1.0 + 1.0 * DBL_EPSILON) - DBL_MIN;
+	}
+
+	static double inflate_pos_lo(double lo)
+	{
+		//return nexttoward(lo, -INFINITY);
+		return lo * (1.0 - 0.5 * DBL_EPSILON) - DBL_MIN;
+	}
+
+	static double inflate_neg_hi(double hi)
+	{
+		//return nexttoward(hi, +INFINITY);
+		return hi * (1.0 - 0.5 * DBL_EPSILON) + DBL_MIN;
+	}
+
+	static double inflate_pos_hi(double hi)
+	{
+		//return nexttoward(hi, +INFINITY);
+		return hi * (1.0 + 1.0 * DBL_EPSILON) + DBL_MIN;
+	}
+
+	inline void inflate()
 	{
 		#ifdef XA_AUTO_TEST
-		double l = lo >= 0 ? lo * lower - DBL_MIN : lo * upper - DBL_MIN;
-		double h = hi >= 0 ? hi * upper + DBL_MIN : hi * lower + DBL_MIN;
-		assert(l<lo && h>hi);
+		double l = lo >= 0 ? inflate_pos_lo(lo) : inflate_neg_lo(lo);
+		double h = hi >= 0 ? inflate_pos_hi(lo) : inflate_neg_hi(lo);
+		assert(l<lo&& h>hi);
 		lo = l;
 		hi = h;
 		#else
-		lo = lo >= 0 ? lo * lower - DBL_MIN : lo * upper - DBL_MIN;
-		hi = hi >= 0 ? hi * upper + DBL_MIN : hi * lower + DBL_MIN;
+
+		if (lo >= 0)
+		{
+			lo = inflate_pos_lo(lo);
+			hi = inflate_pos_hi(hi);
+		}
+		else
+		if (hi < 0)
+		{
+			lo = inflate_neg_lo(lo);
+			hi = inflate_neg_hi(hi);
+		}
+		else
+		{
+			lo = inflate_neg_lo(lo);
+			hi = inflate_pos_hi(hi);
+		}
+
 		#endif
 	}
 
@@ -488,7 +512,7 @@ struct IA_VAL
 		IA_VAL r;
 		r.lo = lo + v.lo;
 		r.hi = hi + v.hi;
-		r.explode();
+		r.inflate();
 		#ifdef XA_AUTO_TEST
 		assert(r.lo < r.hi);
 		#endif
@@ -500,7 +524,7 @@ struct IA_VAL
 		IA_VAL r;
 		r.lo = lo - v.hi;
 		r.hi = hi - v.lo;
-		r.explode();
+		r.inflate();
 		#ifdef XA_AUTO_TEST
 		assert(r.lo < r.hi);
 		#endif
@@ -513,130 +537,60 @@ struct IA_VAL
 
 		if (lo >= 0)
 		{
-			if (v.lo >= 0)	// +    +    +    +  ->  +    +
+			if (v.lo >= 0)	// ++ * ++ = ++
 			{
-				#ifndef USE_SSE2
-				r.lo = lo * v.lo * lower - DBL_MIN;
-				r.hi = hi * v.hi * upper + DBL_MIN;
-				#else
-				r.mm = _mm_mul_pd(mm,v.mm);
-				r.mm = _mm_mul_pd(r.mm,lu);
-				r.mm = _mm_add_pd(r.mm,np);
-				#endif
+				r.lo = inflate_pos_lo(lo * v.lo);
+				r.hi = inflate_pos_hi(hi * v.hi);
 			}
 			else
-			if (v.hi < 0)	// +    +    -    -  ->  -    -
+			if (v.hi < 0)	// ++ * -- = --
 			{
-				#ifndef USE_SSE2
-				r.lo = hi * v.lo * upper - DBL_MIN;
-				r.hi = lo * v.hi * lower + DBL_MIN;
-				#else
-				r.mm = shuffle(mm, 78); // SWAP LO HI
-				r.mm = _mm_mul_pd(r.mm,v.mm);
-				r.mm = _mm_mul_pd(r.mm,ul);
-				r.mm = _mm_add_pd(r.mm,np);
-				#endif
+				r.lo = inflate_neg_lo(hi * v.lo);
+				r.hi = inflate_neg_hi(lo * v.hi);
 			}
-			else			// +    +    -    +  ->  -    +
+			else			// ++ * -+ = -+
 			{
-				#ifndef USE_SSE2
-				r.lo = hi * v.lo * upper - DBL_MIN;
-				r.hi = hi * v.hi * upper + DBL_MIN;
-				#else
-				r.mm = shuffle(mm,238); // SET BOTH HI
-				r.mm = _mm_mul_pd(r.mm,v.mm);
-				r.mm = _mm_mul_pd(r.mm,uu);
-				r.mm = _mm_add_pd(r.mm,np);
-				#endif
+				r.lo = inflate_neg_lo(hi * v.lo);
+				r.hi = inflate_pos_hi(hi * v.hi);
 			}
 		}
 		else
 		if (hi < 0)
 		{
-			if (v.lo >= 0)	// -    -    +    +  ->  -    -
+			if (v.lo >= 0)	// -- * ++ = --
 			{
-				#ifndef USE_SSE2
-				r.lo = lo * v.hi * upper - DBL_MIN;
-				r.hi = hi * v.lo * lower + DBL_MIN;
-				#else
-				r.mm = shuffle(v.mm,78); // SWAP LO HI
-				r.mm = _mm_mul_pd(mm,r.mm);
-				r.mm = _mm_mul_pd(r.mm,ul);
-				r.mm = _mm_add_pd(r.mm,np);
-				#endif
+				r.lo = inflate_neg_lo(lo * v.hi);
+				r.hi = inflate_neg_hi(hi * v.lo);
 			}
 			else
-			if (v.hi < 0)	// -    -    -    -  ->  +    +
+			if (v.hi < 0)	// -- * -- = ++
 			{
-				#ifndef USE_SSE2
-				r.lo = hi * v.hi * lower - DBL_MIN;
-				r.hi = lo * v.lo * upper + DBL_MIN;
-				#else
-				r.mm = _mm_mul_pd(mm,v.mm);
-				r.mm = shuffle(r.mm,78); // SWAP LO HI (result)
-				r.mm = _mm_mul_pd(r.mm,lu);
-				r.mm = _mm_add_pd(r.mm,np);
-				#endif
+				r.lo = inflate_pos_lo(hi * v.hi);
+				r.hi = inflate_pos_hi(lo * v.lo);
 			}
-			else			// -    -    -    +  ->  -    +
+			else			// -- * -+ = -+
 			{
-				#ifndef USE_SSE2
-				r.lo = lo * v.hi * upper - DBL_MIN;
-				r.hi = lo * v.lo * upper + DBL_MIN;
-				#else
-				r.mm = shuffle(mm,68); // SET BOTH LO
-				r.mm = _mm_mul_pd(r.mm,v.mm);
-				r.mm = shuffle(r.mm,78); // SWAP LO HI (result)
-				r.mm = _mm_mul_pd(r.mm,uu);
-				r.mm = _mm_add_pd(r.mm,np);
-				#endif
+				r.lo = inflate_neg_lo(lo * v.hi);
+				r.hi = inflate_pos_hi(lo * v.lo);
 			}
 		}
 		else
 		{
-			if (v.lo >= 0)	// -    +    +    +  ->  -    +
+			if (v.lo >= 0)	// -+ * ++ = -+
 			{
-				#ifndef USE_SSE2
-				r.lo = lo * v.hi * upper - DBL_MIN;
-				r.hi = hi * v.hi * upper + DBL_MIN;
-				#else
-				r.mm = shuffle(v.mm,238); // SET BOTH HI
-				r.mm = _mm_mul_pd(mm,r.mm);
-				r.mm = _mm_mul_pd(r.mm,uu);
-				r.mm = _mm_add_pd(r.mm,np);
-				#endif
+				r.lo = inflate_neg_lo(lo * v.hi);
+				r.hi = inflate_pos_hi(hi * v.hi);
 			}
 			else
-			if (v.hi < 0)	// -    +    -    -  ->  -    +
+			if (v.hi < 0)	// -+ * -- = -+
 			{
-				#ifndef USE_SSE2
-				r.lo = hi * v.lo * upper - DBL_MIN;
-				r.hi = lo * v.lo * upper + DBL_MIN;
-				#else
-				r.mm = shuffle(v.mm,68); // SET BOTH LO
-				r.mm = _mm_mul_pd(mm,r.mm);
-				r.mm = shuffle(r.mm,78); // SWAP LO HI (result)
-				r.mm = _mm_mul_pd(r.mm,uu);
-				r.mm = _mm_add_pd(r.mm,np);
-				#endif
+				r.lo = inflate_neg_lo(hi * v.lo);
+				r.hi = inflate_pos_hi(lo * v.lo);
 			}
-			else			// -    +    -    +  ->  -    +
+			else			// -+ * -+ = -+
 			{
-				#ifndef USE_SSE2
-				r.lo = std::min(lo * v.hi, hi * v.lo) * upper - DBL_MIN;
-				r.hi = std::max(lo * v.lo, hi * v.hi) * upper + DBL_MIN;
-				#else
-				r.mm = shuffle(v.mm,78); // SWAP LO HI
-				__m128d tmp_lo = _mm_mul_pd(mm,r.mm);
-				r.mm = shuffle(tmp_lo,78); // SWAP LO HI
-				tmp_lo = _mm_min_pd(r.mm,tmp_lo);
-				__m128d tmp_hi = _mm_mul_pd(mm,v.mm);
-				r.mm = shuffle(tmp_hi,78); // SWAP LO HI
-				tmp_hi = _mm_max_pd(r.mm,tmp_hi);
-				r.mm = _mm_shuffle_pd(tmp_lo,tmp_hi,0); // mix lo and hi from tmp1 & tmp2
-				r.mm = _mm_mul_pd(r.mm,uu);
-				r.mm = _mm_add_pd(r.mm,np);
-				#endif
+				r.lo = inflate_neg_lo(std::min(lo * v.hi, hi * v.lo));
+				r.hi = inflate_pos_hi(std::max(lo * v.lo, hi * v.hi));
 			}
 		}
 
@@ -676,18 +630,7 @@ struct IA_VAL
 		return lo > v.hi;
 	}
 
-	#ifndef USE_SSE2
 	double lo, hi;
-	#else
-	union
-	{
-		struct
-		{
-			double lo, hi;
-		};
-		__m128d mm;
-	};
-	#endif
 };
 
-#endif
+#endif // c++

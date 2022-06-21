@@ -991,8 +991,8 @@ struct CDelaBella : IDelaBella
 		first_boundary_vert = (Vert*)v;
 		out_boundary_verts = 1;
 
-		double wrap_x = v->x;
-		double wrap_y = v->y;
+		Signed14 wrap_x = v->x;
+		Signed14 wrap_y = v->y;
 
 		while (1)
 		{
@@ -1021,9 +1021,9 @@ struct CDelaBella : IDelaBella
 					#else
 					{
 						// approx edge normal
-						double vx = wrap ? wrap_x : t->v[nx]->x, vy = wrap ? wrap_y : t->v[nx]->y;
-						double nx = v->y - vy;
-						double ny = vx - v->x;
+						Signed14 vx = wrap ? wrap_x : t->v[nx]->x, vy = wrap ? wrap_y : t->v[nx]->y;
+						Signed14 nx = v->y - vy;
+						Signed14 ny = vx - v->x;
 						v->x = nx;
 						v->y = ny;
 					}
