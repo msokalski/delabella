@@ -441,6 +441,7 @@ inline std::ostream& operator << (std::ostream& os, const XA_REF& w)
 }
 
 //#include <math.h> // (nexttoward)
+#include <float.h>
 
 struct IA_VAL
 {

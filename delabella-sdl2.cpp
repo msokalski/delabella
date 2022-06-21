@@ -247,18 +247,27 @@ int main(int argc, char* argv[])
 	}
     else
     {
+        bool first = true;
         while (1)
         {
-            /*
-            long double x,y;
-            if (fscanf(f,"%Lf %Lf", &x, &y) != 2)
-                break;
-            */
+            char sep[1000];
             double x,y;
-            if (fscanf(f,"%lf %lf", &x, &y) != 2)
+            // allow variety of separators and extra fields till end of the line
+            int n = fscanf(f,"%lf%*[,; \v\t]%lf%*[^\n]", &x, &y);
+            if (n != 2)
+            {
+                if (first && n == 1)
+                {
+                    // skip header (ie num of points) at the begining
+                    first = false;
+                    continue;
+                }
                 break;
+            }
+
             MyPoint p = {x,y};
             cloud.push_back(p);
+            first = false;
         }
         fclose(f);
     }
@@ -414,21 +423,35 @@ int main(int argc, char* argv[])
 
 	vbo.Gen(GL_ARRAY_BUFFER, sizeof(gl_t[3]) * points);
     gl_t* vbo_ptr = (gl_t*)vbo.Map();
-    float box[4]={(float)cloud[0].x, (float)cloud[0].y, (float)cloud[0].x, (float)cloud[0].y};
+
+    // let's give a hand to gpu by centering vertices around 0,0
+    double box[4]={(double)cloud[0].x, (double)cloud[0].y, (double)cloud[0].x, (double)cloud[0].y};
 	for (int i = 0; i<points; i++)
     {
-        vbo_ptr[3*i+0] = (gl_t)cloud[i].x;
-        vbo_ptr[3*i+1] = (gl_t)cloud[i].y;
-        vbo_ptr[3*i+2] = (gl_t)(1.0); // i%5; // color
+        box[0] = fmin(box[0], (double)cloud[i].x);
+        box[1] = fmin(box[1], (double)cloud[i].y);
+        box[2] = fmax(box[2], (double)cloud[i].x);
+        box[3] = fmax(box[3], (double)cloud[i].y);
+    }
 
-        box[0] = fmin(box[0], (float)cloud[i].x);
-        box[1] = fmin(box[1], (float)cloud[i].y);
-        box[2] = fmax(box[2], (float)cloud[i].x);
-        box[3] = fmax(box[3], (float)cloud[i].y);
+    double vbo_x = 0.5 * (box[0]+box[2]);
+    double vbo_y = 0.5 * (box[1]+box[3]);
+
+	printf("box: x0:%f y0:%f x1:%f y1:%f\n", box[0], box[1], box[2], box[3]);
+
+    box[0] -= vbo_x;
+    box[1] -= vbo_y;
+    box[2] -= vbo_x;
+    box[3] -= vbo_y;
+
+	for (int i = 0; i<points; i++)
+    {
+        vbo_ptr[3*i+0] = (gl_t)(cloud[i].x - vbo_x);
+        vbo_ptr[3*i+1] = (gl_t)(cloud[i].y - vbo_y);
+        vbo_ptr[3*i+2] = (gl_t)(1.0); // i%5; // color
     }
     vbo.Unmap();
 
-	printf("box: x0:%f y0:%f x1:%f y1:%f\n", box[0], box[1], box[2], box[3]);
 
     // pure indices, without: center points, restarts, loop closing
     // points may be a bit too much (cuza duplicates)
@@ -470,8 +493,8 @@ int main(int argc, char* argv[])
 		*/
 
 		// less jumping on extreme zooming
-        vbo_voronoi_ptr[3*i+0] = (gl_t)(-0.5 * (double)dela->n.x / (double)dela->n.z);
-        vbo_voronoi_ptr[3*i+1] = (gl_t)(-0.5 * (double)dela->n.y / (double)dela->n.z);
+        vbo_voronoi_ptr[3*i+0] = (gl_t)(-0.5 * (double)dela->n.x / (double)dela->n.z - vbo_x);
+        vbo_voronoi_ptr[3*i+1] = (gl_t)(-0.5 * (double)dela->n.y / (double)dela->n.z - vbo_y);
         vbo_voronoi_ptr[3*i+2] = (gl_t)(1.0);
 
 		dela = dela->next;
@@ -799,6 +822,9 @@ int main(int argc, char* argv[])
         #endif
 		#endif
 
+        if (0)
+        {
+
         // voronoi!
         vbo_voronoi.Bind();
         //glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
@@ -839,6 +865,7 @@ int main(int argc, char* argv[])
 
             // then closed cells
             glDrawElements(GL_LINES, voronoi_loop_indices, GL_UNSIGNED_INT, (GLuint*)0 + voronoi_strip_indices);
+        }
         }
 
         SDL_GL_SwapWindow(window);
