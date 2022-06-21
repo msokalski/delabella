@@ -719,7 +719,7 @@ struct CDelaBella : IDelaBella
 					q->f[2] = next_q;
 
 					first_q = q;
-					prev_q = p;
+					prev_q = q;
 				}
 
 				q = next_q;

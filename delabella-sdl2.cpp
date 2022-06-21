@@ -224,12 +224,21 @@ int main(int argc, char* argv[])
        	std::random_device rd{};
     	std::mt19937_64 gen{rd()};
 
-        std::uniform_real_distribution</*long*/ double> d(0, 1.0e+10);
+        std::uniform_real_distribution</*long*/ double> d(100000, 101000);
+        std::uniform_real_distribution</*long*/ double> e(0, 100000);
+
         //std::uniform_real_distribution</*long*/ double> d(-1.0,1.0);
         //std::normal_distribution</*long*/ double> d{0.0,2.0};
         //std::gamma_distribution</*long*/ double> d(0.1,2.0);
 
-        for (int i=0; i<n; i++)
+        for (int i = 0; i < n / 1000; i++)
+        {
+            MyPoint p = { e(gen), 0 };
+            p.y = p.x;
+            cloud.push_back(p);
+        }
+
+        for (int i= n / 1000; i<n; i++)
         {
             //MyPoint p = { d(gen) - 5.0, d(gen) - 5.0 };
 			MyPoint p = { d(gen), d(gen) };
