@@ -62,6 +62,16 @@ struct CDelaBella : IDelaBella
 			return u28cmp(this, &v) < 0;
 		}
 
+		static bool cmp_x(const Vect& a, const Vect& b)
+		{
+			return a.x < b.x;
+		}
+
+		static bool cmp_y(const Vect& a, const Vect& b)
+		{
+			return a.y < b.y;
+		}
+
 		static int u28cmp(const void* a, const void* b)
 		{
 			const Vert* va = (const Vert*)a;
@@ -376,91 +386,394 @@ struct CDelaBella : IDelaBella
 
 		*cache = face_alloc;
 
+		int i;
 		Face f; // tmp
 		f.v[0] = vert_alloc + 0;
-		f.v[1] = vert_alloc + 1;
-		f.v[2] = vert_alloc + 2;
+
+		Signed14 lo_x = vert_alloc[0].x, hi_x = lo_x;
+		Signed14 lo_y = vert_alloc[0].y, hi_y = lo_y;
+		int lower_left = 0;
+		int upper_right = 0;
+		for (i = 1; i < 3; i++)
+		{
+			Vert* v = vert_alloc + i;
+			f.v[i] = v;
+
+			if (v->x < lo_x)
+			{
+				lo_x = v->x;
+				lower_left = i;
+			}
+			else
+			if (v->x == lo_x && v->y < vert_alloc[lower_left].y)
+				lower_left = i;
+
+			if (v->x > lo_x)
+			{
+				hi_x = v->x;
+				upper_right = i;
+			}
+			else
+			if (v->x == hi_x && v->y > vert_alloc[upper_right].y)
+				upper_right = i;
+
+			lo_y = v->y < lo_y ? v->y : lo_y;
+			hi_y = v->y > hi_y ? v->y : hi_y;
+		}
+		
 		f.cross();
 
-		bool colinear = f.sign() == 0; // hybrid
-		int i = 3;
-
-		/////////////////////////////////////////////////////////////////////////
-		// UNTIL INPUT IS COPLANAR, GROW IT IN FORM OF A 2D CONTOUR
-		/*
-		. |                |         after adding     . |        ________* L
-		. \ Last points to / Head     next point      . \ ______/        /
-		.  *____          |             ----->        .H *____          |
-		.  |\_  \_____    |                           .  |\_  \_____    |
-		.   \ \_      \__* - Tail points to Last      .   \ \_      \__* T
-		.    \  \_      /                             .    \  \_      /
-		.     \__ \_ __/                              .     \__ \_ __/
-		.        \__* - Head points to Tail           .        \__/
-		*/
-
-		Vert* head = (Vert*)f.v[0];
-		Vert* tail = (Vert*)f.v[1];
-		Vert* last = (Vert*)f.v[2];
-
-		head->next = tail;
-		tail->next = last;
-		last->next = head;
-
-		//while (i < points && f.dot(vert_alloc[i]) == 0)
+		// skip until points are coplanar
 		while (i < points && f.dot0(vert_alloc[i]))
 		{
 			Vert* v = vert_alloc + i;
 
-			// it is enough to test just 1 non-zero coord
-			// but we want also to test stability (assert)
-			// so we calc all signs...
-
-			// why not testing sign of dot prod of 2 normals?
-			// that way we'd fall into precission problems
-
-			Norm LvH = (*v - *last).cross(*head - *last);
-			bool lvh =
-				(f.n.x > 0 && LvH.x > 0) || (f.n.x < 0 && LvH.x < 0) ||
-				(f.n.y > 0 && LvH.y > 0) || (f.n.y < 0 && LvH.y < 0) ||
-				(f.n.z > 0 && LvH.z > 0) || (f.n.z < 0 && LvH.z < 0);
-
-			Norm TvL = (*v - *tail).cross(*last - *tail);
-			bool tvl =
-				(f.n.x > 0 && TvL.x > 0) || (f.n.x < 0 && TvL.x < 0) ||
-				(f.n.y > 0 && TvL.y > 0) || (f.n.y < 0 && TvL.y < 0) ||
-				(f.n.z > 0 && TvL.z > 0) || (f.n.z < 0 && TvL.z < 0);
-
-			if (lvh && !tvl) // insert new f on top of e(2,0) = (last,head)
+			if (v->x < lo_x)
 			{
-				// f.v[0] = head;
-				f.v[1] = last;
-				f.v[2] = v;
-
-				last->next = v;
-				v->next = head;
-				tail = last;
+				lo_x = v->x;
+				lower_left = i;
 			}
 			else
-				if (tvl && !lvh) // insert new f on top of e(1,2) = (tail,last)
-				{
-					f.v[0] = last;
-					//f.v[1] = tail;
-					f.v[2] = v;
+			if (v->x == lo_x && v->y < vert_alloc[lower_left].y)
+				lower_left = i;
 
-					tail->next = v;
-					v->next = last;
-					head = last;
-				}
-				else
-				{
-					// wtf? dilithium crystals are fucked.
-					assert(0);
-				}
+			if (v->x > lo_x)
+			{
+				hi_x = v->x;
+				upper_right = i;
+			}
+			else
+			if (v->x == hi_x && v->y > vert_alloc[upper_right].y)
+				upper_right = i;
 
-			last = v;
+			lo_y = v->y < lo_y ? v->y : lo_y;
+			hi_y = v->y > hi_y ? v->y : hi_y;
+
 			i++;
 		}
 
+		bool colinear = f.sign() == 0; // hybrid
+		if (colinear)
+		{
+			// choose x or y axis to sort verts (no need to be exact)
+			// todo: choose direction based on which side of contour it-h vertex appears at (so we won't have to reverse)
+			if (hi_x - lo_x > hi_y - lo_y)
+			{
+				struct { bool operator()(const Vert& a, const Vert& b) const { return a.x < b.x; } } c;
+				std::sort(vert_alloc, vert_alloc + i, c);
+			}
+			else
+			{
+				struct { bool operator()(const Vert& a, const Vert& b) const { return a.y < b.y; } } c;
+				std::sort(vert_alloc, vert_alloc + i, c);
+			}
+		}
+		else
+		{
+			// split to lower (below diag) and uppert (above diag) parts, 
+			// sort parts separately in opposite directions
+			// mark part with Vert::sew temporarily
+
+			Signed15 part_x = (Signed15)vert_alloc[lower_left].y - (Signed15)vert_alloc[upper_right].y;
+			Signed15 part_y = (Signed15)vert_alloc[upper_right].x - (Signed15)vert_alloc[lower_left].x;
+
+			for (int j = 0; j < i; j++)
+			{
+				if (j == lower_left)
+				{
+					// lower
+					vert_alloc[j].sew = &f;
+				}
+				else
+				if (j == upper_right)
+				{
+					// upper
+					vert_alloc[j].sew = 0;
+				}
+				else
+				{
+					Signed15 vx = (Signed15)vert_alloc[j].x - (Signed15)vert_alloc[lower_left].x;
+					Signed15 vy = (Signed15)vert_alloc[lower_left].y - (Signed15)vert_alloc[j].y; // flipped!
+
+					Signed31 dot_x = part_x * vx;
+					Signed31 dot_y = part_y * vy;
+
+					if (dot_x < dot_y)
+					{
+						// lower
+						vert_alloc[j].sew = &f;
+					}
+					else
+					if (dot_x > dot_y)
+					{
+						// upper
+						vert_alloc[j].sew = 0;
+					}
+					else
+					{
+						// requires XA 
+						// calc everything everytime from scatch?
+						XA_REF llx = vert_alloc[lower_left].x;
+						XA_REF lly = vert_alloc[lower_left].y;
+						XA_REF urx = vert_alloc[upper_right].x;
+						XA_REF ury = vert_alloc[upper_right].y;
+						XA_REF xa_part_x = lly - ury;
+						XA_REF xa_part_y = urx - llx;
+
+						XA_REF vx = (XA_REF)vert_alloc[j].x - llx;
+						XA_REF vy = lly - (XA_REF)vert_alloc[j].y; // flipped!
+
+						XA_REF dot_x = xa_part_x * vx;
+						XA_REF dot_y = xa_part_y * vy;
+
+						if (dot_x < dot_y)
+						{
+							// lower
+							vert_alloc[j].sew = &f;
+						}
+						else
+						{
+							#ifdef DB_AUTO_TEST
+							assert(dot_x > dot_y);
+							#endif
+							// upper
+							vert_alloc[j].sew = &f;
+						}
+					}
+				}
+			}
+
+			part_x = (Signed15)vert_alloc[upper_right].x - (Signed15)vert_alloc[lower_left].x;
+			part_y = (Signed15)vert_alloc[upper_right].y - (Signed15)vert_alloc[lower_left].y;
+
+			struct
+			{
+				// default to CW order (unlikely, if wrong, we will reverse later)
+				bool operator()(const Vert& a, const Vert& b) const
+				{
+					// if a is lower and b is upper, return true
+					if (a.sew && !b.sew)
+						return false;
+
+					// if a is upper and b is lower, return false
+					if (!a.sew && b.sew)
+						return true;
+
+					// calc a and b dot prods with (ur.x-ll.x,ur.y-ll.y)
+					Signed15 ax = (Signed15)a.x - (Signed15)ll->x;
+					Signed15 ay = (Signed15)a.y - (Signed15)ll->y;
+					Signed15 dot_a = part_x * ax + part_y * ay;
+
+					Signed15 bx = (Signed15)b.x - (Signed15)ll->x;
+					Signed15 by = (Signed15)b.y - (Signed15)ll->y;
+					Signed31 dot_b = part_x * bx + part_y * by;
+
+					if (dot_a < dot_b)
+						return a.sew == 0;
+					if (dot_a > dot_b)
+						return a.sew != 0;
+
+					// xa needed
+					{
+						// calc everything everytime from scatch?
+						XA_REF llx = ll->x;
+						XA_REF lly = ll->y;
+						XA_REF urx = ur->x;
+						XA_REF ury = ur->y;
+						XA_REF xa_part_x = urx - llx;
+						XA_REF xa_part_y = ury - lly;
+
+						XA_REF ax = (XA_REF)a.x - llx;
+						XA_REF ay = (XA_REF)a.y - lly;
+						XA_REF dot_a = xa_part_x * ax + xa_part_y * ay;
+
+						XA_REF bx = (XA_REF)b.x - llx;
+						XA_REF by = (XA_REF)b.y - lly;
+						XA_REF dot_b = xa_part_x * bx + xa_part_y * by;
+
+						if (dot_a < dot_b)
+							return a.sew == 0;
+						else
+						{
+							#ifdef DB_AUTO_TEST
+							assert(dot_a > dot_b);
+							#endif
+							return a.sew != 0;
+						}
+					}
+
+					// otherwise
+					#ifdef DB_AUTO_TEST
+					assert(0);
+					#endif
+					return false;
+				}
+				const Vert* ll;
+				const Vert* ur;
+				Signed15 part_x;
+				Signed15 part_y;
+			} c{ vert_alloc + lower_left, vert_alloc + upper_right, part_x, part_y };
+			std::sort(vert_alloc, vert_alloc + i, c);
+		}
+
+		if (i == points)
+		{
+			// we're almost done!
+			// time to build final flat hull
+			Face* next_p = Face::Alloc(cache);
+			Face* next_q = Face::Alloc(cache);
+			Face* prev_p = 0;
+			Face* prev_q = 0;
+
+			for (int j = 2; j < i; j++)
+			{
+				Face* p = next_p;
+				p->v[0] = vert_alloc + 0;
+				p->v[1] = vert_alloc + j-1;
+				p->v[2] = vert_alloc + j;
+				p->cross();
+
+				// mirrored
+				Face* q = next_q;
+				q->v[0] = vert_alloc + 0;
+				q->v[1] = vert_alloc + j;
+				q->v[2] = vert_alloc + j-1;
+				q->cross();
+
+				if (j < i - 1)
+				{
+					next_p = Face::Alloc(cache);
+					next_q = Face::Alloc(cache);
+				}
+				else
+				{
+					next_p = 0;
+					next_q = 0;
+				}
+
+				p->f[0] = q;
+				p->f[1] = next_p ? next_p : q;
+				p->f[2] = prev_p ? prev_p : q;
+
+				q->f[0] = p;
+				q->f[1] = prev_q ? prev_q : p;
+				q->f[2] = next_q ? next_q : p;
+
+				prev_p = p;
+				prev_q = q;
+			}
+
+			*hull = prev_q;
+		}
+		else
+		{
+			// time to build cone hull with i'th vertex at the tip and 0..i-1 verts in the base
+			// build cone's base in direction it is invisible to cone's tip!
+
+			// reverse contour if i-th vert can see the contour
+			// it should not happen frequently, and only because z-sort is inexact
+			f.v[0] = vert_alloc + 0;
+			f.v[1] = vert_alloc + 1;
+			f.v[2] = vert_alloc + 2;
+			f.cross();
+			if (!f.dotNP(vert_alloc[i]))
+			{
+				int h = i / 2;
+				for (int j = 0; j < h; j++)
+				{
+					int k = i - 1 - j;
+					Vert v = vert_alloc[j];
+					vert_alloc[j] = vert_alloc[k];
+					vert_alloc[k] = v;
+				}
+			}
+
+			Face* next_p = Face::Alloc(cache);
+			Face* prev_p = 0;
+
+			Face* first_q = 0;
+			Face* next_q = Face::Alloc(cache);
+			Face* prev_q = 0;
+
+			for (int j = 2; j < i; j++)
+			{
+				Face* p = next_p;
+				p->v[0] = vert_alloc + 0;
+				p->v[1] = vert_alloc + j - 1;
+				p->v[2] = vert_alloc + j;
+				p->cross();
+
+				Face* q;
+
+				if (j == 2)
+				{
+					// first base triangle also build extra tip face
+					q = Face::Alloc(cache);
+					q->v[0] = vert_alloc + i;
+					q->v[1] = vert_alloc + 1;
+					q->v[2] = vert_alloc + 0;
+					q->cross();
+
+					q->f[0] = p;
+					q->f[1] = 0; // LAST_Q;
+					q->f[2] = next_q;
+
+					first_q = q;
+					prev_q = p;
+				}
+
+				q = next_q;
+				q->v[0] = vert_alloc + i;
+				q->v[1] = vert_alloc + j;
+				q->v[2] = vert_alloc + j-1;
+				q->cross();
+
+				next_q = Face::Alloc(cache);
+
+				q->f[0] = p;
+				q->f[1] = prev_q;
+				q->f[2] = next_q;
+				prev_q = q;
+
+				p->f[0] = q;
+
+				if (j < i - 1)
+				{
+					next_p = Face::Alloc(cache);
+				}
+				else
+				{
+					// last base triangle also build extra tip face
+					q = next_q;
+					q->v[0] = vert_alloc + i;
+					q->v[1] = vert_alloc + 0;
+					q->v[2] = vert_alloc + i-1;
+					q->cross();
+
+					q->f[0] = p;
+					q->f[1] = prev_q;
+					q->f[2] = first_q;
+
+					first_q->f[1] = q;
+
+					next_p = 0;
+					prev_q = q;
+				}
+
+				p->f[1] = next_p ? next_p : q;
+				p->f[2] = prev_p ? prev_p : first_q;
+
+				prev_p = p;
+			}
+
+			*hull = prev_q;
+
+			i++;
+		}
+
+		*start = i;
+
+		#if 0
 		if (i == points)
 		{
 			if (colinear)
@@ -692,6 +1005,7 @@ struct CDelaBella : IDelaBella
 		}
 
 		*start = i;
+		#endif
 
 		return points;
 	}
@@ -814,13 +1128,13 @@ struct CDelaBella : IDelaBella
 							if (n->f[0] == f)
 								n->f[0] = s;
 							else
-								if (n->f[1] == f)
-									n->f[1] = s;
-								else
-									if (n->f[2] == f)
-										n->f[2] = s;
-									else
-										assert(0);
+							if (n->f[1] == f)
+								n->f[1] = s;
+							else
+							if (n->f[2] == f)
+								n->f[2] = s;
+							else
+								assert(0);
 
 							// build silhouette needed for sewing sides in the second pass
 							a->sew = s;
