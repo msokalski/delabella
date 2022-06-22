@@ -299,11 +299,12 @@ struct CDelaBella : IDelaBella
 		int points = inp_verts;
 		std::sort(vert_alloc, vert_alloc + points);
 
-		if (errlog_proc)
-			errlog_proc(errlog_file, "[PRO] looking for duplicates\n");
-
 		// rmove dups
 		{
+			// it's fast!
+			//if (errlog_proc)
+			//	errlog_proc(errlog_file, "[PRO] looking for duplicates\n");
+
 			int w = 0, r = 1; // skip initial no-dups block
 			while (r < points && !Vert::overlap(vert_alloc + r, vert_alloc + w))
 			{
@@ -321,7 +322,7 @@ struct CDelaBella : IDelaBella
 				while (r < points && Vert::overlap(vert_alloc + r, vert_alloc + r - 1))
 					r++;
 
-				// copy next no-dups block
+				// copy next no-dups block (in percent chunks?)
 				while (r < points && !Vert::overlap(vert_alloc + r, vert_alloc + r - 1))
 					vert_alloc[w++] = vert_alloc[r++];
 			}
@@ -354,37 +355,14 @@ struct CDelaBella : IDelaBella
 				vert_alloc[0].next = 0;
 			}
 
+			out_boundary_verts = points;
+
 			return -points;
 		}
 
-		int hull_faces = 2 * points - 4;
-		*out_hull_faces = hull_faces;
-
-		if (max_faces < hull_faces)
-		{
-			if (max_faces)
-			{
-				//free(face_alloc);
-				delete [] face_alloc;
-			}
-			max_faces = 0;
-			//face_alloc = (Face*)malloc(sizeof(Face) * hull_faces);
-			face_alloc = new Face[hull_faces];
-			if (face_alloc)
-				max_faces = hull_faces;
-			else
-			{
-				if (errlog_proc)
-					errlog_proc(errlog_file, "[ERR] Not enough memory, shop for some more RAM. See you!\n");
-				return 0;
-			}
-		}
-
-		for (int i = 1; i < hull_faces; i++)
-			face_alloc[i - 1].next = face_alloc + i;
-		face_alloc[hull_faces - 1].next = 0;
-
-		*cache = face_alloc;
+		// now with progress
+		//if (errlog_proc)
+		//	errlog_proc(errlog_file, "[PRO] preparing initial hull\n");
 
 		int i;
 		Face f; // tmp
@@ -408,7 +386,7 @@ struct CDelaBella : IDelaBella
 			if (v->x == lo_x && v->y < vert_alloc[lower_left].y)
 				lower_left = i;
 
-			if (v->x > lo_x)
+			if (v->x > hi_x)
 			{
 				hi_x = v->x;
 				upper_right = i;
@@ -423,9 +401,23 @@ struct CDelaBella : IDelaBella
 		
 		f.cross();
 
+
+		int pro = 0;
 		// skip until points are coplanar
 		while (i < points && f.dot0(vert_alloc[i]))
 		{
+			if (i >= pro)
+			{
+				int p = (int)((uint64_t)100 * i / points);
+				pro = (int)((uint64_t)(p + 1) * points / 100);
+				if (pro >= points)
+					pro = points - 1;
+				if (i == points - 1)
+					p = 100;
+				if (errlog_proc)
+					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation%s", p, p >= 100 ? "" : "%", p >= 100 ? "\n" : "");
+			}
+
 			Vert* v = vert_alloc + i;
 
 			if (v->x < lo_x)
@@ -437,7 +429,7 @@ struct CDelaBella : IDelaBella
 			if (v->x == lo_x && v->y < vert_alloc[lower_left].y)
 				lower_left = i;
 
-			if (v->x > lo_x)
+			if (v->x > hi_x)
 			{
 				hi_x = v->x;
 				upper_right = i;
@@ -616,8 +608,65 @@ struct CDelaBella : IDelaBella
 			std::sort(vert_alloc, vert_alloc + i, c);
 		}
 
+		*out_hull_faces = 0;
+
+		// alloc faces only if we're going to create them
+		if (i < points || !colinear)
+		{
+			int hull_faces = 2 * points - 4;
+			*out_hull_faces = hull_faces;
+
+			if (max_faces < hull_faces)
+			{
+				if (max_faces)
+				{
+					//free(face_alloc);
+					delete[] face_alloc;
+				}
+				max_faces = 0;
+				//face_alloc = (Face*)malloc(sizeof(Face) * hull_faces);
+				face_alloc = new Face[hull_faces];
+				if (face_alloc)
+					max_faces = hull_faces;
+				else
+				{
+					if (errlog_proc)
+						errlog_proc(errlog_file, "[ERR] Not enough memory, shop for some more RAM. See you!\n");
+					return 0;
+				}
+			}
+
+			for (int i = 1; i < hull_faces; i++)
+				face_alloc[i - 1].next = face_alloc + i;
+			face_alloc[hull_faces - 1].next = 0;
+
+			*cache = face_alloc;
+		}
+
 		if (i == points)
 		{
+			if (errlog_proc)
+			{
+				if (colinear)
+					errlog_proc(errlog_file, "[WRN] all input points are colinear\n");
+				else
+					errlog_proc(errlog_file, "[WRN] all input points are cocircular\n");
+			}
+
+			if (colinear)
+			{
+				// link verts into open list
+				first_boundary_vert = vert_alloc + 0;
+				first_internal_vert = 0;
+				out_boundary_verts = points;
+
+				for (int j = 1; j < points; j++)
+					vert_alloc[j - 1].next = (DelaBella_Vertex*)vert_alloc + j;
+				vert_alloc[points - 1].next = 0;
+
+				return -points;
+			}
+
 			// we're almost done!
 			// time to build final flat hull
 			Face* next_p = Face::Alloc(cache);
@@ -670,14 +719,20 @@ struct CDelaBella : IDelaBella
 			// time to build cone hull with i'th vertex at the tip and 0..i-1 verts in the base
 			// build cone's base in direction it is invisible to cone's tip!
 
-			// reverse contour if i-th vert can see the contour
-			// it should not happen frequently, and only because z-sort is inexact
 			f.v[0] = vert_alloc + 0;
 			f.v[1] = vert_alloc + 1;
 			f.v[2] = vert_alloc + 2;
 			f.cross();
+
+			int one = 1, two = 2;
 			if (!f.dotNP(vert_alloc[i]))
 			{
+				// if i-th vert can see the contour we will flip every face
+				one = 2;
+				two = 1;
+
+				/*
+				// if i-th vert can see the contour we reverse entire base
 				int h = i / 2;
 				for (int j = 0; j < h; j++)
 				{
@@ -686,6 +741,7 @@ struct CDelaBella : IDelaBella
 					vert_alloc[j] = vert_alloc[k];
 					vert_alloc[k] = v;
 				}
+				*/
 			}
 
 			Face* next_p = Face::Alloc(cache);
@@ -699,8 +755,8 @@ struct CDelaBella : IDelaBella
 			{
 				Face* p = next_p;
 				p->v[0] = vert_alloc + 0;
-				p->v[1] = vert_alloc + j - 1;
-				p->v[2] = vert_alloc + j;
+				p->v[one] = vert_alloc + j - 1;
+				p->v[two] = vert_alloc + j;
 				p->cross();
 
 				Face* q;
@@ -710,13 +766,13 @@ struct CDelaBella : IDelaBella
 					// first base triangle also build extra tip face
 					q = Face::Alloc(cache);
 					q->v[0] = vert_alloc + i;
-					q->v[1] = vert_alloc + 1;
-					q->v[2] = vert_alloc + 0;
+					q->v[one] = vert_alloc + 1;
+					q->v[two] = vert_alloc + 0;
 					q->cross();
 
 					q->f[0] = p;
-					q->f[1] = 0; // LAST_Q;
-					q->f[2] = next_q;
+					q->f[one] = 0; // LAST_Q;
+					q->f[two] = next_q;
 
 					first_q = q;
 					prev_q = q;
@@ -724,15 +780,15 @@ struct CDelaBella : IDelaBella
 
 				q = next_q;
 				q->v[0] = vert_alloc + i;
-				q->v[1] = vert_alloc + j;
-				q->v[2] = vert_alloc + j-1;
+				q->v[one] = vert_alloc + j;
+				q->v[two] = vert_alloc + j-1;
 				q->cross();
 
 				next_q = Face::Alloc(cache);
 
 				q->f[0] = p;
-				q->f[1] = prev_q;
-				q->f[2] = next_q;
+				q->f[one] = prev_q;
+				q->f[two] = next_q;
 				prev_q = q;
 
 				p->f[0] = q;
@@ -746,22 +802,22 @@ struct CDelaBella : IDelaBella
 					// last base triangle also build extra tip face
 					q = next_q;
 					q->v[0] = vert_alloc + i;
-					q->v[1] = vert_alloc + 0;
-					q->v[2] = vert_alloc + i-1;
+					q->v[one] = vert_alloc + 0;
+					q->v[two] = vert_alloc + i-1;
 					q->cross();
 
 					q->f[0] = p;
-					q->f[1] = prev_q;
-					q->f[2] = first_q;
+					q->f[one] = prev_q;
+					q->f[two] = first_q;
 
-					first_q->f[1] = q;
+					first_q->f[one] = q;
 
 					next_p = 0;
 					prev_q = q;
 				}
 
-				p->f[1] = next_p ? next_p : q;
-				p->f[2] = prev_p ? prev_p : first_q;
+				p->f[one] = next_p ? next_p : q;
+				p->f[two] = prev_p ? prev_p : first_q;
 
 				prev_p = p;
 			}
@@ -769,244 +825,15 @@ struct CDelaBella : IDelaBella
 			*hull = prev_q;
 
 			i++;
-		}
 
-		*start = i;
-
-		#if 0
-		if (i == points)
-		{
-			if (colinear)
+			if (i == points)
 			{
 				if (errlog_proc)
-					errlog_proc(errlog_file, "[WRN] all input points are colinear, returning segment list!\n");
-				first_boundary_vert = head;
-				first_internal_vert = 0;
-				last->next = 0; // break contour, make it a list
-				return -points;
-			}
-			else
-			{
-				if (points > 3)
-				{
-					if (errlog_proc)
-						errlog_proc(errlog_file, "[NFO] all input points are cocircular.\n");
-				}
-				else
-				{
-					if (errlog_proc)
-						errlog_proc(errlog_file, "[NFO] trivial case of 3 points, thank you.\n");
-
-					first_dela_face = Face::Alloc(cache);
-					first_dela_face->next = 0;
-					first_hull_face = Face::Alloc(cache);
-					first_hull_face->next = 0;
-
-					first_dela_face->f[0] = first_dela_face->f[1] = first_dela_face->f[2] = first_hull_face;
-					first_hull_face->f[0] = first_hull_face->f[1] = first_hull_face->f[2] = first_dela_face;
-
-					head->sew = tail->sew = last->sew = first_hull_face;
-
-					if (f.n.z < 0)
-					{
-						first_dela_face->v[0] = head;
-						first_dela_face->v[1] = tail;
-						first_dela_face->v[2] = last;
-						first_hull_face->v[0] = last;
-						first_hull_face->v[1] = tail;
-						first_hull_face->v[2] = head;
-
-						// reverse silhouette
-						head->next = last;
-						last->next = tail;
-						tail->next = head;
-
-						first_boundary_vert = last;
-						first_internal_vert = 0;
-					}
-					else
-					{
-						first_dela_face->v[0] = last;
-						first_dela_face->v[1] = tail;
-						first_dela_face->v[2] = head;
-						first_hull_face->v[0] = head;
-						first_hull_face->v[1] = tail;
-						first_hull_face->v[2] = last;
-
-						first_boundary_vert = head;
-						first_internal_vert = 0;
-					}
-
-					first_dela_face->cross();
-					first_hull_face->cross();
-
-					return 3;
-				}
-
-				// retract last point it will be added as a cone's top later
-				last = head;
-				head = (Vert*)head->next;
-				i--;
-			}
-		}
-
-		/////////////////////////////////////////////////////////////////////////
-		// CREATE CONE HULL WITH TOP AT cloud[i] AND BASE MADE OF CONTOUR LIST
-		// in 2 ways :( - depending on at which side of the contour a top vertex appears
-
-		{
-			Vert* q = vert_alloc + i;
-
-			//if (f.dot(*q) > 0)
-			if (f.dotP(*q))
-			{
-				Vert* p = last;
-				Vert* n = (Vert*)p->next;
-
-				Face* first_side = Face::Alloc(cache);
-				first_side->v[0] = p;
-				first_side->v[1] = n;
-				first_side->v[2] = q;
-				first_side->cross();
-				*hull = first_side;
-
-				p = n;
-				n = (Vert*)n->next;
-
-				Face* prev_side = first_side;
-				Face* prev_base = 0;
-				Face* first_base = 0;
-
-				do
-				{
-					Face* base = Face::Alloc(cache);
-					base->v[0] = n;
-					base->v[1] = p;
-					base->v[2] = last;
-					base->cross();
-
-					Face* side = Face::Alloc(cache);
-					side->v[0] = p;
-					side->v[1] = n;
-					side->v[2] = q;
-					side->cross();
-
-					side->f[2] = base;
-					base->f[2] = side;
-
-					side->f[1] = prev_side;
-					prev_side->f[0] = side;
-
-					base->f[0] = prev_base;
-					if (prev_base)
-						prev_base->f[1] = base;
-					else
-						first_base = base;
-
-					prev_base = base;
-					prev_side = side;
-
-					p = n;
-					n = (Vert*)n->next;
-				} while (n != last);
-
-				Face* last_side = Face::Alloc(cache);
-				last_side->v[0] = p;
-				last_side->v[1] = n;
-				last_side->v[2] = q;
-				last_side->cross();
-
-				last_side->f[1] = prev_side;
-				prev_side->f[0] = last_side;
-
-				last_side->f[0] = first_side;
-				first_side->f[1] = last_side;
-
-				first_base->f[0] = first_side;
-				first_side->f[2] = first_base;
-
-				last_side->f[2] = prev_base;
-				prev_base->f[1] = last_side;
-
-				i++;
-			}
-			else
-			{
-				Vert* p = last;
-				Vert* n = (Vert*)p->next;
-
-				Face* first_side = Face::Alloc(cache);
-				first_side->v[0] = n;
-				first_side->v[1] = p;
-				first_side->v[2] = q;
-				first_side->cross();
-				*hull = first_side;
-
-				p = n;
-				n = (Vert*)n->next;
-
-				Face* prev_side = first_side;
-				Face* prev_base = 0;
-				Face* first_base = 0;
-
-				do
-				{
-					Face* base = Face::Alloc(cache);
-					base->v[0] = p;
-					base->v[1] = n;
-					base->v[2] = last;
-					base->cross();
-
-					Face* side = Face::Alloc(cache);
-					side->v[0] = n;
-					side->v[1] = p;
-					side->v[2] = q;
-					side->cross();
-
-					side->f[2] = base;
-					base->f[2] = side;
-
-					side->f[0] = prev_side;
-					prev_side->f[1] = side;
-
-					base->f[1] = prev_base;
-					if (prev_base)
-						prev_base->f[0] = base;
-					else
-						first_base = base;
-
-					prev_base = base;
-					prev_side = side;
-
-					p = n;
-					n = (Vert*)n->next;
-				} while (n != last);
-
-				Face* last_side = Face::Alloc(cache);
-				last_side->v[0] = n;
-				last_side->v[1] = p;
-				last_side->v[2] = q;
-				last_side->cross();
-
-				last_side->f[0] = prev_side;
-				prev_side->f[1] = last_side;
-
-				last_side->f[1] = first_side;
-				first_side->f[0] = last_side;
-
-				first_base->f[1] = first_side;
-				first_side->f[2] = first_base;
-
-				last_side->f[2] = prev_base;
-				prev_base->f[0] = last_side;
-
-				i++;
+					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation%s", 100, "", "\n");
 			}
 		}
 
 		*start = i;
-		#endif
-
 		return points;
 	}
 
@@ -1019,7 +846,7 @@ struct CDelaBella : IDelaBella
 
 		int points = Prepare(&i, &hull, &hull_faces, &cache);
 		unique_points = points < 0 ? -points : points;
-		if (points <= 0 || points == 3)
+		if (points <= 0)
 			return points;
 
 		/////////////////////////////////////////////////////////////////////////
