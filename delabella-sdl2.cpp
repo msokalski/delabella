@@ -6,6 +6,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #define _CRT_SECURE_NO_WARNINGS
 
 #define DELAUNATOR
+#define Cdt
 
 #include <math.h>
 #include <stdlib.h>
@@ -33,9 +34,13 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #undef main // on windows SDL does this weird thing
 #endif
 
-// competitor
+// competitors
 #ifdef DELAUNATOR
 #include "delaunator/delaunator-header-only.hpp"
+#endif
+
+#ifdef Cdt
+#include "CDT/include/CDT.h"
 #endif
 
 PFNGLBINDBUFFERPROC glBindBuffer = 0;
@@ -445,6 +450,11 @@ int main(int argc, char* argv[])
 	{
 		/*long*/ double x;
 		/*long*/ double y;
+
+        bool operator < (const MyPoint& p)
+        {
+            return x * x + y * y > p.x* p.x + p.y * p.y;
+        }
 	};
 	
 	std::vector<MyPoint> cloud;
@@ -520,15 +530,17 @@ int main(int argc, char* argv[])
         }
         */
 
-        /*
+        
         for (int i = 0; i<n; i++)
         {
             //MyPoint p = { d(gen) - 5.0, d(gen) - 5.0 };
 			MyPoint p = { d(gen), d(gen) };
             cloud.push_back(p);
         }
-        */
+        
+        //std::sort(cloud.begin(), cloud.end());
 
+        /*
         for (int i = 0; i < n; i++)
         {
             MyPoint p = { d(gen), 0 };
@@ -537,6 +549,7 @@ int main(int argc, char* argv[])
         }
         MyPoint p = { 0,0.000000000000000001 };
         cloud.push_back(p);
+        */
 	}
     else
     {
@@ -566,6 +579,30 @@ int main(int argc, char* argv[])
     }
 
     int points = (int)cloud.size();
+
+    #ifdef Cdt
+    {
+        std::vector<MyPoint> nodups = cloud;
+        printf("running cdt...\n");
+        uint64_t t0 = uSec();
+        std::vector<size_t> dups;
+        CDT::RemoveDuplicates(nodups, dups);
+        CDT::Triangulation<double> cdt;
+        cdt.insertVertices(
+            nodups.begin(),
+            nodups.end(),
+            [](const MyPoint& p) { return p.x; },
+            [](const MyPoint& p) { return p.y; }
+        );
+
+        printf("elapsed %d ms\n", (int)((uSec() - t0) / 1000));
+        printf("erasing super tri\n");
+        //cdt.eraseSuperTriangle();
+        uint64_t t1 = uSec();
+        printf("CDT triangles=%d in %d ms (total)\n", (int)cdt.triangles.size(), (int)((t1 - t0) / 1000));
+    }
+    #endif
+
 
     #ifdef DELAUNATOR
     std::vector<double> coords;
@@ -613,12 +650,13 @@ int main(int argc, char* argv[])
     int non_contour = idb->GetNumInternalVerts();
 	int vert_num = contour + non_contour;
 
+    idb->Constrain(0, 1);
+
     uint64_t t3 = uSec();
     printf("elapsed %d ms\n", (int)((t3-t2)/1000));
     printf("delabella triangles: %d\n", tris_delabella);
     printf("delabella contour: %d\n", contour);
 
-    exit(0);
 	// if positive, all ok 
 	if (verts<=0)
 	{

@@ -35,6 +35,7 @@ IDelaBella::~IDelaBella()
 {
 }
 
+static int cmp_calls = 0;
 struct CDelaBella : IDelaBella
 {
 	struct Face;
@@ -59,17 +60,8 @@ struct CDelaBella : IDelaBella
 
 		bool operator < (const Vert& v) const
 		{
+			cmp_calls++;
 			return u28cmp(this, &v) < 0;
-		}
-
-		static bool cmp_x(const Vect& a, const Vect& b)
-		{
-			return a.x < b.x;
-		}
-
-		static bool cmp_y(const Vect& a, const Vect& b)
-		{
-			return a.y < b.y;
 		}
 
 		static int u28cmp(const void* a, const void* b)
@@ -275,6 +267,7 @@ struct CDelaBella : IDelaBella
 
 	Vert* vert_alloc;
 	Face* face_alloc;
+	int* vert_map;
 	int max_verts;
 	int max_faces;
 
@@ -297,7 +290,10 @@ struct CDelaBella : IDelaBella
 		if (errlog_proc)
 			errlog_proc(errlog_file, "[PRO] sorting vertices\n");
 		int points = inp_verts;
+
 		std::sort(vert_alloc, vert_alloc + points);
+		printf("cmp_calls=%d\n", cmp_calls);
+		cmp_calls = 0;
 
 		// rmove dups
 		{
@@ -1032,8 +1028,21 @@ struct CDelaBella : IDelaBella
 		i = 0;
 		Face** prev_dela = &first_dela_face;
 		Face** prev_hull = &first_hull_face;
+		pro = 0;
 		for (int j = 0; j < hull_faces; j++)
 		{
+			if (j >= pro)
+			{
+				int p = (int)((uint64_t)100 * j / hull_faces);
+				pro = (int)((uint64_t)(p + 1) * hull_faces / 100);
+				if (pro >= hull_faces)
+					pro = hull_faces - 1;
+				if (j == hull_faces - 1)
+					p = 100;
+				if (errlog_proc)
+					errlog_proc(errlog_file, "\r[%2d%s] postprocessing triangles%s", p, p >= 100 ? "" : "%", p >= 100 ? "\n" : "");
+			}
+
 			Face* f = face_alloc + j;
 
 			// back-link all verts to some_face
@@ -1206,6 +1215,10 @@ struct CDelaBella : IDelaBella
 
 	bool ReallocVerts(int points)
 	{
+		if (vert_map)
+			free(vert_map);
+		vert_map = 0;
+
 		inp_verts = points;
 		out_verts = 0;
 
@@ -1236,6 +1249,72 @@ struct CDelaBella : IDelaBella
 		}
 
 		return true;
+	}
+
+	virtual bool Constrain(int a, int b)
+	{
+		// current
+		Vert* va = vert_alloc + a;// (Vert*)GetVertexByIndex(a);
+		if (!va)
+			return false;
+
+		// destination
+		Vert* vb = vert_alloc + b;//(Vert*)GetVertexByIndex(b);
+		if (!vb)
+			return false;
+
+		DelaBella_Iterator it;
+		const DelaBella_Triangle* f = va->StartIterator(&it);
+		const DelaBella_Triangle* e = f;
+
+		Face* face = 0;
+		int edge;
+
+		while (1)
+		{
+			if (f->index >= 0)
+			{
+				for (int e = 0; e < 3; e++)
+				{
+					if (f->v[e] == va)
+					{
+						// now heck if va-vb passes throu this face
+						static const int other[3][2] = {{1,2},{2,0},{0,1}};
+						Vert* v0 = (Vert*)(f->v[other[e][0]]);
+						Vert* v1 = (Vert*)(f->v[other[e][1]]);
+						IA_VAL ab[2] = { (IA_VAL)vb->x - (IA_VAL)va->x, (IA_VAL)vb->y - (IA_VAL)va->y };
+						IA_VAL a0[2] = { (IA_VAL)v0->x - (IA_VAL)va->x, (IA_VAL)v0->y - (IA_VAL)va->y };
+						IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)va->x, (IA_VAL)v1->y - (IA_VAL)va->y };
+
+						IA_VAL a0b = a0[0] * ab[1] - a0[1] * ab[0];
+						IA_VAL a1b = a1[0] * ab[1] - a1[1] * ab[0];
+
+						if (a0b < 0 && a1b > 0)
+						{
+							// clean
+							face = (Face*)f;
+							edge = e;
+							break;
+						}
+
+						if (a0b > 0 || a1b < 0)
+							break;
+
+						// XA needed
+						{
+							int a = 0;
+						}
+					}
+				}
+				if (face)
+					break;
+			}
+			f = it.Next();
+			if (f == e)
+				return false;
+		}
+
+
 	}
 
 	virtual int Triangulate(int points, const float* x, const float* y = 0, int advance_bytes = 0)
@@ -1330,6 +1409,8 @@ struct CDelaBella : IDelaBella
 
 	virtual void Destroy()
 	{
+		if (vert_map)
+			free(vert_map);
 		if (face_alloc)
 		{
 			//free(face_alloc);
@@ -1390,6 +1471,21 @@ struct CDelaBella : IDelaBella
 		return first_internal_vert;
 	}
 
+	virtual const DelaBella_Vertex* GetVertexByIndex(int i)
+	{
+		if (i < 0 || i >= inp_verts)
+			return 0;
+
+		if (!vert_map)
+		{
+			vert_map = (int*)malloc(sizeof(int) * inp_verts);
+			for (int j = 0; j < inp_verts; j++)
+				vert_map[vert_alloc[j].i] = j;
+		}
+
+		return vert_alloc + vert_map[i];
+	}
+
 	virtual void SetErrLog(int(*proc)(void* stream, const char* fmt, ...), void* stream)
 	{
 		errlog_proc = proc;
@@ -1403,6 +1499,7 @@ IDelaBella* IDelaBella::Create()
 	if (!db)
 		return 0;
 
+	db->vert_map = 0;
 	db->vert_alloc = 0;
 	db->face_alloc = 0;
 	db->max_verts = 0;

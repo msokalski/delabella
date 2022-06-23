@@ -217,6 +217,9 @@ struct IDelaBella
 	virtual const DelaBella_Triangle* GetFirstHullTriangle() const = 0; // valid only if Triangulate() > 0
 	virtual const DelaBella_Vertex*   GetFirstBoundaryVertex() const = 0; // if Triangulate() < 0 it is list, otherwise closed contour! 
 	virtual const DelaBella_Vertex*   GetFirstInternalVertex() const = 0;
+	virtual const DelaBella_Vertex*   GetVertexByIndex(int i) = 0; // not const as it creates a map on a first use
+
+	virtual bool Constrain(int a, int b) = 0;
 };
 #else
 void* DelaBella_Create();
