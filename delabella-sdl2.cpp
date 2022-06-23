@@ -5,8 +5,8 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #define _CRT_SECURE_NO_WARNINGS
 
-#define DELAUNATOR
-#define Cdt
+//#define DELAUNATOR
+//#define Cdt
 
 #include <math.h>
 #include <stdlib.h>
@@ -597,7 +597,7 @@ int main(int argc, char* argv[])
 
         printf("elapsed %d ms\n", (int)((uSec() - t0) / 1000));
         printf("erasing super tri\n");
-        //cdt.eraseSuperTriangle();
+        cdt.eraseSuperTriangle();
         uint64_t t1 = uSec();
         printf("CDT triangles=%d in %d ms (total)\n", (int)cdt.triangles.size(), (int)((t1 - t0) / 1000));
     }

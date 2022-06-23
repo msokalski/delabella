@@ -1267,54 +1267,87 @@ struct CDelaBella : IDelaBella
 		const DelaBella_Triangle* f = va->StartIterator(&it);
 		const DelaBella_Triangle* e = f;
 
-		Face* face = 0;
-		int edge;
+		static const int other_vert[3][2] = { {1,2},{2,0},{0,1} };
 
-		while (1)
+		while (true) // loop over multiple obstacles
 		{
-			if (f->index >= 0)
+			Face* near_face = 0;
+			int prev,edge,next;
+
+			while (1) // find offending face and its edge
 			{
-				for (int e = 0; e < 3; e++)
+				if (f->index >= 0)
 				{
-					if (f->v[e] == va)
+					for (int e = 0; e < 3; e++)
 					{
-						// now heck if va-vb passes throu this face
-						static const int other[3][2] = {{1,2},{2,0},{0,1}};
-						Vert* v0 = (Vert*)(f->v[other[e][0]]);
-						Vert* v1 = (Vert*)(f->v[other[e][1]]);
-						IA_VAL ab[2] = { (IA_VAL)vb->x - (IA_VAL)va->x, (IA_VAL)vb->y - (IA_VAL)va->y };
-						IA_VAL a0[2] = { (IA_VAL)v0->x - (IA_VAL)va->x, (IA_VAL)v0->y - (IA_VAL)va->y };
-						IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)va->x, (IA_VAL)v1->y - (IA_VAL)va->y };
-
-						IA_VAL a0b = a0[0] * ab[1] - a0[1] * ab[0];
-						IA_VAL a1b = a1[0] * ab[1] - a1[1] * ab[0];
-
-						if (a0b < 0 && a1b > 0)
+						if (f->v[e] == va)
 						{
-							// clean
-							face = (Face*)f;
-							edge = e;
-							break;
-						}
+							// now check if va-vb passes throu this face
+							prev = other_vert[e][0];
+							Vert* v0 = (Vert*)(f->v[prev]);
+							if (v0 == vb)
+								return true; // ab is already there
 
-						if (a0b > 0 || a1b < 0)
-							break;
+							next = other_vert[e][1];
+							Vert* v1 = (Vert*)(f->v[next]);
+							if (v1 == vb)
+								return true; // ab is already there
 
-						// XA needed
-						{
-							int a = 0;
+							IA_VAL ab[2] = { (IA_VAL)vb->x - (IA_VAL)va->x, (IA_VAL)vb->y - (IA_VAL)va->y };
+							IA_VAL a0[2] = { (IA_VAL)v0->x - (IA_VAL)va->x, (IA_VAL)v0->y - (IA_VAL)va->y };
+							IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)va->x, (IA_VAL)v1->y - (IA_VAL)va->y };
+
+							IA_VAL a0b = a0[0] * ab[1] - a0[1] * ab[0];
+							IA_VAL a1b = a1[0] * ab[1] - a1[1] * ab[0];
+
+							if (a0b < 0 && a1b > 0)
+							{
+								// clean
+								near_face = (Face*)f;
+								edge = e;
+								break;
+							}
+
+							if (a0b > 0 || a1b < 0)
+								break;
+
+							// XA needed
+							{
+								// TODO:
+								assert(0);
+								return false;
+							}
 						}
 					}
+					if (near_face)
+						break;
 				}
-				if (face)
-					break;
+				f = it.Next();
+				if (f == e)
+					return false;
 			}
-			f = it.Next();
-			if (f == e)
-				return false;
+
+			Face* far_face = f->f[e];
+			int far_prev = -1;// where far face has the near_face's prev vert
+
+
+			near_face->v[prev] = opposite;
+			far_face->v[far_prev] = va;
+
+			/*
+			          p                *
+			      f0 /|  |\ f1        f0 / \ f1
+			        / |  | \            / n \
+				va e n|  |f *   ->  va *-----* 
+			        \ |  | /            \ f /
+			      f3 \|  |/ f2        f3 \ / f2
+					  n          	   *
+			*/
+
 		}
 
 
+		return true;
 	}
 
 	virtual int Triangulate(int points, const float* x, const float* y = 0, int advance_bytes = 0)
