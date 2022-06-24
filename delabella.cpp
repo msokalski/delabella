@@ -1433,8 +1433,8 @@ struct CDelaBella : IDelaBella
 			P->f[p] = F;  // from N
 			Q->f[q] = N;  // from F
 
-			v0->sew == N;
-			v1->sew == F;
+			v0->sew = N;
+			v1->sew = F;
 
 			flips++;
 

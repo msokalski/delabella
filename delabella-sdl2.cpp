@@ -556,7 +556,6 @@ int main(int argc, char* argv[])
         bool first = true;
         while (1)
         {
-            char sep[1000];
             double x,y;
             // allow variety of separators and extra fields till end of the line
             int n = fscanf(f,"%lf%*[,; \v\t]%lf%*[^\n]", &x, &y);
