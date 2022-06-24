@@ -650,12 +650,32 @@ int main(int argc, char* argv[])
     int non_contour = idb->GetNumInternalVerts();
 	int vert_num = contour + non_contour;
 
-    idb->Constrain(0, 1);
+    {
+        printf("VERTICES DUIMP:\n");
+        for (int i = 0; i < cloud.size(); i++)
+        {
+            printf("%f %f\n", cloud[i].x, cloud[i].y);
+        }
+
+        printf("TRIANGLES DUIMP:\n");
+        const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
+        for (int i = 0; i < tris_delabella; i++)
+        {
+            printf("%d %d %d\n",
+                dela->v[0]->i,
+                dela->v[1]->i,
+                dela->v[2]->i);
+            dela = dela->next;
+        }
+    }
 
     uint64_t t3 = uSec();
     printf("elapsed %d ms\n", (int)((t3-t2)/1000));
     printf("delabella triangles: %d\n", tris_delabella);
     printf("delabella contour: %d\n", contour);
+
+    int flips = idb->Constrain(0, 9);
+    printf("FLIPS: %d\n", flips);
 
 	// if positive, all ok 
 	if (verts<=0)
@@ -852,9 +872,17 @@ int main(int argc, char* argv[])
         // put infinite edge normal to vbo_voronoi at tris_delabella + 'i'
 
 		// coords are overwritten with edge normals in edge postproc!
+        /*
         vbo_voronoi_ptr[3*(tris_delabella+i)+0] = (gl_t)(prev->x);
         vbo_voronoi_ptr[3*(tris_delabella+i)+1] = (gl_t)(prev->y);
         vbo_voronoi_ptr[3*(tris_delabella+i)+2] = (gl_t)(0.0);
+        */
+
+        double nx = prev->y - vert->y;
+        double ny = vert->x - prev->x;
+        vbo_voronoi_ptr[3 * (tris_delabella + i) + 0] = (gl_t)(nx);
+        vbo_voronoi_ptr[3 * (tris_delabella + i) + 1] = (gl_t)(ny);
+        vbo_voronoi_ptr[3 * (tris_delabella + i) + 2] = (gl_t)(0.0);
 
         // create special-fan / line_strip in ibo_voronoi around this boundary vertex
         ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)i + tris_delabella; // begin
@@ -951,7 +979,7 @@ int main(int argc, char* argv[])
 	xa_pool_free(); 
 	#endif
 
-    idb->Destroy();
+    //idb->Destroy();
 
     int vpw, vph;
     SDL_GL_GetDrawableSize(window, &vpw, &vph);
@@ -1093,8 +1121,14 @@ int main(int argc, char* argv[])
                 }
 
                 case SDL_KEYUP:
-                    if( event.key.keysym.sym == SDLK_ESCAPE )
-                        return 0;
+                    if (event.key.keysym.sym == SDLK_ESCAPE)
+                    {
+                        int flips = idb->Constrain(0, 9);
+                        printf("FLIPS: %d\n", flips);
+                        idb->Destroy();
+
+                        //return 0;
+                    }
                     break;
             }
 

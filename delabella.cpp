@@ -1155,6 +1155,8 @@ struct CDelaBella : IDelaBella
 				{
 					bool wrap = t->v[nx] == first_boundary_vert;
 					// change x,y to the edge's normal as accurately as possible
+					/*
+					// THIS IS EVIL!
 					#if 0
 					{
 						// exact edge normal
@@ -1178,6 +1180,7 @@ struct CDelaBella : IDelaBella
 						v->y = ny;
 					}
 					#endif
+					*/
 
 					// let's move from: v to t->v[nx]
 					v->next = t->v[nx];
@@ -1251,103 +1254,217 @@ struct CDelaBella : IDelaBella
 		return true;
 	}
 
-	virtual bool Constrain(int a, int b)
+	virtual int Constrain(int a, int b)
 	{
+		int flips = 0;
+
 		// current
 		Vert* va = vert_alloc + a;// (Vert*)GetVertexByIndex(a);
 		if (!va)
-			return false;
+			return -1;
 
 		// destination
 		Vert* vb = vert_alloc + b;//(Vert*)GetVertexByIndex(b);
 		if (!vb)
-			return false;
+			return -1;
 
 		DelaBella_Iterator it;
-		const DelaBella_Triangle* f = va->StartIterator(&it);
-		const DelaBella_Triangle* e = f;
+		const DelaBella_Triangle* first = va->StartIterator(&it);
+		const DelaBella_Triangle* face = first;
 
 		static const int other_vert[3][2] = { {1,2},{2,0},{0,1} };
 
 		while (true) // loop over multiple obstacles
 		{
-			Face* near_face = 0;
-			int prev,edge,next;
+			Vert* v0;
+			Vert* v1;
+			Face* N = 0;
+			int a, b, c;
 
-			while (1) // find offending face and its edge
+			while (1) // find closest crossing edge
 			{
-				if (f->index >= 0)
+				if (face->index >= 0)
 				{
-					for (int e = 0; e < 3; e++)
+					a = it.around;
+					b = other_vert[a][0];
+					v0 = (Vert*)(face->v[b]);
+					if (v0 == vb)
+						return flips; // ab is already there
+
+					c = other_vert[a][1];
+					v1 = (Vert*)(face->v[c]);
+					if (v1 == vb)
+						return flips; // ab is already there
+
+					IA_VAL ab[2] = { (IA_VAL)vb->x - (IA_VAL)va->x, (IA_VAL)vb->y - (IA_VAL)va->y };
+					IA_VAL a0[2] = { (IA_VAL)v0->x - (IA_VAL)va->x, (IA_VAL)v0->y - (IA_VAL)va->y };
+					IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)va->x, (IA_VAL)v1->y - (IA_VAL)va->y };
+
+					IA_VAL a0b = a0[0] * ab[1] - a0[1] * ab[0];
+					IA_VAL a1b = a1[0] * ab[1] - a1[1] * ab[0];
+
+					if (a0b < 0 && a1b > 0)
 					{
-						if (f->v[e] == va)
-						{
-							// now check if va-vb passes throu this face
-							prev = other_vert[e][0];
-							Vert* v0 = (Vert*)(f->v[prev]);
-							if (v0 == vb)
-								return true; // ab is already there
-
-							next = other_vert[e][1];
-							Vert* v1 = (Vert*)(f->v[next]);
-							if (v1 == vb)
-								return true; // ab is already there
-
-							IA_VAL ab[2] = { (IA_VAL)vb->x - (IA_VAL)va->x, (IA_VAL)vb->y - (IA_VAL)va->y };
-							IA_VAL a0[2] = { (IA_VAL)v0->x - (IA_VAL)va->x, (IA_VAL)v0->y - (IA_VAL)va->y };
-							IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)va->x, (IA_VAL)v1->y - (IA_VAL)va->y };
-
-							IA_VAL a0b = a0[0] * ab[1] - a0[1] * ab[0];
-							IA_VAL a1b = a1[0] * ab[1] - a1[1] * ab[0];
-
-							if (a0b < 0 && a1b > 0)
-							{
-								// clean
-								near_face = (Face*)f;
-								edge = e;
-								break;
-							}
-
-							if (a0b > 0 || a1b < 0)
-								break;
-
-							// XA needed
-							{
-								// TODO:
-								assert(0);
-								return false;
-							}
-						}
-					}
-					if (near_face)
+						// offending edge!
+						N = (Face*)face;
 						break;
+					}
+
+					if (a0b > 0 || a1b < 0)
+					{
+						// not offending
+						break;
+					}
+
+					// maybe or maybe not
+					// XA needed
+					{
+						// if a0b or a1b == exactly 0
+						// set va = v0 or v1 and restart iterator around it
+						// and set warning flag that we've jumped over some existing edge
+
+						// TODO:
+						assert(0);
+						return flips;
+					}
 				}
-				f = it.Next();
-				if (f == e)
-					return false;
+				face = it.Next();
+				if (face == first)
+					return -1; // internal error?
 			}
 
-			Face* far_face = f->f[e];
-			int far_prev = -1;// where far face has the near_face's prev vert
+			if (!N)
+			{
+				face = it.Next();
+				if (face == first)
+					return -1; // internal error?
+				continue;
+			}
+
+			Face* F = (Face*)(N->f[a]);
+			int d, e, f;
+
+			if (F->f[0] == N)
+			{
+				d = 0;
+				e = 1;
+				f = 2;
+			}
+			else
+			if (F->f[1] == N)
+			{
+				d = 1;
+				e = 2;
+				f = 0;
+			}
+			else
+			{
+				d = 2;
+				e = 0;
+				f = 1;
+			}
+
+			Vert* vr = (Vert*)(F->v[d]);
+
+			// last thing, nasty one
+			// we MUST check if {va,v0,vr,v1} forms a convex quadrilateral 
+			// so we are not going to produce overlapping faces after flip
+
+			// if this quadrilateral isn't convex
+			{
+				// check which edge is crossing ab: v0-vr or v1-vr
+				// then try to flip it, but it also may happen
+				// that the quadriteral isn't convex, so push again
+				// and again until we finally flip. then pop stack
+				// flip, pop stack, flip ... and we're done.
+
+				IA_VAL a0[2] = { (IA_VAL)v0->x - (IA_VAL)va->x, (IA_VAL)v0->y - (IA_VAL)va->y };
+				IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)va->x, (IA_VAL)v1->y - (IA_VAL)va->y };
+				IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)va->x, (IA_VAL)vr->y - (IA_VAL)va->y };
+
+				IA_VAL a0r = a0[0] * ar[1] - a0[1] * ar[0];
+				IA_VAL a1r = a1[0] * ar[1] - a1[1] * ar[0];
+
+				if (a0r > 0 || a1r < 0)
+				{
+					// CONCAVE CUNT!
+					return -1;
+				}
+			}
+
+			Face* P = (Face*)(N->f[b]);
+			int p = P->f[0]==N ? 0 : P->f[1] == N ? 1 : 2;
+
+			Face* Q = (Face*)(F->f[e]);
+			int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
+
+			/*  va         v0                va         v0
+			     *---------*---------*	      *---------*---------*
+			    / \a     b/f\      q/	     / \'-,a    b\      q/
+			   /   \  N  /   \  Q  /  -->   /   \f '-, N  \  Q  /
+			  /  P  \   /  F  \   /		   /  P  \  F '-, c\   /
+			 /p      \c/e     d\ /		  /p      \e    d'-,\ /
+			*---------*---------*		 *---------*---------*
+			          v1         vr		           v1         vr */
 
 
-			near_face->v[prev] = opposite;
-			far_face->v[far_prev] = va;
+			assert(P->f[p] == N);
+			assert(N->f[a] == F);
+			assert(N->f[b] == P);
+			assert(F->f[d] == N);
+			assert(F->f[e] == Q);
+			assert(Q->f[q] == F);
 
-			/*
-			          p                *
-			      f0 /|  |\ f1        f0 / \ f1
-			        / |  | \            / n \
-				va e n|  |f *   ->  va *-----* 
-			        \ |  | /            \ f /
-			      f3 \|  |/ f2        f3 \ / f2
-					  n          	   *
-			*/
+			assert(N->v[a] == va);
+			assert(N->v[b] == v0);
+			assert(N->v[c] == v1);
 
+			assert(F->v[d] == vr);
+			assert(F->v[e] == v1);
+			assert(F->v[f] == v0);
+
+			// do the flip
+			N->v[c] = vr; // from v1
+			F->v[f] = va; // from v0
+			N->f[a] = Q;  // from F
+			N->f[b] = F;  // from P
+			F->f[d] = P;  // from N
+			F->f[e] = N;  // from Q
+			P->f[p] = F;  // from N
+			Q->f[q] = N;  // from F
+
+			v0->sew == N;
+			v1->sew == F;
+
+			flips++;
+
+			assert(P->f[p] == F);
+			assert(F->f[d] == P);
+			assert(F->f[e] == N);
+			assert(N->f[a] == Q);
+			assert(N->f[b] == F);
+			assert(Q->f[q] == N);
+
+			assert(N->v[a] == va);
+			assert(N->v[b] == v0);
+			assert(N->v[c] == vr);
+
+			assert(F->v[d] == vr);
+			assert(F->v[e] == v1);
+			assert(F->v[f] == va);
+
+
+			// actually we should call them in a batch after
+			// resolving all offending edges
+			N->cross();
+			F->cross();
+
+			// no need to re-sync iterator!
+			// face and around is same
 		}
 
-
-		return true;
+		assert(0); // should never get here
+		return -1;
 	}
 
 	virtual int Triangulate(int points, const float* x, const float* y = 0, int advance_bytes = 0)

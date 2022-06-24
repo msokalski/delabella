@@ -219,7 +219,7 @@ struct IDelaBella
 	virtual const DelaBella_Vertex*   GetFirstInternalVertex() const = 0;
 	virtual const DelaBella_Vertex*   GetVertexByIndex(int i) = 0; // not const as it creates a map on a first use
 
-	virtual bool Constrain(int a, int b) = 0;
+	virtual int Constrain(int a, int b) = 0;
 };
 #else
 void* DelaBella_Create();
