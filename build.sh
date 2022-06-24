@@ -1,7 +1,11 @@
-OPT="-std=c++17 -O3"
+OPT="-std=c++17 -g"
 
 if [ -d "delaunator" ]; then
     OPT="$OPT -DDELAUNATOR"
+fi
+
+if [ -d "CDT" ]; then
+    OPT="$OPT -DCdt"
 fi
 
 if [[ $OSTYPE == 'darwin'* ]]; then
