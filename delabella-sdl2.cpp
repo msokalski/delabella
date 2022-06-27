@@ -673,7 +673,7 @@ int main(int argc, char* argv[])
     printf("delabella triangles: %d\n", tris_delabella);
     printf("delabella contour: %d\n", contour);
 
-    int flips = idb->Constrain(0, 9);
+    int flips = idb->Constrain(2, 9);
     printf("FLIPS: %d\n", flips);
 
 	// if positive, all ok 
