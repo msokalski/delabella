@@ -650,17 +650,18 @@ int main(int argc, char* argv[])
 	int vert_num = contour + non_contour;
 
     {
-        printf("VERTICES DUIMP:\n");
+        printf("VERTICES DUMP:\n");
         for (int i = 0; i < cloud.size(); i++)
         {
-            printf("%f %f\n", cloud[i].x, cloud[i].y);
+            printf("%d: %f %f\n", i, cloud[i].x, cloud[i].y);
         }
 
-        printf("TRIANGLES DUIMP:\n");
+        printf("TRIANGLES DUMP:\n");
         const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
         for (int i = 0; i < tris_delabella; i++)
         {
-            printf("%d %d %d\n",
+            printf("%d: %d %d %d\n",
+                dela->index,
                 dela->v[0]->i,
                 dela->v[1]->i,
                 dela->v[2]->i);
@@ -674,6 +675,7 @@ int main(int argc, char* argv[])
     printf("delabella contour: %d\n", contour);
 
     int flips = idb->Constrain(2, 9);
+    //int flips = idb->Constrain(3, 6);
     printf("FLIPS: %d\n", flips);
 
 	// if positive, all ok 
@@ -1122,11 +1124,6 @@ int main(int argc, char* argv[])
                 case SDL_KEYUP:
                     if (event.key.keysym.sym == SDLK_ESCAPE)
                     {
-                        int flips = idb->Constrain(0, 9);
-                        printf("FLIPS: %d\n", flips);
-                        idb->Destroy();
-
-                        //return 0;
                     }
                     break;
             }

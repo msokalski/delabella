@@ -308,19 +308,29 @@ struct CDelaBella : IDelaBella
 				r++;
 			}
 
+			int d = w; // dup map
 			w++;
 
 			while (r < points)
 			{
+				// fill map with dups only
+				// unique verts will be filled after initial hull creation
+				// which may require additional sorting on unique verts
+				vert_map[vert_alloc[r].i] = d; // add first dup in run
 				r++;
 
 				// skip dups
 				while (r < points && Vert::overlap(vert_alloc + r, vert_alloc + r - 1))
+				{
+					vert_map[vert_alloc[r].i] = d; // add next dup in run
 					r++;
+				}
 
 				// copy next no-dups block (in percent chunks?)
 				while (r < points && !Vert::overlap(vert_alloc + r, vert_alloc + r - 1))
 					vert_alloc[w++] = vert_alloc[r++];
+
+				d = w - 1;
 			}
 
 			if (points - w)
@@ -333,8 +343,12 @@ struct CDelaBella : IDelaBella
 
 		if (points < 3)
 		{
+			vert_map[vert_alloc[0].i] = 0;
+
 			if (points == 2)
 			{
+				vert_map[vert_alloc[1].i] = 1;
+
 				if (errlog_proc)
 					errlog_proc(errlog_file, "[WRN] all input points are colinear, returning single segment!\n");
 				first_boundary_vert = vert_alloc + 0;
@@ -352,7 +366,6 @@ struct CDelaBella : IDelaBella
 			}
 
 			out_boundary_verts = points;
-
 			return -points;
 		}
 
@@ -603,6 +616,10 @@ struct CDelaBella : IDelaBella
 			} c{ vert_alloc + lower_left, vert_alloc + upper_right, part_x, part_y };
 			std::sort(vert_alloc, vert_alloc + i, c);
 		}
+
+		// fill map with unique verts
+		for (int j = 0; j < points; j++)
+			vert_map[vert_alloc[j].i] = j;
 
 		*out_hull_faces = 0;
 
@@ -1218,10 +1235,6 @@ struct CDelaBella : IDelaBella
 
 	bool ReallocVerts(int points)
 	{
-		if (vert_map)
-			free(vert_map);
-		vert_map = 0;
-
 		inp_verts = points;
 		out_verts = 0;
 
@@ -1233,11 +1246,16 @@ struct CDelaBella : IDelaBella
 		{
 			if (max_verts)
 			{
+				free(vert_map);
+				vert_map = 0;
+
 				//free(vert_alloc);
 				delete [] vert_alloc;
 				vert_alloc = 0;
 				max_verts = 0;
 			}
+
+			vert_map = (int*)malloc(sizeof(int) * points);
 
 			//vert_alloc = (Vert*)malloc(sizeof(Vert)*points);
 			vert_alloc = new Vert[points];
@@ -1255,8 +1273,11 @@ struct CDelaBella : IDelaBella
 	}
 
 	// private
-	Face* FindConstraintOffenders(Vert* va, Vert* vb, int* edges, int* skips)
+	Face* FindConstraintOffenders(Vert* va, Vert* vb, Face*** ptail, int* edges, int* skips)
 	{
+		static const int rotate[3][3] = { {0,1,2},{1,2,0},{2,0,1} };
+		static const int other_vert[3][2] = { {1,2},{2,0},{0,1} };
+
 		*edges = 0;
 		*skips = 0;
 
@@ -1271,8 +1292,6 @@ struct CDelaBella : IDelaBella
 		DelaBella_Iterator it;
 		const DelaBella_Triangle* first = va->StartIterator(&it);
 		const DelaBella_Triangle* face = first;
-
-		static const int other_vert[3][2] = { {1,2},{2,0},{0,1} };
 
 		int xa_ready = 0; // 0:none, 1:xa_b only, 2:all
 		XA_REF xa_b[2];
@@ -1308,6 +1327,7 @@ struct CDelaBella : IDelaBella
 			if (v0 == vb)
 			{
 				*tail = 0;
+				*ptail = list ? tail : 0;
 				return list; // ab is already there
 			}
 
@@ -1316,6 +1336,7 @@ struct CDelaBella : IDelaBella
 			if (v1 == vb)
 			{
 				*tail = 0;
+				*ptail = list ? tail : 0;
 				return list; // ab is already there
 			}
 
@@ -1324,6 +1345,9 @@ struct CDelaBella : IDelaBella
 
 			IA_VAL a0b = a0[0] * ab[1] - a0[1] * ab[0];
 			IA_VAL a1b = a1[0] * ab[1] - a1[1] * ab[0];
+
+			// todo: optimize it!
+			// compare without subtracting!
 
 			if (a0b < 0 && a1b > 0)
 			{
@@ -1354,6 +1378,11 @@ struct CDelaBella : IDelaBella
 				XA_REF xa_a0b = xa_a0[0] * xa_ab[1] - xa_a0[1] * xa_ab[0];
 				XA_REF xa_a1b = xa_a1[0] * xa_ab[1] - xa_a1[1] * xa_ab[0];
 
+				// todo: optimize it!
+				// compare without subtracting!
+				// xa_a0[0] * xa_ab[1] with xa_a0[1] * xa_ab[0] and
+				// xa_a1[0] * xa_ab[1] with xa_a1[1] * xa_ab[0]
+
 				if (xa_a0b == 0)
 				{
 					// v0 overlap
@@ -1382,18 +1411,33 @@ struct CDelaBella : IDelaBella
 
 		while (1)
 		{
+			if (a)
+			{
+				// rotate N->v[] and N->f 'a' times 'backward' such offending edge appears opposite to v[0]
+				const int* r = rotate[a];
+
+				DelaBella_Vertex* v[3] = { N->v[0] ,N->v[1] ,N->v[2] };
+				N->v[0] = v[r[0]];
+				N->v[1] = v[r[1]];
+				N->v[2] = v[r[2]];
+
+				DelaBella_Triangle* f[3] = { N->f[0] ,N->f[1] ,N->f[2] };
+				N->f[0] = f[r[0]];
+				N->f[1] = f[r[1]];
+				N->f[2] = f[r[2]];
+			}
 
 			// add edge
 			++*edges;
-			/*
-			// pushing temporarily disabled !!!!!!!!
-			N->index = a;
 			*tail = N;
 			tail = (Face**)&N->next;
-			*/
+
+			// dbg check/mark
+			//assert(N->index < 0x40000000);
+			//N->index += 0x40000000;
 
 			// what is our next face?
-			Face* F = (Face*)(N->f[a]);
+			Face* F = (Face*)(N->f[0]);
 			int d, e, f;
 
 			if (F->f[0] == N)
@@ -1419,12 +1463,19 @@ struct CDelaBella : IDelaBella
 			Vert* vr = (Vert*)(F->v[d]);
 
 			if (vr == vb)
+			{
+				*tail = 0;
+				*ptail = list ? tail : 0;
 				return list;
+			}
 
 			// is vr above or below ab ?
 
 			IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)va->x, (IA_VAL)vr->y - (IA_VAL)va->y };
 			IA_VAL abr = ab[0] * ar[1] - ab[1] * ar[0];
+
+			// todo: optimize it!
+			// compare without subtracting!
 
 			if (abr > 0)
 			{
@@ -1464,6 +1515,10 @@ struct CDelaBella : IDelaBella
 				XA_REF xa_ar[2] = { (XA_REF)vr->x - xa_a[0], (IA_VAL)vr->y - xa_a[1] };
 				XA_REF xa_abr = xa_ab[0] * xa_ar[1] - xa_ab[1] * xa_ar[0];
 
+				// todo: optimize it!
+				// compare without subtracting!
+				// xa_ab[0] * xa_ar[1] with xa_ab[1] * xa_ar[0];
+
 				if (xa_abr == 0)
 				{
 					// if overlap
@@ -1491,30 +1546,36 @@ struct CDelaBella : IDelaBella
 		}
 
 		assert(0);
+		*ptail = 0;
 		return 0;
 	}
 
 	virtual int Constrain(int a, int b)
 	{
-		static const int other_vert[3][2] = { {1,2},{2,0},{0,1} };
+		static const int rotate[3][3] = { {0,1,2},{1,2,0},{2,0,1} };
 
 		int flips = 0;
 		int skips = 0;
 
 		// current
-		Vert* va = /*vert_alloc + a;//*/ (Vert*)GetVertexByIndex(a);
+		Vert* va = (Vert*)GetVertexByIndex(a);
 		if (!va)
 			return -1;
 
 		// destination
-		Vert* vb = /*vert_alloc + b;//*/ (Vert*)GetVertexByIndex(b);
+		Vert* vb = (Vert*)GetVertexByIndex(b);
 		if (!vb)
 			return -1;
 
 		// 1. Make list of offenders
 		int edges;
-		Face* list = FindConstraintOffenders(va,vb,&edges,&skips);
-		Face** tail = 0; // todo!
+		Face** tail = 0; // todo: for pushing back
+		Face* list = FindConstraintOffenders(va, vb, &tail, &edges, &skips);
+		Face* flipped = 0;
+
+
+		//int offending = edges;
+		//int resolved = 0;
 
 		// will we relink'em back to dela and replace indexes?
 
@@ -1524,17 +1585,23 @@ struct CDelaBella : IDelaBella
 		// - otherwise do flip then:
 		//   - if flipped diagonal still intersects ab, push it back to the list of offenders
 		//   - otherwise push it to the list of new edges
-		while (1)
+		while (list)
 		{
+			//if (offending == 2)
+			//	break;
+			const int a = 0, b = 1, c = 2;
+
 			Face* N = list;
 			list = (Face*)N->next;
+			N->next = 0;
 
-			int a = N->index;
+			// dbg check unmark
+			//assert(N->index >= 0x40000000);
+			//N->index -= 0x40000000;
+			//offending--;
 
-			int b = other_vert[a][0];
+
 			Vert* v0 = (Vert*)(N->v[b]);
-
-			int c = other_vert[a][1];
 			Vert* v1 = (Vert*)(N->v[c]);
 
 			// what is our next face?
@@ -1561,242 +1628,274 @@ struct CDelaBella : IDelaBella
 				f = 1;
 			}
 
-			Vert* va = (Vert*)N->v[a]; // may be not same as global va (if we have had a skip)
+			Vert* v = (Vert*)N->v[0]; // may be not same as global va (if we have had a skip)
 			Vert* vr = (Vert*)(F->v[d]);
 
-			// importand:
-			// because F may also exist in a list and we modify its v[], we need to 
-			// flip the edge in a way not modifying edge referenced by F
-			// the way depends on which F's edge ab is comming out from
-
-			//                             __
-			// va on or below and vr above ab
-			// push back to offenders after flip
-			//
-			/*     va    \    v0                 va         v0
-					*-----\---*---------*	      *---------*---------*
-				   / \a    \b/f\      q/	     / \'-,a    b\      q/
-				  /   \  N  +   \  Q  /   -->   /   \f '-, N  \  Q  /
-				 /  P  \   / \F  \   /		   /  P  \  F '-, c\   /
-				/p      \c/e  \  d\ /		  /p      \e    d'-,\ /
-			   *---------*-----+---*		 *---------*---------*
-						v1      \    vr		           v1         vr
-						      ed out
-			*/
-
-			//                             ->
-			// va on or below and vr below ab
-			// push to new edges after flip
-			//
-			/*           *						       *
-			            /p\						      /p\
-					   /   \					     /   \
-			          /  P  \					    /  P  \
-			      '-,/       \v0                va /       \ v0
-				 va *'-,------*          	      *---------*
-				     \a '-, b/f\         	       \'-,e    f\
-				      \  N '+,  \         -->       \a '-, F  \
-				       \   /  F-,\   		         \  N '-, d\
-				        \c/e     d\, fd out	          \c    b'-,\
-			             *---------*'-,   	           *---------*
-					   v1 \       / vr		         v1 \       / vr
-					       \  Q  /                       \  Q  /
-						    \   /						  \   /
-							 \q/						   \q/
-							  *							    *
-			*/
-
-			//                             ->
-			// va on or above and vr above ab
-			// push to new edges after flip
-			//
-			/*     va         v0                 va         v0
-				 '-,*---------*---------*	      *---------*---------*
-				   /'\a  N  b/f\      q/	     / \'-,a    b\      q/
-				  /   \'-,  /   \  Q  /   -->   /   \f '-, N  \  Q  /
-				 /  P  \  '+, F  \   /		   /  P  \  F '-, c\   /
-				/p      \c/e '-, d\ /		  /p      \e    d'-,\ /
-			   *---------*------'-,* vr  	 *---------*---------*
-						v1         '-,		           v1         vr
-							       ed out
-			*/
-
-			//                             ->
-			// va on or above and vr below ab
-			// push back to offenders after flip
-			//
-			/*           *						       *
-			            /p\						      /p\
-			           /   \					     /   \
-			          /  P  \					    /  P  \
-			      va /       \ v0               va /       \ v0
-					*---------*          	      *---------*
-				     \a  N  b/f\         	       \'-,e    f\
-				    --\-----+---\- fd out -->       \a '-, F  \
-				       \   /  F  \                   \  N '-, d\
-				        \c/e     d\  		          \c    b'-,\
-			             *---------*		           *---------*
-					   v1 \       / vr		         v1 \       / vr
-						   \  Q  /                       \  Q  /
-							\   /						  \   /
-							 \q/						   \q/
-							  *							    *
-
-			*/
-
-
 			// is va,v0,vr,v1 a convex quad?
-			IA_VAL a0[2] = { (IA_VAL)v0->x - (IA_VAL)va->x, (IA_VAL)v0->y - (IA_VAL)va->y };
-			IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)va->x, (IA_VAL)v1->y - (IA_VAL)va->y };
-			IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)va->x, (IA_VAL)vr->y - (IA_VAL)va->y };
+			IA_VAL a0[2] = { (IA_VAL)v0->x - (IA_VAL)v->x, (IA_VAL)v0->y - (IA_VAL)v->y };
+			IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)v->x, (IA_VAL)v1->y - (IA_VAL)v->y };
+			IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)v->x, (IA_VAL)vr->y - (IA_VAL)v->y };
 
 			IA_VAL a0r = a0[0] * ar[1] - a0[1] * ar[0];
 			IA_VAL a1r = a1[0] * ar[1] - a1[1] * ar[0];
 
+			// todo: optimize it!
+			// compare without subtracting!
+
 			if (a0r > 0 || a1r < 0)
 			{
+				// dbg mark
+				//N->index += 0x40000000;
+				//offending++;
+
 				// CONCAVE CUNT!
 				// push back to offenders
+				assert(list);
 				*tail = N;
-				N->next = 0;
+				tail = (Face**)&N->next;
+
 				continue;
 			}
 
 			if (a0r < 0 && a1r > 0)
 			{
-				Face* P = (Face*)(N->f[b]);
-				int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
+				back_from_xa:
+				if (f == 0)
+				{
+					/*     v    \     v0                 v    \     v0
+							*----\----*---------*	      *----\----*---------*
+						   / \a   \ b/f\      q/	     / \'-,a\   b\      q/
+						  /   \  N \/   \  Q  /   -->   /   \f '-, N  \  Q  /
+						 /  P  \   /\ F  \   /		   /  P  \  F '-, c\   /
+						/p      \c/e \   d\ /		  /p      \e   \d'-,\ /
+					   *---------*----+----*		 *---------*----\----*
+								v1     \     vr		           v1    \    vr
+					*/
 
-				Face* Q = (Face*)(F->f[e]);
-				int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
+					Face* P = (Face*)(N->f[b]);
+					int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
 
-				// do flip
-				N->v[c] = vr; // from v1
-				F->v[f] = va; // from v0
-				N->f[a] = Q;  // from F
-				N->f[b] = F;  // from P
-				F->f[d] = P;  // from N
-				F->f[e] = N;  // from Q
-				P->f[p] = F;  // from N
-				Q->f[q] = N;  // from F
+					Face* Q = (Face*)(F->f[e]);
+					int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
 
-				v0->sew = N;
-				v1->sew = F;
+					// do flip
+					N->v[c] = vr; // from v1
+					F->v[f] = v;  // from v0
+					N->f[a] = Q;  // from F
+					N->f[b] = F;  // from P
+					F->f[d] = P;  // from N
+					F->f[e] = N;  // from Q
+					P->f[p] = F;  // from N
+					Q->f[q] = N;  // from F
 
-				// update N->index to point to the new (flipped edge)
-				N->index = b;
+					v0->sew = N;
+					v1->sew = F;
 
-				// update F->index to point to its previously pointing edge (before flipping)
-				F->index = ;
+					if (b)
+					{
+						// we should rotate N's v[] and f[] making b'=0
+						// resolved: it points do the new edge
+						// unresolved: it points to N's output
+
+						const int* r = rotate[b];
+
+						DelaBella_Vertex* v[3] = { N->v[0] ,N->v[1] ,N->v[2] };
+						N->v[0] = v[r[0]];
+						N->v[1] = v[r[1]];
+						N->v[2] = v[r[2]];
+
+						DelaBella_Triangle* f[3] = { N->f[0] ,N->f[1] ,N->f[2] };
+						N->f[0] = f[r[0]];
+						N->f[1] = f[r[1]];
+						N->f[2] = f[r[2]];
+					}
+				}
+				else // e==0, (or d==0 but we don't care about it)
+				{
+					/*           *						       *
+								/p\						      /p\
+							   /   \					     /   \
+							  /  P  \					    /  P  \
+						   v /       \ v0                v /       \ v0
+							*---------*          	      *---------*
+							 \a  N  b/f\         	       \'-,e    f\
+							__\_____/___\__       -->     __\a '-, F__\__
+							   \   /  F  \                   \  N '-, d\
+								\c/e     d\  		          \c    b'-,\
+								 *---------*		           *---------*
+							   v1 \       / vr		         v1 \       / vr
+								   \  Q  /                       \  Q  /
+									\   /						  \   /
+									 \q/						   \q/
+									  *							    *
+					*/
+
+					Face* P = (Face*)(N->f[c]);
+					int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
+
+					Face* Q = (Face*)(F->f[f]);
+					int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
+
+					// do flip
+					N->v[b] = vr; // from v0
+					F->v[e] = v;  // from v1
+					N->f[a] = Q;  // from F
+					N->f[c] = F;  // from P
+					F->f[d] = P;  // from N
+					F->f[f] = N;  // from Q
+					P->f[p] = F;  // from N
+					Q->f[q] = N;  // from F
+
+					v0->sew = F;
+					v1->sew = N;
+
+					if (c)
+					{
+						// we should rotate N's v[] and f[] making c'=0
+						// resolved: it points do the new edge
+						// unresolved: it points to N's output
+
+						const int* r = rotate[c];
+
+						DelaBella_Vertex* v[3] = { N->v[0] ,N->v[1] ,N->v[2] };
+						N->v[0] = v[r[0]];
+						N->v[1] = v[r[1]];
+						N->v[2] = v[r[2]];
+
+						DelaBella_Triangle* f[3] = { N->f[0] ,N->f[1] ,N->f[2] };
+						N->f[0] = f[r[0]];
+						N->f[1] = f[r[1]];
+						N->f[2] = f[r[2]];
+					}
+				}
 
 				flips++;
 
-				// TODO:
-				// now check if we should push it to offenders or new edges
-				// ...
+				// if v and vr are on strongly opposite sides of the edge
+				// push N's edge back to offenders otherwise push to the new edges
+
+				if (va == v || vr == vb)
+				{
+					// resolved!
+					N->next = flipped;
+					flipped = N;
+					//resolved++;
+				}
+				else
+				{
+					IA_VAL ab[2] = { (IA_VAL)vb->x - (IA_VAL)va->x, (IA_VAL)vb->y - (IA_VAL)va->y };
+					IA_VAL av[2] = { (IA_VAL)v->x - (IA_VAL)va->x, (IA_VAL)v->y - (IA_VAL)va->y };
+					IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)va->x, (IA_VAL)vr->y - (IA_VAL)va->y };
+
+					IA_VAL ab_av = ab[0] * av[1] - ab[1] * av[0];
+					IA_VAL ab_ar = ab[0] * ar[1] - ab[1] * ar[0];
+
+					// todo: optimize it!
+					// compare without subtracting!
+
+					if (ab_av < 0 && ab_ar < 0 || ab_av > 0 && ab_ar > 0)
+					{
+						// resolved
+						N->next = flipped;
+						flipped = N;
+						//resolved++;
+					}
+					else
+					if (ab_av < 0 && ab_ar > 0 || ab_av > 0 && ab_ar < 0)
+					{
+						// dbg mark
+						//N->index += 0x40000000;
+						//offending++;
+
+						// unresolved
+						*tail = N;
+						tail = (Face**)&N->next;
+					}
+					else
+					{
+						// XA NEEDED
+						XA_REF xa_ab[2] = { (XA_REF)vb->x - (XA_REF)va->x, (XA_REF)vb->y - (XA_REF)va->y };
+						XA_REF xa_av[2] = { (XA_REF)v->x - (XA_REF)va->x, (XA_REF)v->y - (XA_REF)va->y };
+						XA_REF xa_ar[2] = { (XA_REF)vr->x - (XA_REF)va->x, (XA_REF)vr->y - (XA_REF)va->y };
+
+						XA_REF xa_ab_av = xa_ab[0] * xa_av[1] - xa_ab[1] * xa_av[0];
+						XA_REF xa_ab_ar = xa_ab[0] * xa_ar[1] - xa_ab[1] * xa_ar[0];
+
+						// todo: optimize it!
+						// compare without subtracting!
+
+						if (xa_ab_av < 0 && xa_ab_ar < 0 || xa_ab_av > 0 && xa_ab_ar > 0)
+						{
+							// resolved
+							N->next = flipped;
+							flipped = N;
+							//resolved++;
+						}
+						else
+						if (xa_ab_av < 0 && xa_ab_ar > 0 || xa_ab_av > 0 && xa_ab_ar < 0)
+						{
+							// dbg mark
+							//N->index += 0x40000000;
+							//offending++;
+
+							// unresolved
+							*tail = N;
+							tail = (Face**)&N->next;
+						}
+					}
+				}
 			}
 			else
 			{
 				// XA NEEDED
-				assert(0);
+
+				XA_REF xa_a[2] = { (XA_REF)v->x , (XA_REF)v->y };
+				XA_REF xa_a0[2] = { (XA_REF)v0->x - xa_a[0], (XA_REF)v0->y - xa_a[1] };
+				XA_REF xa_a1[2] = { (XA_REF)v1->x - xa_a[0], (XA_REF)v1->y - xa_a[1] };
+				XA_REF xa_ar[2] = { (XA_REF)vr->x - xa_a[0], (XA_REF)vr->y - xa_a[1] };
+
+				XA_REF xa_a0r = xa_a0[0] * xa_ar[1] - xa_a0[1] * xa_ar[0];
+				XA_REF xa_a1r = xa_a1[0] * xa_ar[1] - xa_a1[1] * xa_ar[0];
+
+				// todo: optimize it!
+				// compare without subtracting!
+
+				if (xa_a0r >= 0 || xa_a1r <= 0)
+				{
+					// dbg mark
+					//N->index += 0x40000000;
+					//offending++;
+
+					// CONCAVE CUNT!
+					// push back to offenders
+					assert(list);
+					*tail = N;
+					tail = (Face**)&N->next;
+
+					continue;
+				}
+
+				goto back_from_xa;
 			}
 		}
+
+		// clean up the mess we've made with dela faces list !!!
+		int hull_faces = 2 * unique_points - 4;
+		tail = &first_dela_face;
+		for (int i = 0; i < hull_faces; i++)
+		{
+			if (face_alloc[i].index >= 0)
+			{
+				*tail = face_alloc + i;
+				tail = (Face**)&face_alloc[i].next;
+			}
+		}
+		*tail = 0;
 
 		// 3. Repeatedly until no flip occurs
-		//
-
-
-
-#if 0
-		Face* F = (Face*)(N->f[a]);
-		int d, e, f;
-
-		if (F->f[0] == N)
-		{
-			d = 0;
-			e = 1;
-			f = 2;
-		}
-		else
-		if (F->f[1] == N)
-		{
-			d = 1;
-			e = 2;
-			f = 0;
-		}
-		else
-		{
-			d = 2;
-			e = 0;
-			f = 1;
-		}
-
-		Vert* vr = (Vert*)(F->v[d]);
-
-		// last thing, nasty one
-		// we MUST check if {va,v0,vr,v1} forms a convex quadrilateral 
-		// so we are not going to produce overlapping faces after flip
-
-		// if this quadrilateral isn't convex
-		{
-			// check which edge is crossing ab: v0-vr or v1-vr
-			// then try to flip it, but it also may happen
-			// that the quadriteral isn't convex, so push again
-			// and again until we finally flip. then pop stack
-			// flip, pop stack, flip ... and we're done.
-
-			IA_VAL a0[2] = { (IA_VAL)v0->x - (IA_VAL)va->x, (IA_VAL)v0->y - (IA_VAL)va->y };
-			IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)va->x, (IA_VAL)v1->y - (IA_VAL)va->y };
-			IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)va->x, (IA_VAL)vr->y - (IA_VAL)va->y };
-
-			IA_VAL a0r = a0[0] * ar[1] - a0[1] * ar[0];
-			IA_VAL a1r = a1[0] * ar[1] - a1[1] * ar[0];
-
-			if (a0r > 0 || a1r < 0)
-			{
-				// CONCAVE CUNT!
-				return -1;
-			}
-		}
-
-		Face* P = (Face*)(N->f[b]);
-		int p = P->f[0]==N ? 0 : P->f[1] == N ? 1 : 2;
-
-		Face* Q = (Face*)(F->f[e]);
-		int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
-
-        /*     va         v0                 va         v0
-                *---------*---------*	      *---------*---------*
-               / \a     b/f\      q/	     / \'-,a    b\      q/
-              /   \  N  /   \  Q  /   -->   /   \f '-, N  \  Q  /
-             /  P  \   /  F  \   /		   /  P  \  F '-, c\   /
-            /p      \c/e     d\ /		  /p      \e    d'-,\ /
-           *---------*---------*		 *---------*---------*
-                    v1         vr		           v1         vr */
-
-        // do the flip
-		N->v[c] = vr; // from v1
-		F->v[f] = va; // from v0
-		N->f[a] = Q;  // from F
-		N->f[b] = F;  // from P
-		F->f[d] = P;  // from N
-		F->f[e] = N;  // from Q
-		P->f[p] = F;  // from N
-		Q->f[q] = N;  // from F
-
-		v0->sew = N;
-		v1->sew = F;
-
-		flips++;
-
-		// actually we should call them in a batch after
-		// resolving all offending edges
-		N->cross();
-		F->cross();
-
-		// no need to re-sync iterator!
-		// face and around is same
-		#endif
+		// get edge from new edges list,
+		// if 2 triangles sharing the edge violates delaunay criterion
+		// do diagonal swap
 
 		return edges;
 	}
@@ -1895,6 +1994,7 @@ struct CDelaBella : IDelaBella
 	{
 		if (vert_map)
 			free(vert_map);
+
 		if (face_alloc)
 		{
 			//free(face_alloc);
@@ -1959,14 +2059,6 @@ struct CDelaBella : IDelaBella
 	{
 		if (i < 0 || i >= inp_verts)
 			return 0;
-
-		if (!vert_map)
-		{
-			vert_map = (int*)malloc(sizeof(int) * inp_verts);
-			for (int j = 0; j < inp_verts; j++)
-				vert_map[vert_alloc[j].i] = j;
-		}
-
 		return vert_alloc + vert_map[i];
 	}
 
