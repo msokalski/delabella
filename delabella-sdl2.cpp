@@ -579,6 +579,12 @@ int main(int argc, char* argv[])
 
     int points = (int)cloud.size();
 
+#define CONSTRAINS 1000
+    int constraint_from = rand() % points;
+    int constraint_to[CONSTRAINS];
+    for (int c = 0; c < CONSTRAINS; c++)
+        constraint_to[c] = (constraint_from + 1 + rand()) % points;
+
     #ifdef Cdt
     {
         std::vector<MyPoint> nodups = cloud;
@@ -595,6 +601,22 @@ int main(int argc, char* argv[])
         );
 
         printf("elapsed %d ms\n", (int)((uSec() - t0) / 1000));
+
+        {
+            std::vector<CDT::Edge> edges;
+            for (int c = 0; c < CONSTRAINS; c++)
+            {
+                CDT::Edge e{ (size_t)constraint_from,(size_t)constraint_to[c] };
+                edges.push_back(e);
+            }
+
+            uint64_t c0 = uSec();
+            cdt.insertEdges(edges);
+            uint64_t c1 = uSec();
+
+            printf("CDT constrained in %d ms\n", (int)((c1 - c0) / 1000));
+        }
+
         printf("erasing super tri\n");
         cdt.eraseSuperTriangle();
         uint64_t t1 = uSec();
@@ -649,6 +671,7 @@ int main(int argc, char* argv[])
     int non_contour = idb->GetNumInternalVerts();
 	int vert_num = contour + non_contour;
 
+    /*
     {
         printf("VERTICES DUMP:\n");
         for (int i = 0; i < cloud.size(); i++)
@@ -668,15 +691,27 @@ int main(int argc, char* argv[])
             dela = dela->next;
         }
     }
+    */
 
     uint64_t t3 = uSec();
     printf("elapsed %d ms\n", (int)((t3-t2)/1000));
     printf("delabella triangles: %d\n", tris_delabella);
     printf("delabella contour: %d\n", contour);
 
-    int flips = idb->Constrain(2, 9);
-    //int flips = idb->Constrain(3, 6);
-    printf("FLIPS: %d\n", flips);
+    {
+        uint64_t c0 = uSec();
+        int flips = 0;
+        for (int c = 0; c < CONSTRAINS; c++)
+        {
+            printf("\r[% d] %d flips", c, flips);
+            int constraint_to = (constraint_from + 1 + rand()) % points;
+            flips += idb->Constrain(constraint_from, constraint_to);
+        }
+        uint64_t c1 = uSec();
+        printf("\r[%d] %d flips in %d ms\n", CONSTRAINS, flips, (int)((c1 - c0) / 1000));
+    }
+
+    return 0;
 
 	// if positive, all ok 
 	if (verts<=0)
@@ -1194,7 +1229,7 @@ int main(int argc, char* argv[])
 		#endif
 
         // voronoi!
-        // if (0)
+        if (0)
         {
         vbo_voronoi.Bind();
         //glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)

@@ -1552,7 +1552,8 @@ struct CDelaBella : IDelaBella
 
 	virtual int Constrain(int a, int b)
 	{
-		static const int rotate[3][3] = { {0,1,2},{1,2,0},{2,0,1} };
+		if (!first_dela_face || a == b)
+			return -1;
 
 		int flips = 0;
 		int skips = 0;
@@ -1573,10 +1574,6 @@ struct CDelaBella : IDelaBella
 		Face* list = FindConstraintOffenders(va, vb, &tail, &edges, &skips);
 		Face* flipped = 0;
 
-
-		//int offending = edges;
-		//int resolved = 0;
-
 		// will we relink'em back to dela and replace indexes?
 
 		// 2. Repeatedly until there are no offenders on the list
@@ -1584,27 +1581,18 @@ struct CDelaBella : IDelaBella
 		// - if it forms concave quad diagonal, push it back to the list of offenders
 		// - otherwise do flip then:
 		//   - if flipped diagonal still intersects ab, push it back to the list of offenders
-		//   - otherwise push it to the list of new edges
+		//   - otherwise push it to the list of flipped edges
 		while (list)
 		{
-			//if (offending == 2)
-			//	break;
 			const int a = 0, b = 1, c = 2;
 
 			Face* N = list;
 			list = (Face*)N->next;
 			N->next = 0;
 
-			// dbg check unmark
-			//assert(N->index >= 0x40000000);
-			//N->index -= 0x40000000;
-			//offending--;
-
-
 			Vert* v0 = (Vert*)(N->v[b]);
 			Vert* v1 = (Vert*)(N->v[c]);
 
-			// what is our next face?
 			Face* F = (Face*)(N->f[a]);
 			int d, e, f;
 
@@ -1644,16 +1632,9 @@ struct CDelaBella : IDelaBella
 
 			if (a0r > 0 || a1r < 0)
 			{
-				// dbg mark
-				//N->index += 0x40000000;
-				//offending++;
-
 				// CONCAVE CUNT!
-				// push back to offenders
-				assert(list);
 				*tail = N;
 				tail = (Face**)&N->next;
-
 				continue;
 			}
 
@@ -1662,15 +1643,22 @@ struct CDelaBella : IDelaBella
 				back_from_xa:
 				if (f == 0)
 				{
-					/*     v    \     v0                 v    \     v0
+					/*           *                             *
+					       va*  / \                      va*  / \
+					          \/   \                        \/   \
+					          /\ O  \                       /\ O  \
+					       v /  \    \v0                 v /  \    \v0
 							*----\----*---------*	      *----\----*---------*
-						   / \a   \ b/f\      q/	     / \'-,a\   b\      q/
+						   / \a   \ b/f\      q/	     / \'-,c\   a\      q/
 						  /   \  N \/   \  Q  /   -->   /   \f '-, N  \  Q  /
-						 /  P  \   /\ F  \   /		   /  P  \  F '-, c\   /
+						 /  P  \   /\ F  \   /		   /  P  \  F '-, b\   /
 						/p      \c/e \   d\ /		  /p      \e   \d'-,\ /
 					   *---------*----+----*		 *---------*----\----*
 								v1     \     vr		           v1    \    vr
+								        *vb                           *vb
 					*/
+
+					Face* O = (Face*)N->f[c];
 
 					Face* P = (Face*)(N->f[b]);
 					int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
@@ -1679,10 +1667,13 @@ struct CDelaBella : IDelaBella
 					int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
 
 					// do flip
-					N->v[c] = vr; // from v1
+					N->v[a] = v0;
+					N->v[b] = vr;
+					N->v[c] = v;
+					N->f[a] = F;
+					N->f[b] = O;
+					N->f[c] = Q;
 					F->v[f] = v;  // from v0
-					N->f[a] = Q;  // from F
-					N->f[b] = F;  // from P
 					F->f[d] = P;  // from N
 					F->f[e] = N;  // from Q
 					P->f[p] = F;  // from N
@@ -1690,45 +1681,28 @@ struct CDelaBella : IDelaBella
 
 					v0->sew = N;
 					v1->sew = F;
-
-					if (b)
-					{
-						// we should rotate N's v[] and f[] making b'=0
-						// resolved: it points do the new edge
-						// unresolved: it points to N's output
-
-						const int* r = rotate[b];
-
-						DelaBella_Vertex* v[3] = { N->v[0] ,N->v[1] ,N->v[2] };
-						N->v[0] = v[r[0]];
-						N->v[1] = v[r[1]];
-						N->v[2] = v[r[2]];
-
-						DelaBella_Triangle* f[3] = { N->f[0] ,N->f[1] ,N->f[2] };
-						N->f[0] = f[r[0]];
-						N->f[1] = f[r[1]];
-						N->f[2] = f[r[2]];
-					}
 				}
 				else // e==0, (or d==0 but we don't care about it)
 				{
-					/*           *						       *
-								/p\						      /p\
-							   /   \					     /   \
-							  /  P  \					    /  P  \
-						   v /       \ v0                v /       \ v0
-							*---------*          	      *---------*
-							 \a  N  b/f\         	       \'-,e    f\
-							__\_____/___\__       -->     __\a '-, F__\__
-							   \   /  F  \                   \  N '-, d\
-								\c/e     d\  		          \c    b'-,\
-								 *---------*		           *---------*
-							   v1 \       / vr		         v1 \       / vr
-								   \  Q  /                       \  Q  /
-									\   /						  \   /
-									 \q/						   \q/
-									  *							    *
-					*/
+                    /*           *						       *
+                                /p\						      /p\
+                               /   \					     /   \
+                              /  P  \					    /  P  \
+                           v /       \ v0                v /       \ v0
+                            *---------*          	      *---------*
+                           / \a  N  b/f\         	     / \'-,e    f\
+                     va*__/___\_____/___\__*vb --> va*__/___\b '-, F__\__*vb
+                         /     \   /  F  \             /     \  N '-, d\
+                        /   O   \c/e     d\  		  /   O   \a    c'-,\
+                       *---------*---------*		 *---------*---------*
+                               v1 \       / vr		         v1 \       / vr
+                                   \  Q  /                       \  Q  /
+                                    \   /						  \   /
+                                     \q/						   \q/
+                                      *							    *
+                    */
+
+					Face* O = (Face*)N->f[b];
 
 					Face* P = (Face*)(N->f[c]);
 					int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
@@ -1737,10 +1711,13 @@ struct CDelaBella : IDelaBella
 					int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
 
 					// do flip
-					N->v[b] = vr; // from v0
+					N->v[a] = v1;
+					N->v[b] = v;
+					N->v[c] = vr;
+					N->f[a] = F;
+					N->f[b] = Q;
+					N->f[c] = O;
 					F->v[e] = v;  // from v1
-					N->f[a] = Q;  // from F
-					N->f[c] = F;  // from P
 					F->f[d] = P;  // from N
 					F->f[f] = N;  // from Q
 					P->f[p] = F;  // from N
@@ -1748,25 +1725,6 @@ struct CDelaBella : IDelaBella
 
 					v0->sew = F;
 					v1->sew = N;
-
-					if (c)
-					{
-						// we should rotate N's v[] and f[] making c'=0
-						// resolved: it points do the new edge
-						// unresolved: it points to N's output
-
-						const int* r = rotate[c];
-
-						DelaBella_Vertex* v[3] = { N->v[0] ,N->v[1] ,N->v[2] };
-						N->v[0] = v[r[0]];
-						N->v[1] = v[r[1]];
-						N->v[2] = v[r[2]];
-
-						DelaBella_Triangle* f[3] = { N->f[0] ,N->f[1] ,N->f[2] };
-						N->f[0] = f[r[0]];
-						N->f[1] = f[r[1]];
-						N->f[2] = f[r[2]];
-					}
 				}
 
 				flips++;
@@ -1779,7 +1737,6 @@ struct CDelaBella : IDelaBella
 					// resolved!
 					N->next = flipped;
 					flipped = N;
-					//resolved++;
 				}
 				else
 				{
@@ -1798,15 +1755,10 @@ struct CDelaBella : IDelaBella
 						// resolved
 						N->next = flipped;
 						flipped = N;
-						//resolved++;
 					}
 					else
 					if (ab_av < 0 && ab_ar > 0 || ab_av > 0 && ab_ar < 0)
 					{
-						// dbg mark
-						//N->index += 0x40000000;
-						//offending++;
-
 						// unresolved
 						*tail = N;
 						tail = (Face**)&N->next;
@@ -1829,15 +1781,10 @@ struct CDelaBella : IDelaBella
 							// resolved
 							N->next = flipped;
 							flipped = N;
-							//resolved++;
 						}
 						else
 						if (xa_ab_av < 0 && xa_ab_ar > 0 || xa_ab_av > 0 && xa_ab_ar < 0)
 						{
-							// dbg mark
-							//N->index += 0x40000000;
-							//offending++;
-
 							// unresolved
 							*tail = N;
 							tail = (Face**)&N->next;
@@ -1862,16 +1809,9 @@ struct CDelaBella : IDelaBella
 
 				if (xa_a0r >= 0 || xa_a1r <= 0)
 				{
-					// dbg mark
-					//N->index += 0x40000000;
-					//offending++;
-
 					// CONCAVE CUNT!
-					// push back to offenders
-					assert(list);
 					*tail = N;
 					tail = (Face**)&N->next;
-
 					continue;
 				}
 
@@ -1879,7 +1819,123 @@ struct CDelaBella : IDelaBella
 			}
 		}
 
+		// 3. Repeatedly until no flip occurs
+		// for every edge from new edges list,
+		// if 2 triangles sharing the edge violates delaunay criterion
+		// do diagonal flip
+
+		while (1)
+		{
+			bool no_flips = true;
+			Face* N = flipped;
+			while (N)
+			{
+				// ignore constraint edge!!!
+				int ab = 0;
+				for (int i = 0; i < 3; i++)
+					ab += N->v[i] == va || N->v[i] == vb;
+				if (ab>1)
+				{
+					N = (Face*)N->next;
+					continue;
+				}
+
+				const int a = 0, b = 1, c = 2;
+
+				Vert* v0 = (Vert*)(N->v[b]);
+				Vert* v1 = (Vert*)(N->v[c]);
+
+				Face* F = (Face*)(N->f[a]);
+				int d, e, f;
+
+				if (F->f[0] == N)
+				{
+					d = 0;
+					e = 1;
+					f = 2;
+				}
+				else
+				if (F->f[1] == N)
+				{
+					d = 1;
+					e = 2;
+					f = 0;
+				}
+				else
+				{
+					d = 2;
+					e = 0;
+					f = 1;
+				}
+
+				Vert* v = (Vert*)N->v[0]; // may be not same as global va (if we have had a skip)
+				Vert* vr = (Vert*)(F->v[d]);
+
+				N->cross(); // just in case we're not up to date
+				if (N->dotP(*vr))
+				{
+					no_flips = false;
+					flips++;
+
+					if (f == 0)
+					{
+						Face* O = (Face*)N->f[c];
+						Face* P = (Face*)(N->f[b]);
+						int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
+						Face* Q = (Face*)(F->f[e]);
+						int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
+
+						// do flip
+						N->v[a] = v0;
+						N->v[b] = vr;
+						N->v[c] = v;
+						N->f[a] = F;
+						N->f[b] = O;
+						N->f[c] = Q;
+						F->v[f] = v;  // from v0
+						F->f[d] = P;  // from N
+						F->f[e] = N;  // from Q
+						P->f[p] = F;  // from N
+						Q->f[q] = N;  // from F
+
+						v0->sew = N;
+						v1->sew = F;
+					}
+					else
+					{
+						Face* O = (Face*)N->f[b];
+						Face* P = (Face*)(N->f[c]);
+						int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
+						Face* Q = (Face*)(F->f[f]);
+						int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
+
+						// do flip
+						N->v[a] = v1;
+						N->v[b] = v;
+						N->v[c] = vr;
+						N->f[a] = F;
+						N->f[b] = Q;
+						N->f[c] = O;
+						F->v[e] = v;  // from v1
+						F->f[d] = P;  // from N
+						F->f[f] = N;  // from Q
+						P->f[p] = F;  // from N
+						Q->f[q] = N;  // from F
+
+						v0->sew = F;
+						v1->sew = N;
+					}
+				}
+
+				N = (Face*)N->next;
+			}
+
+			if (no_flips)
+				break;
+		}
+
 		// clean up the mess we've made with dela faces list !!!
+		/*
 		int hull_faces = 2 * unique_points - 4;
 		tail = &first_dela_face;
 		for (int i = 0; i < hull_faces; i++)
@@ -1891,11 +1947,7 @@ struct CDelaBella : IDelaBella
 			}
 		}
 		*tail = 0;
-
-		// 3. Repeatedly until no flip occurs
-		// get edge from new edges list,
-		// if 2 triangles sharing the edge violates delaunay criterion
-		// do diagonal swap
+		*/
 
 		return edges;
 	}
