@@ -1301,7 +1301,8 @@ struct CDelaBella : IDelaBella
 		if (xa_ready == 2)
 			xa_ready = 1;
 
-		IA_VAL ab[2] = { (IA_VAL)vb->x - (IA_VAL)va->x, (IA_VAL)vb->y - (IA_VAL)va->y };
+		IA_VAL ia_a[2] = { (IA_VAL)va->x , (IA_VAL)va->y };
+		IA_VAL ab[2] = { (IA_VAL)vb->x - ia_a[0], (IA_VAL)vb->y - ia_a[1] };
 
 		XA_REF xa_a[2];
 		XA_REF xa_ab[2];
@@ -1340,23 +1341,30 @@ struct CDelaBella : IDelaBella
 				return list; // ab is already there
 			}
 
-			IA_VAL a0[2] = { (IA_VAL)v0->x - (IA_VAL)va->x, (IA_VAL)v0->y - (IA_VAL)va->y };
-			IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)va->x, (IA_VAL)v1->y - (IA_VAL)va->y };
+			IA_VAL a0[2] = { (IA_VAL)v0->x - ia_a[0], (IA_VAL)v0->y - ia_a[1] };
+			IA_VAL a1[2] = { (IA_VAL)v1->x - ia_a[0], (IA_VAL)v1->y - ia_a[1] };
 
-			IA_VAL a0b = a0[0] * ab[1] - a0[1] * ab[0];
-			IA_VAL a1b = a1[0] * ab[1] - a1[1] * ab[0];
+			//IA_VAL a0b = a0[0] * ab[1] - a0[1] * ab[0];
+			//IA_VAL a1b = a1[0] * ab[1] - a1[1] * ab[0];
 
 			// todo: optimize it!
 			// compare without subtracting!
+			IA_VAL l_a0b = a0[0] * ab[1];
+			IA_VAL r_a0b = a0[1] * ab[0];
+			IA_VAL l_a1b = a1[0] * ab[1];
+			IA_VAL r_a1b = a1[1] * ab[0];
 
-			if (a0b < 0 && a1b > 0)
+
+			if (l_a0b < r_a0b && l_a1b > r_a1b)
+			//if (a0b < 0 && a1b > 0)
 			{
 				// offending edge!
 				N = (Face*)face;
 				break;
 			}
 
-			if (a0b <= 0 && a1b >= 0)
+			if (!(l_a0b > r_a0b || l_a1b < r_a1b))
+			//if (a0b <= 0 && a1b >= 0)
 			{
 				if (xa_ready < 2)
 				{
@@ -1471,13 +1479,16 @@ struct CDelaBella : IDelaBella
 
 			// is vr above or below ab ?
 
-			IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)va->x, (IA_VAL)vr->y - (IA_VAL)va->y };
-			IA_VAL abr = ab[0] * ar[1] - ab[1] * ar[0];
+			IA_VAL ar[2] = { (IA_VAL)vr->x - ia_a[0], (IA_VAL)vr->y - ia_a[1] };
+			//IA_VAL abr = ab[0] * ar[1] - ab[1] * ar[0];
 
 			// todo: optimize it!
 			// compare without subtracting!
+			IA_VAL l_abr = ab[0] * ar[1];
+			IA_VAL r_abr = ab[1] * ar[0];
 
-			if (abr > 0)
+			if (l_abr > r_abr)
+			//if (abr > 0)
 			{
 				// above: de edge (a' = f vert)
 				a = f;
@@ -1486,7 +1497,8 @@ struct CDelaBella : IDelaBella
 				N = F;
 			}
 			else
-			if (abr < 0)
+			if (l_abr < r_abr)
+			//if (abr < 0)
 			{
 				// below: fd edge (a' = e vert)
 				a = e;
@@ -1570,7 +1582,7 @@ struct CDelaBella : IDelaBella
 
 		// 1. Make list of offenders
 		int edges;
-		Face** tail = 0; // todo: for pushing back
+		Face** tail = 0;
 		Face* list = FindConstraintOffenders(va, vb, &tail, &edges, &skips);
 		Face* flipped = 0;
 
@@ -1624,13 +1636,18 @@ struct CDelaBella : IDelaBella
 			IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)v->x, (IA_VAL)v1->y - (IA_VAL)v->y };
 			IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)v->x, (IA_VAL)vr->y - (IA_VAL)v->y };
 
-			IA_VAL a0r = a0[0] * ar[1] - a0[1] * ar[0];
-			IA_VAL a1r = a1[0] * ar[1] - a1[1] * ar[0];
+			//IA_VAL a0r = a0[0] * ar[1] - a0[1] * ar[0];
+			//IA_VAL a1r = a1[0] * ar[1] - a1[1] * ar[0];
 
 			// todo: optimize it!
 			// compare without subtracting!
+			IA_VAL l_a0r = a0[0] * ar[1];
+			IA_VAL r_a0r = a0[1] * ar[0];
+			IA_VAL l_a1r = a1[0] * ar[1];
+			IA_VAL r_a1r = a1[1] * ar[0];
 
-			if (a0r > 0 || a1r < 0)
+			if (l_a0r > r_a0r || l_a1r < r_a1r)
+			//if (a0r > 0 || a1r < 0)
 			{
 				// CONCAVE CUNT!
 				*tail = N;
@@ -1638,7 +1655,8 @@ struct CDelaBella : IDelaBella
 				continue;
 			}
 
-			if (a0r < 0 && a1r > 0)
+			if (l_a0r < r_a0r && l_a1r > r_a1r)
+			//if (a0r < 0 && a1r > 0)
 			{
 				back_from_xa:
 				if (f == 0)
@@ -1744,20 +1762,26 @@ struct CDelaBella : IDelaBella
 					IA_VAL av[2] = { (IA_VAL)v->x - (IA_VAL)va->x, (IA_VAL)v->y - (IA_VAL)va->y };
 					IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)va->x, (IA_VAL)vr->y - (IA_VAL)va->y };
 
-					IA_VAL ab_av = ab[0] * av[1] - ab[1] * av[0];
-					IA_VAL ab_ar = ab[0] * ar[1] - ab[1] * ar[0];
+					//IA_VAL ab_av = ab[0] * av[1] - ab[1] * av[0];
+					//IA_VAL ab_ar = ab[0] * ar[1] - ab[1] * ar[0];
 
 					// todo: optimize it!
 					// compare without subtracting!
+					IA_VAL l_ab_av = ab[0] * av[1];
+					IA_VAL r_ab_av = ab[1] * av[0];
+					IA_VAL l_ab_ar = ab[0] * ar[1];
+					IA_VAL r_ab_ar = ab[1] * ar[0];
 
-					if (ab_av < 0 && ab_ar < 0 || ab_av > 0 && ab_ar > 0)
+					if (l_ab_av < r_ab_av && l_ab_ar < r_ab_ar || l_ab_av > r_ab_av && l_ab_ar > r_ab_ar)
+					//if (ab_av < 0 && ab_ar < 0 || ab_av > 0 && ab_ar > 0)
 					{
 						// resolved
 						N->next = flipped;
 						flipped = N;
 					}
 					else
-					if (ab_av < 0 && ab_ar > 0 || ab_av > 0 && ab_ar < 0)
+					if (l_ab_av < r_ab_av && l_ab_ar > r_ab_ar || l_ab_av > r_ab_av && l_ab_ar < r_ab_ar)
+					//if (ab_av < 0 && ab_ar > 0 || ab_av > 0 && ab_ar < 0)
 					{
 						// unresolved
 						*tail = N;
@@ -1819,6 +1843,14 @@ struct CDelaBella : IDelaBella
 			}
 		}
 
+		// update cross prods
+		Face* N = flipped;
+		while (N)
+		{
+			N->cross();
+			N = (Face*)N->next;
+		}
+
 		// 3. Repeatedly until no flip occurs
 		// for every edge from new edges list,
 		// if 2 triangles sharing the edge violates delaunay criterion
@@ -1870,8 +1902,7 @@ struct CDelaBella : IDelaBella
 
 				Vert* v = (Vert*)N->v[0]; // may be not same as global va (if we have had a skip)
 				Vert* vr = (Vert*)(F->v[d]);
-
-				N->cross(); // just in case we're not up to date
+				
 				if (N->dotP(*vr))
 				{
 					no_flips = false;
@@ -1925,6 +1956,9 @@ struct CDelaBella : IDelaBella
 						v0->sew = F;
 						v1->sew = N;
 					}
+
+					N->cross();
+					F->cross();
 				}
 
 				N = (Face*)N->next;

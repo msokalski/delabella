@@ -579,7 +579,7 @@ int main(int argc, char* argv[])
 
     int points = (int)cloud.size();
 
-#define CONSTRAINS 1000
+#define CONSTRAINS 10000
     int constraint_from = rand() % points;
     int constraint_to[CONSTRAINS];
     for (int c = 0; c < CONSTRAINS; c++)
