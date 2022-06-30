@@ -1,3 +1,6 @@
+#ifndef CRUDE_XA_H
+#define CRUDE_XA_H
+
 #include <stdint.h>
 
 // must be enabled for xa_leaks
@@ -440,15 +443,23 @@ inline std::ostream& operator << (std::ostream& os, const XA_REF& w)
 	return os;
 }
 
+//#define IA_FAST // assumes rounding mode is set to DOWNWARD!
+
 //#include <math.h> // (nexttoward)
 #include <float.h>
 
 struct IA_VAL
 {
 	IA_VAL() : lo(0), hi(0) {}
-	IA_VAL(double d) : lo(d), hi(d) {}
 	IA_VAL(const IA_VAL& v) : lo(v.lo), hi(v.hi) {}
 
+#ifndef IA_FAST
+	IA_VAL(double d) : lo(d), hi(d) {}
+#else
+	IA_VAL(double d) : lo(d), hi(-d) {}
+#endif
+
+#ifndef IA_FAST
 	static double inflate_neg_lo(double lo)
 	{
 		//return nexttoward(lo, -INFINITY);
@@ -502,10 +513,15 @@ struct IA_VAL
 
 		#endif
 	}
+	#endif // !IA_FAST
 
 	operator double() const
 	{
+		#ifndef IA_FAST
 		return (lo + hi) / 2;
+		#else
+		return (lo - hi) / 2;
+		#endif
 	}
 
 	IA_VAL operator + (const IA_VAL& v) const
@@ -513,9 +529,11 @@ struct IA_VAL
 		IA_VAL r;
 		r.lo = lo + v.lo;
 		r.hi = hi + v.hi;
+		#ifndef IA_FAST
 		r.inflate();
 		#ifdef XA_AUTO_TEST
 		assert(r.lo < r.hi);
+		#endif
 		#endif
 		return r;
 	}
@@ -523,11 +541,16 @@ struct IA_VAL
 	IA_VAL operator - (const IA_VAL& v) const
 	{
 		IA_VAL r;
+		#ifndef IA_FAST
 		r.lo = lo - v.hi;
 		r.hi = hi - v.lo;
 		r.inflate();
 		#ifdef XA_AUTO_TEST
 		assert(r.lo < r.hi);
+		#endif
+		#else
+		r.lo = lo + v.hi;
+		r.hi = hi + v.lo;
 		#endif
 		return r;
 	}
@@ -536,6 +559,7 @@ struct IA_VAL
 	{
 		IA_VAL r;
 
+		#ifndef IA_FAST
 		if (lo >= 0)
 		{
 			if (v.lo >= 0)	// ++ * ++ = ++
@@ -598,22 +622,139 @@ struct IA_VAL
 		#ifdef XA_AUTO_TEST
 		assert(r.lo < r.hi);
 		#endif
+		
+		#else
+
+		// 3x -hi * v.hi
+		// 3x -lo * v.lo
+		// 3x -lo * v.hi + 1x lo * -v.hi
+		// 3x -hi * v.lo + 1x hi * -v.lo
+
+		// 1x lo * v.lo
+		// 1x lo * v.hi
+		// 1x hi * v.lo
+		// 1x hi * v.hi
+
+		// 2-4 conditional checks
+
+		int C = ((*(uint64_t*)&lo) >> 63) + ((*(uint64_t*)&hi) >> 63); // 0,1,2
+		C += 3 * ( ((*(uint64_t*)&v.lo) >> 63) + ((*(uint64_t*)&v.hi) >> 63) ); // + 3*(0,1,2)
+
+		
+		if (lo >= 0)
+		{
+			// negating hi
+
+			if (v.lo >= 0)	// ++ * ++ = ++
+			{
+				static int c = C; // 4
+				assert(c == C);
+				r.lo = lo * v.lo;
+				r.hi = -hi * v.hi;
+			}
+			else
+			if (v.hi > 0)	// ++ * -- = --
+			{
+				static int c = C; // 4
+				assert(c == C);
+				r.lo = -hi * v.lo;
+				r.hi = lo * v.hi;
+			}
+			else			// ++ * -+ = -+
+			{
+				static int c = C;
+				assert(c == C);
+				r.lo = -hi * v.lo;
+				r.hi = -hi * v.hi;
+			}
+		}
+		else
+		if (hi > 0)
+		{
+			// negating lo
+
+			if (v.lo >= 0)	// -- * ++ = --
+			{
+				static int c = C; // 4
+				assert(c == C);
+				r.lo = -lo * v.hi;
+				r.hi = hi * v.lo;
+			}
+			else
+			if (v.hi > 0)	// -- * -- = ++
+			{
+				static int c = C; // 4
+				assert(c == C);
+				r.lo = hi * v.hi;
+				r.hi = -lo * v.lo;
+			}
+			else			// -- * -+ = -+
+			{
+				static int c = C;
+				assert(c == C);
+				r.lo = -lo * v.hi;
+				r.hi = -lo * v.lo;
+			}
+		}
+		else
+		{
+			// negating v.lo and v.hi
+
+			if (v.lo >= 0)	// -+ * ++ = -+
+			{
+				static int c = C;
+				assert(c == C);
+				r.lo = lo * -v.hi;
+				r.hi = hi * -v.hi;
+			}
+			else
+			if (v.hi > 0)	// -+ * -- = -+
+			{
+				static int c = C;
+				assert(c == C);
+				r.lo = hi * -v.lo;
+				r.hi = lo * -v.lo;
+			}
+			else			// -+ * -+ = -+
+			{
+				static int c = C;
+				assert(c == C);
+				r.lo = std::min(lo * -v.hi, hi * -v.lo);
+				//r.hi = -std::max(lo * v.lo, hi * v.hi);
+				r.hi = std::min(lo * -v.lo, hi * -v.hi);
+			}
+		}
+#endif
+
 		return r;
 	}
 
 	bool operator < (int i) const
 	{
+		#ifndef IA_FAST
 		return hi < i;
+		#else
+		//return -hi < i;
+		return hi > -i;
+		#endif
 	}
 
 	bool operator < (double d) const
 	{
+		#ifndef IA_FAST
 		return hi < d;
+		#else
+		return -hi < d;
+		#endif
 	}
 
 	bool operator < (const IA_VAL& v) const
 	{
+		#ifndef IA_FAST
 		return hi < v.lo;
+		#else
+		return -hi < v.lo;
+		#endif
 	}
 
 	bool operator > (int i) const
@@ -628,10 +769,15 @@ struct IA_VAL
 
 	bool operator > (const IA_VAL& v) const
 	{
+		#ifndef IA_FAST
 		return lo > v.hi;
+		#else
+		return lo > -v.hi;
+		#endif
 	}
 
 	double lo, hi;
 };
 
 #endif // c++
+#endif // CRUDE_XA_H

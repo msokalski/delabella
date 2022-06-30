@@ -451,10 +451,12 @@ int main(int argc, char* argv[])
 		/*long*/ double x;
 		/*long*/ double y;
 
+        /*
         bool operator < (const MyPoint& p)
         {
             return x * x + y * y > p.x* p.x + p.y * p.y;
         }
+        */
 	};
 	
 	std::vector<MyPoint> cloud;
@@ -472,9 +474,9 @@ int main(int argc, char* argv[])
        	std::random_device rd{};
     	std::mt19937_64 gen{rd()};
 
-        std::uniform_real_distribution</*long*/ double> d(-2.503515625, +2.503515625);
+        //std::uniform_real_distribution</*long*/ double> d(-2.503515625, +2.503515625);
         //std::normal_distribution</*long*/ double> d{0.0,2.0};
-        //std::gamma_distribution</*long*/ double> d(0.1,2.0);
+        std::gamma_distribution</*long*/ double> d(0.1,2.0);
 
         /*
         double dx = 100000000;
@@ -533,8 +535,8 @@ int main(int argc, char* argv[])
         
         for (int i = 0; i<n; i++)
         {
-            //MyPoint p = { d(gen) - 5.0, d(gen) - 5.0 };
-			MyPoint p = { d(gen), d(gen) };
+            MyPoint p = { d(gen) - 5.0, d(gen) - 5.0 };
+			//MyPoint p = { d(gen), d(gen) };
             cloud.push_back(p);
         }
         
@@ -579,48 +581,59 @@ int main(int argc, char* argv[])
 
     int points = (int)cloud.size();
 
-#define CONSTRAINS 10000
-    int constraint_from = rand() % points;
+#define CONSTRAINS 1000
+    //int constraint_from = rand() % points;
     int constraint_to[CONSTRAINS];
+    int constraint_from[CONSTRAINS];
     for (int c = 0; c < CONSTRAINS; c++)
-        constraint_to[c] = (constraint_from + 1 + rand()) % points;
+    {
+        constraint_from[c] = rand() % points;
+        constraint_to[c] = (constraint_from[c] + 1 + rand() % (points - 1)) % points;
+    }
 
     #ifdef Cdt
     {
-        std::vector<MyPoint> nodups = cloud;
+        std::vector<CDT::V2d<double>> nodups;
+        for (int i = 0; i < cloud.size(); i++)
+        {
+            CDT::V2d<double> v;
+            v.x = cloud[i].x;
+            v.y = cloud[i].y;
+            nodups.push_back(v);
+        }
+        std::vector<CDT::Edge> edges;
+        for (int c = 0; c < CONSTRAINS; c++)
+        {
+            CDT::Edge e{ (size_t)constraint_from[c], (size_t)constraint_to[c] };
+            edges.push_back(e);
+        }
+
         printf("running cdt...\n");
         uint64_t t0 = uSec();
-        std::vector<size_t> dups;
-        CDT::RemoveDuplicates(nodups, dups);
-        CDT::Triangulation<double> cdt;
-        cdt.insertVertices(
-            nodups.begin(),
-            nodups.end(),
-            [](const MyPoint& p) { return p.x; },
-            [](const MyPoint& p) { return p.y; }
-        );
 
-        printf("elapsed %d ms\n", (int)((uSec() - t0) / 1000));
+        CDT::RemoveDuplicatesAndRemapEdges(nodups,edges);
+        CDT::Triangulation<double> cdt;
+        cdt.insertVertices(nodups);
+
+        printf("CDT triangles: %d in %d ms\n", (int)cdt.triangles.size(), (int)((uSec() - t0) / 1000));
+        uint64_t t1 = uSec();
 
         {
-            std::vector<CDT::Edge> edges;
-            for (int c = 0; c < CONSTRAINS; c++)
-            {
-                CDT::Edge e{ (size_t)constraint_from,(size_t)constraint_to[c] };
-                edges.push_back(e);
-            }
-
             uint64_t c0 = uSec();
-            cdt.insertEdges(edges);
-            uint64_t c1 = uSec();
-
-            printf("CDT constrained in %d ms\n", (int)((c1 - c0) / 1000));
+            try
+            {
+                cdt.insertEdges(edges);
+                uint64_t c1 = uSec();
+                printf("CDT constrained in %d ms\n", (int)((c1 - c0) / 1000));
+            }
+            catch (...)
+            {
+                printf("CDT FAILURE!\n");
+            }
         }
 
         printf("erasing super tri\n");
         cdt.eraseSuperTriangle();
-        uint64_t t1 = uSec();
-        printf("CDT triangles=%d in %d ms (total)\n", (int)cdt.triangles.size(), (int)((t1 - t0) / 1000));
     }
     #endif
 
@@ -704,8 +717,7 @@ int main(int argc, char* argv[])
         for (int c = 0; c < CONSTRAINS; c++)
         {
             printf("\r[% d] %d flips", c, flips);
-            int constraint_to = (constraint_from + 1 + rand()) % points;
-            flips += idb->Constrain(constraint_from, constraint_to);
+            flips += idb->Constrain(constraint_from[c], constraint_to[c]);
         }
         uint64_t c1 = uSec();
         printf("\r[%d] %d flips in %d ms\n", CONSTRAINS, flips, (int)((c1 - c0) / 1000));

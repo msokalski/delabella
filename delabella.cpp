@@ -9,6 +9,27 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #include <algorithm>
 #include "delabella.h"
 
+#ifdef IA_FAST
+#include <fenv.h>
+//#pragma STDC FENV_ACCESS ON
+struct IA_FastRound
+{
+	const int restore;
+
+	IA_FastRound() : restore(fegetround()) 
+	{ 
+		fesetround(FE_DOWNWARD); 
+	}
+
+	~IA_FastRound() 
+	{ 
+		fesetround(restore); 
+	}
+};
+#else
+struct IA_FastRound { IA_FastRound() {} };
+#endif
+
 static Unsigned28 s14sqr(const Signed14& s)
 {
 	return (Unsigned28)((Signed29)s*(Signed29)s);
@@ -852,6 +873,8 @@ struct CDelaBella : IDelaBella
 
 	int Triangulate(int* other_faces)
 	{
+		IA_FastRound round;
+		
 		int i = 0;
 		Face* hull = 0;
 		int hull_faces = 0;
@@ -1278,9 +1301,6 @@ struct CDelaBella : IDelaBella
 		static const int rotate[3][3] = { {0,1,2},{1,2,0},{2,0,1} };
 		static const int other_vert[3][2] = { {1,2},{2,0},{0,1} };
 
-		*edges = 0;
-		*skips = 0;
-
 		// returns list of faces!
 		// with Face::index replaced with vertex indice opposite to the offending edge
 		// (we are about to change triangulation after all so indexes will change as well)
@@ -1290,13 +1310,17 @@ struct CDelaBella : IDelaBella
 		Face** tail = &list;
 
 		DelaBella_Iterator it;
-		const DelaBella_Triangle* first = va->StartIterator(&it);
-		const DelaBella_Triangle* face = first;
 
 		int xa_ready = 0; // 0:none, 1:xa_b only, 2:all
 		XA_REF xa_b[2];
 
+		*edges = 0;
+		*skips = -1;
 	restart:
+		++*skips;
+
+		const DelaBella_Triangle* first = va->StartIterator(&it);
+		const DelaBella_Triangle* face = first;
 
 		if (xa_ready == 2)
 			xa_ready = 1;
@@ -1564,6 +1588,8 @@ struct CDelaBella : IDelaBella
 
 	virtual int Constrain(int a, int b)
 	{
+		IA_FastRound round;
+
 		if (!first_dela_face || a == b)
 			return -1;
 
@@ -2182,66 +2208,3 @@ IDelaBella* IDelaBella::Create()
 	return db;
 }
 
-#ifndef __cplusplus
-void* DelaBella_Create()
-{
-	return IDelaBella::Create();
-}
-
-void  DelaBella_Destroy(void* db)
-{
-	((IDelaBella*)db)->Destroy();
-}
-
-void  DelaBella_SetErrLog(void* db, int(*proc)(void* stream, const char* fmt, ...), void* stream)
-{
-	((IDelaBella*)db)->SetErrLog(proc, stream);
-}
-
-int   DelaBella_TriangulateFloat(void* db, int points, float* x, float* y, int advance_bytes)
-{
-	return ((IDelaBella*)db)->Triangulate(points, x, y, advance_bytes);
-}
-
-int   DelaBella_TriangulateDouble(void* db, int points, double* x, double* y, int advance_bytes)
-{
-	return ((IDelaBella*)db)->Triangulate(points, x, y, advance_bytes);
-}
-
-int   DelaBella_TriangulateLongDouble(void* db, int points, long double* x, long double* y, int advance_bytes)
-{
-	return ((IDelaBella*)db)->Triangulate(points, x, y, advance_bytes);
-}
-
-
-int   DelaBella_GetNumInputPoints(void* db)
-{
-	return ((IDelaBella*)db)->GetNumInputPoints();
-}
-
-int   DelaBella_GetNumOutputIndices(void* db)
-{
-	return ((IDelaBella*)db)->GetNumOutputIndices();
-}
-
-int   Delabella_GetNumOutputHullFaces(void* db);
-{
-	return ((IDelaBella*)db)->GetNumOutputHullFaces();
-}
-
-
-const DelaBella_Triangle* GetFirstDelaunayTriangle(void* db)
-{
-	return ((IDelaBella*)db)->GetFirstDelaunayTriangle();
-}
-
-const DelaBella_Triangle* GetFirstHullTriangle(void* db)
-{
-	return ((IDelaBella*)db)->GetFirstHullTriangle();
-}
-
-const DelaBella_Vertex*   GetFirstHullVertex(void* db)
-{
-	return ((IDelaBella*)db)->GetFirstHullVertex();
-}
-#endif

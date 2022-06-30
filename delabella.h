@@ -68,9 +68,7 @@ struct DelaBella_Vertex
 	Signed14 x, y; // coordinates (input copy) -> changed to edge normal during postprocessing
 	int i; // index of original point
 
-	#ifdef __cplusplus
 	inline const DelaBella_Triangle* StartIterator(DelaBella_Iterator* it/*not_null*/) const;
-	#endif
 };
 
 struct DelaBella_Circumcenter
@@ -106,12 +104,9 @@ struct DelaBella_Triangle
                 +
 */
 
-	#ifdef __cplusplus
 	inline const DelaBella_Triangle* StartIterator(DelaBella_Iterator* it/*not_null*/, int around/*0,1,2*/) const;
-	#endif
 };
 
-#ifdef __cplusplus
 struct DelaBella_Iterator
 {
 	const DelaBella_Triangle* current;
@@ -221,20 +216,5 @@ struct IDelaBella
 
 	virtual int Constrain(int a, int b) = 0;
 };
-#else
-void* DelaBella_Create();
-void  DelaBella_Destroy(void* db);
-void  DelaBella_SetErrLog(void* db, int(*proc)(void* stream, const char* fmt, ...), void* stream);
-int   DelaBella_TriangulateFloat(void* db, int points, float* x, float* y = 0, int advance_bytes = 0);
-int   DelaBella_TriangulateDouble(void* db, int points, double* x, double* y = 0, int advance_bytes = 0);
-int   DelaBella_TriangulateLongDouble(void* db, int points, long double* x, long double* y = 0, int advance_bytes = 0);
-int   DelaBella_GetNumInputPoints(void* db);
-int   DelaBella_GetNumOutputIndices(void* db);
-int   Delabella_GetNumOutputHullFaces(void* db);
-int   Delabella_GetNumOutputHullVerts(void* db);
-const DelaBella_Triangle* GetFirstDelaunayTriangle(void* db);
-const DelaBella_Triangle* GetFirstHullTriangle(void* db);
-const DelaBella_Vertex*   GetFirstHullVertex(void* db);
-#endif
 
 #endif
