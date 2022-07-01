@@ -6,7 +6,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #define _CRT_SECURE_NO_WARNINGS
 
 //#define DELAUNATOR
-//#define Cdt
+#define Cdt
 
 #include <math.h>
 #include <stdlib.h>
@@ -451,6 +451,11 @@ int main(int argc, char* argv[])
 		/*long*/ double x;
 		/*long*/ double y;
 
+        bool operator == (const MyPoint& p) const
+        {
+            return x == p.x && y == p.y;
+        }
+
         /*
         bool operator < (const MyPoint& p)
         {
@@ -474,9 +479,9 @@ int main(int argc, char* argv[])
        	std::random_device rd{};
     	std::mt19937_64 gen{rd()};
 
-        //std::uniform_real_distribution</*long*/ double> d(-2.503515625, +2.503515625);
+        std::uniform_real_distribution</*long*/ double> d(-2.503515625, +2.503515625);
         //std::normal_distribution</*long*/ double> d{0.0,2.0};
-        std::gamma_distribution</*long*/ double> d(0.1,2.0);
+        //std::gamma_distribution</*long*/ double> d(0.1,2.0);
 
         /*
         double dx = 100000000;
@@ -535,8 +540,8 @@ int main(int argc, char* argv[])
         
         for (int i = 0; i<n; i++)
         {
-            MyPoint p = { d(gen) - 5.0, d(gen) - 5.0 };
-			//MyPoint p = { d(gen), d(gen) };
+            //MyPoint p = { d(gen) - 5.0, d(gen) - 5.0 };
+			MyPoint p = { d(gen), d(gen) };
             cloud.push_back(p);
         }
         
@@ -581,18 +586,17 @@ int main(int argc, char* argv[])
 
     int points = (int)cloud.size();
 
-#define CONSTRAINS 1000
-    //int constraint_from = rand() % points;
-    int constraint_to[CONSTRAINS];
-    int constraint_from[CONSTRAINS];
-    for (int c = 0; c < CONSTRAINS; c++)
+    #define CONSTRAINTS 1000
+    int constraint_to[CONSTRAINTS];
+    int constraint_from[CONSTRAINTS];
+    for (int c = 0; c < CONSTRAINTS; c++)
     {
         constraint_from[c] = rand() % points;
         constraint_to[c] = (constraint_from[c] + 1 + rand() % (points - 1)) % points;
     }
 
     #ifdef Cdt
-    {
+
         std::vector<CDT::V2d<double>> nodups;
         for (int i = 0; i < cloud.size(); i++)
         {
@@ -601,8 +605,9 @@ int main(int argc, char* argv[])
             v.y = cloud[i].y;
             nodups.push_back(v);
         }
+
         std::vector<CDT::Edge> edges;
-        for (int c = 0; c < CONSTRAINS; c++)
+        for (int c = 0; c < CONSTRAINTS; c++)
         {
             CDT::Edge e{ (size_t)constraint_from[c], (size_t)constraint_to[c] };
             edges.push_back(e);
@@ -611,30 +616,32 @@ int main(int argc, char* argv[])
         printf("running cdt...\n");
         uint64_t t0 = uSec();
 
-        CDT::RemoveDuplicatesAndRemapEdges(nodups,edges);
+        CDT::DuplicatesInfo dups = CDT::RemoveDuplicatesAndRemapEdges(nodups,edges);
+
+        uint64_t t1 = uSec();
+
         CDT::Triangulation<double> cdt;
         cdt.insertVertices(nodups);
 
-        printf("CDT triangles: %d in %d ms\n", (int)cdt.triangles.size(), (int)((uSec() - t0) / 1000));
-        uint64_t t1 = uSec();
-
-        {
-            uint64_t c0 = uSec();
-            try
-            {
-                cdt.insertEdges(edges);
-                uint64_t c1 = uSec();
-                printf("CDT constrained in %d ms\n", (int)((c1 - c0) / 1000));
-            }
-            catch (...)
-            {
-                printf("CDT FAILURE!\n");
-            }
-        }
-
+        uint64_t e0 = uSec();
         printf("erasing super tri\n");
         cdt.eraseSuperTriangle();
-    }
+        uint64_t e1 = uSec();
+
+        printf("CDT triangles: %d in %d ms (removing dups %d ms) (erasing %d ms)\n", 
+            (int)cdt.triangles.size(), 
+            (int)((e1 - t0) / 1000), 
+            (int)((t1 - t0) / 1000),
+            (int)((e1 - e0) / 1000));
+
+        if (0)
+        {
+            uint64_t c0 = uSec();
+            cdt.insertEdges(edges);
+            uint64_t c1 = uSec();
+            printf("CDT constrained in %d ms\n", (int)((c1 - c0) / 1000));
+        }
+
     #endif
 
 
@@ -711,19 +718,15 @@ int main(int argc, char* argv[])
     printf("delabella triangles: %d\n", tris_delabella);
     printf("delabella contour: %d\n", contour);
 
+    if (0)
     {
         uint64_t c0 = uSec();
-        int flips = 0;
-        for (int c = 0; c < CONSTRAINS; c++)
-        {
-            printf("\r[% d] %d flips", c, flips);
-            flips += idb->Constrain(constraint_from[c], constraint_to[c]);
-        }
+        int flips = idb->Constrain(CONSTRAINTS, constraint_from, constraint_to, sizeof(int));
         uint64_t c1 = uSec();
-        printf("\r[%d] %d flips in %d ms\n", CONSTRAINS, flips, (int)((c1 - c0) / 1000));
+        printf("%d flips in %d ms\n", flips, (int)((c1 - c0) / 1000));
     }
 
-    return 0;
+    //return 0;
 
 	// if positive, all ok 
 	if (verts<=0)
@@ -734,6 +737,168 @@ int main(int argc, char* argv[])
 		idb->Destroy();
 		return -2;
 	}
+
+    // COMPARE CDT with Dela
+    // if (0)
+    {
+        #ifdef Cdt
+
+        printf("comparing....\n");
+
+        int tris_cdt = (int)cdt.triangles.size();
+        assert(tris_delabella == tris_cdt);
+
+        struct MyTri
+        {
+            MyTri()
+            {
+            }
+
+            MyTri(const MyTri& tri)
+            {
+                p[0] = tri.p[0];
+                p[1] = tri.p[1];
+                p[2] = tri.p[2];
+            }
+
+            MyTri& operator = (const MyTri& tri)
+            {
+                p[0] = tri.p[0];
+                p[1] = tri.p[1];
+                p[2] = tri.p[2];
+                return *this;
+            }
+
+            bool operator == (const MyTri& tri) const
+            {
+                if (memcmp(this, &tri, sizeof(MyTri)) == 0)
+                    return true;
+                return false;
+            }
+
+            bool operator < (const MyTri& tri) const
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    if (p[i].x < tri.p[i].x)
+                        return true;
+                    if (p[i].x > tri.p[i].x)
+                        return false;
+                    if (p[i].y < tri.p[i].y)
+                        return true;
+                    if (p[i].y > tri.p[i].y)
+                        return false;
+                }
+
+                return false; // equal
+            }
+
+            MyTri(const double xy3[6])
+            {
+                p[0].x = xy3[0]; p[0].y = xy3[1];
+                p[1].x = xy3[2]; p[1].y = xy3[3];
+                p[2].x = xy3[4]; p[2].y = xy3[5];
+
+                struct C
+                {
+                    bool operator () (const MyPoint& p1, const MyPoint& p2) const
+                    {
+                        if (p1.x < p2.x)
+                            return true;
+                        if (p1.x > p2.x)
+                            return false;
+                        if (p1.y < p2.y)
+                            return true;
+                        return false;
+                    }
+                };
+
+                C c;
+                std::sort(p, p + 3, c);
+            }
+            MyPoint p[3];
+        };
+
+        std::vector<MyTri> cdt_set;
+
+        int pro = 0;
+        for (int i = 0; i < tris_cdt; i++)
+        {
+            if (i >= pro)
+            {
+                int p = (int)((uint64_t)100 * i / tris_cdt);
+                pro = (int)((uint64_t)(p + 1) * tris_cdt / 100);
+                if (pro >= tris_cdt)
+                    pro = tris_cdt - 1;
+                if (i == tris_cdt - 1)
+                    p = 100;
+                printf("\r[%2d%s] analysing cdt %s", p, p >= 100 ? "" : "%", p >= 100 ? "\n" : "");
+            }
+
+            int a = cdt.triangles[i].vertices[0];
+            int b = cdt.triangles[i].vertices[1];
+            int c = cdt.triangles[i].vertices[2];
+
+            double abc[6] =
+            {
+                cdt.vertices[a].x,
+                cdt.vertices[a].y,
+                cdt.vertices[b].x,
+                cdt.vertices[b].y,
+                cdt.vertices[c].x,
+                cdt.vertices[c].y
+            };
+
+            MyTri tri{abc};
+            cdt_set.push_back(tri);
+        }
+        std::sort(cdt_set.begin(), cdt_set.end());
+
+        std::vector<MyTri> dela_set;
+
+        const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
+        pro = 0;
+        for (int i = 0; i < tris_delabella; i++)
+        {
+            if (i >= pro)
+            {
+                int p = (int)((uint64_t)100 * i / tris_delabella);
+                pro = (int)((uint64_t)(p + 1) * tris_delabella / 100);
+                if (pro >= tris_delabella)
+                    pro = tris_delabella - 1;
+                if (i == tris_delabella - 1)
+                    p = 100;
+                printf("\r[%2d%s] analysing dela %s", p, p >= 100 ? "" : "%", p >= 100 ? "\n" : "");
+            }
+
+            int a = dela->v[0]->i;
+            int b = dela->v[1]->i;
+            int c = dela->v[2]->i;
+
+            double abc[6] =
+            {
+                dela->v[0]->x,
+                dela->v[0]->y,
+                dela->v[1]->x,
+                dela->v[1]->y,
+                dela->v[2]->x,
+                dela->v[2]->y
+            };
+
+            MyTri tri{ abc };
+            dela_set.push_back(tri);
+
+            dela = dela->next;
+        }
+        std::sort(dela_set.begin(), dela_set.end());
+
+        //return 0;
+        assert(dela_set == cdt_set);
+
+        printf("COMPARE SUCCESS!\n");
+
+        #endif
+    }
 
     if (argc>=3)
     {

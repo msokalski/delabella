@@ -443,9 +443,10 @@ inline std::ostream& operator << (std::ostream& os, const XA_REF& w)
 	return os;
 }
 
-//#define IA_FAST // assumes rounding mode is set to DOWNWARD!
+#define IA_FAST // assumes rounding mode is set to DOWNWARD!
+//#define XA_AUTO_TEST
 
-//#include <math.h> // (nexttoward)
+//#include <math.h> // (nexttoward is incredibly slow)
 #include <float.h>
 
 struct IA_VAL
@@ -488,7 +489,7 @@ struct IA_VAL
 	{
 		#ifdef XA_AUTO_TEST
 		double l = lo >= 0 ? inflate_pos_lo(lo) : inflate_neg_lo(lo);
-		double h = hi >= 0 ? inflate_pos_hi(lo) : inflate_neg_hi(lo);
+		double h = hi >= 0 ? inflate_pos_hi(hi) : inflate_neg_hi(hi);
 		assert(l<lo&& h>hi);
 		lo = l;
 		hi = h;
@@ -527,12 +528,18 @@ struct IA_VAL
 	IA_VAL operator + (const IA_VAL& v) const
 	{
 		IA_VAL r;
+		#ifndef IA_FAST
 		r.lo = lo + v.lo;
 		r.hi = hi + v.hi;
-		#ifndef IA_FAST
 		r.inflate();
 		#ifdef XA_AUTO_TEST
 		assert(r.lo < r.hi);
+		#endif
+		#else
+		r.lo = lo + v.lo;
+		r.hi = hi + v.hi;
+		#ifdef XA_AUTO_TEST
+		assert(r.lo <= -r.hi);
 		#endif
 		#endif
 		return r;
@@ -551,6 +558,9 @@ struct IA_VAL
 		#else
 		r.lo = lo + v.hi;
 		r.hi = hi + v.lo;
+		#ifdef XA_AUTO_TEST
+		assert(r.lo <= -r.hi);
+		#endif
 		#endif
 		return r;
 	}
@@ -637,8 +647,8 @@ struct IA_VAL
 
 		// 2-4 conditional checks
 
-		int C = ((*(uint64_t*)&lo) >> 63) + ((*(uint64_t*)&hi) >> 63); // 0,1,2
-		C += 3 * ( ((*(uint64_t*)&v.lo) >> 63) + ((*(uint64_t*)&v.hi) >> 63) ); // + 3*(0,1,2)
+		//int C = ((*(uint64_t*)&lo) >> 63) + ((*(uint64_t*)&hi) >> 63); // 0,1,2
+		//C += 3 * ( ((*(uint64_t*)&v.lo) >> 63) + ((*(uint64_t*)&v.hi) >> 63) ); // + 3*(0,1,2)
 
 		
 		if (lo >= 0)
@@ -647,51 +657,51 @@ struct IA_VAL
 
 			if (v.lo >= 0)	// ++ * ++ = ++
 			{
-				static int c = C; // 4
-				assert(c == C);
+				//static int c = C; // 4
+				//assert(c == C);
 				r.lo = lo * v.lo;
 				r.hi = -hi * v.hi;
 			}
 			else
 			if (v.hi > 0)	// ++ * -- = --
 			{
-				static int c = C; // 4
-				assert(c == C);
+				//static int c = C; // 4
+				//assert(c == C);
 				r.lo = -hi * v.lo;
 				r.hi = lo * v.hi;
 			}
 			else			// ++ * -+ = -+
 			{
-				static int c = C;
-				assert(c == C);
+				//static int c = C;
+				//assert(c == C);
 				r.lo = -hi * v.lo;
 				r.hi = -hi * v.hi;
 			}
 		}
 		else
-		if (hi > 0)
+		if (hi >= 0)
 		{
 			// negating lo
 
 			if (v.lo >= 0)	// -- * ++ = --
 			{
-				static int c = C; // 4
-				assert(c == C);
+				//static int c = C; // 4
+				//assert(c == C);
 				r.lo = -lo * v.hi;
 				r.hi = hi * v.lo;
 			}
 			else
-			if (v.hi > 0)	// -- * -- = ++
+			if (v.hi >= 0)	// -- * -- = ++
 			{
-				static int c = C; // 4
-				assert(c == C);
+				//static int c = C; // 4
+				//assert(c == C);
 				r.lo = hi * v.hi;
 				r.hi = -lo * v.lo;
 			}
 			else			// -- * -+ = -+
 			{
-				static int c = C;
-				assert(c == C);
+				//static int c = C;
+				//assert(c == C);
 				r.lo = -lo * v.hi;
 				r.hi = -lo * v.lo;
 			}
@@ -702,28 +712,33 @@ struct IA_VAL
 
 			if (v.lo >= 0)	// -+ * ++ = -+
 			{
-				static int c = C;
-				assert(c == C);
+				//static int c = C;
+				//assert(c == C);
 				r.lo = lo * -v.hi;
 				r.hi = hi * -v.hi;
 			}
 			else
-			if (v.hi > 0)	// -+ * -- = -+
+			if (v.hi >= 0)	// -+ * -- = -+
 			{
-				static int c = C;
-				assert(c == C);
+				//static int c = C;
+				//assert(c == C);
 				r.lo = hi * -v.lo;
 				r.hi = lo * -v.lo;
 			}
 			else			// -+ * -+ = -+
 			{
-				static int c = C;
-				assert(c == C);
+				//static int c = C;
+				//assert(c == C);
 				r.lo = std::min(lo * -v.hi, hi * -v.lo);
 				//r.hi = -std::max(lo * v.lo, hi * v.hi);
 				r.hi = std::min(lo * -v.lo, hi * -v.hi);
 			}
 		}
+
+		#ifdef XA_AUTO_TEST
+		assert(r.lo <= -r.hi);
+		#endif
+
 #endif
 
 		return r;
