@@ -586,14 +586,16 @@ int main(int argc, char* argv[])
 
     int points = (int)cloud.size();
 
-    #define CONSTRAINTS 1000
-    int constraint_to[CONSTRAINTS];
-    int constraint_from[CONSTRAINTS];
+    #define CONSTRAINTS 1
+    int constraint_from[CONSTRAINTS+1] = /*{527}; //*/ {41};
+    int constraint_to[CONSTRAINTS+1] =   /*{41};  //*/ {527};
+    /*
     for (int c = 0; c < CONSTRAINTS; c++)
     {
         constraint_from[c] = rand() % points;
         constraint_to[c] = (constraint_from[c] + 1 + rand() % (points - 1)) % points;
     }
+    */
 
     #ifdef Cdt
 
@@ -606,10 +608,15 @@ int main(int argc, char* argv[])
             nodups.push_back(v);
         }
 
+        int account_super_triangle = 3;
         std::vector<CDT::Edge> edges;
         for (int c = 0; c < CONSTRAINTS; c++)
         {
-            CDT::Edge e{ (size_t)constraint_from[c], (size_t)constraint_to[c] };
+            CDT::Edge e
+            { 
+                (size_t)constraint_from[c] - account_super_triangle, 
+                (size_t)constraint_to[c] - account_super_triangle 
+            };
             edges.push_back(e);
         }
 
@@ -634,7 +641,7 @@ int main(int argc, char* argv[])
             (int)((t1 - t0) / 1000),
             (int)((e1 - e0) / 1000));
 
-        if (0)
+        if (1)
         {
             uint64_t c0 = uSec();
             cdt.insertEdges(edges);
@@ -718,7 +725,7 @@ int main(int argc, char* argv[])
     printf("delabella triangles: %d\n", tris_delabella);
     printf("delabella contour: %d\n", contour);
 
-    if (0)
+    //if (0)
     {
         uint64_t c0 = uSec();
         int flips = idb->Constrain(CONSTRAINTS, constraint_from, constraint_to, sizeof(int));
@@ -893,9 +900,10 @@ int main(int argc, char* argv[])
         std::sort(dela_set.begin(), dela_set.end());
 
         //return 0;
-        assert(dela_set == cdt_set);
-
-        printf("COMPARE SUCCESS!\n");
+        if (dela_set != cdt_set)
+            printf("COMPARE FAIL!\n");
+        else
+            printf("COMPARE OK!\n");
 
         #endif
     }
@@ -1169,6 +1177,7 @@ int main(int argc, char* argv[])
     vbo_voronoi.Unmap();
     ibo_voronoi.Unmap();
 
+    /*
     #ifdef DELAUNATOR
     Buf ibo_delaunator;
     ibo_delaunator.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delaunator);
@@ -1180,6 +1189,28 @@ int main(int argc, char* argv[])
             ibo_ptr[3 * i + 0] = (GLuint)d->triangles[3 * i + 0];
             ibo_ptr[3 * i + 1] = (GLuint)d->triangles[3 * i + 1];
             ibo_ptr[3 * i + 2] = (GLuint)d->triangles[3 * i + 2];
+        }
+        ibo_delaunator.Unmap();
+    }
+    #endif
+    */
+
+    #ifdef Cdt
+    int tris_cdt = (int)cdt.triangles.size();
+    Buf ibo_delaunator;
+    ibo_delaunator.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_cdt);
+    {
+        ibo_ptr = (GLuint*)ibo_delaunator.Map();
+        for (int i = 0; i < tris_cdt; i++)
+        {
+            int a = cdt.triangles[i].vertices[0];
+            int b = cdt.triangles[i].vertices[1];
+            int c = cdt.triangles[i].vertices[2];
+            // how to remap to old indices?
+
+            ibo_ptr[3 * i + 0] = (GLuint)c;
+            ibo_ptr[3 * i + 1] = (GLuint)b;
+            ibo_ptr[3 * i + 2] = (GLuint)a;
         }
         ibo_delaunator.Unmap();
     }
@@ -1336,6 +1367,14 @@ int main(int argc, char* argv[])
                 case SDL_KEYUP:
                     if (event.key.keysym.sym == SDLK_ESCAPE)
                     {
+                        printf("CONSTRAINTS DUMP:\n");
+                        for (int i = 0; i < CONSTRAINTS; i++)
+                            printf("%d - %d\n", constraint_from[i], constraint_to[i]);
+                        printf("VERTICES DUMP:\n");
+                        for (int i = 0; i < cloud.size(); i++)
+                        {
+                            printf("%f %f\n", cloud[i].x, cloud[i].y);
+                        }
                     }
                     break;
             }
@@ -1384,24 +1423,28 @@ int main(int argc, char* argv[])
         glDrawArrays(GL_POINTS, 0, points);
         glPointSize(1.0f);
 
-        glColor4f(0.5f,0.5f,0.5f,1.0f);
+        //glColor4f(0.5f,0.5f,0.5f,1.0f);
+        glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_delabella * 3, GL_UNSIGNED_INT, 0);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-        glColor4f(1.0f,0.0f,0.0f,1.0f);
-        //glLineWidth(3.0f);
+        glColor4f(0.0f,0.0f,1.0f,1.0f);
+        glLineWidth(3.0f);
         glDrawElements(GL_LINE_LOOP, /*contour_min, contour_max,*/ contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella*3);
-        //glLineWidth(1.0f);
+        glLineWidth(1.0f);
 
         // delaunator
-		#if 0
-        #ifdef DELAUNATOR
+		#if 1
+        #ifdef Cdt
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_ONE, GL_ONE);
         ibo_delaunator.Bind();
-        glColor4f(1.0f,1.0f,1.0f,1.0f);
+        glColor4f(0.0f,1.0f,0.0f,1.0f);
         glLineWidth(1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_delaunator * 3, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_cdt * 3, GL_UNSIGNED_INT, 0);
+        glDisable(GL_BLEND);
         #endif
 		#endif
 

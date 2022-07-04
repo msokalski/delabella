@@ -1661,18 +1661,18 @@ struct CDelaBella : IDelaBella
 					f = 2;
 				}
 				else
-					if (F->f[1] == N)
-					{
-						d = 1;
-						e = 2;
-						f = 0;
-					}
-					else
-					{
-						d = 2;
-						e = 0;
-						f = 1;
-					}
+				if (F->f[1] == N)
+				{
+					d = 1;
+					e = 2;
+					f = 0;
+				}
+				else
+				{
+					d = 2;
+					e = 0;
+					f = 1;
+				}
 
 				Vert* v = (Vert*)N->v[0]; // may be not same as global va (if we have had a skip)
 				Vert* vr = (Vert*)(F->v[d]);
@@ -1704,7 +1704,7 @@ struct CDelaBella : IDelaBella
 				if (l_a0r < r_a0r && l_a1r > r_a1r)
 					//if (a0r < 0 && a1r > 0)
 				{
-				back_from_xa:
+					back_from_xa:
 					if (f == 0)
 					{
 						/*           *                             *
@@ -1798,9 +1798,14 @@ struct CDelaBella : IDelaBella
 
 					if (va == v || vr == vb)
 					{
+
 						// resolved!
 						N->next = flipped;
 						flipped = N;
+
+						// dbg
+						assert(N->index < 0x4000000);
+						N->index += 0x4000000;
 					}
 					else
 					{
@@ -1824,42 +1829,50 @@ struct CDelaBella : IDelaBella
 							// resolved
 							N->next = flipped;
 							flipped = N;
+
+							// dbg
+							assert(N->index < 0x4000000);
+							N->index += 0x4000000;
 						}
 						else
-							if (l_ab_av < r_ab_av && l_ab_ar > r_ab_ar || l_ab_av > r_ab_av && l_ab_ar < r_ab_ar)
-								//if (ab_av < 0 && ab_ar > 0 || ab_av > 0 && ab_ar < 0)
+						if (l_ab_av < r_ab_av && l_ab_ar > r_ab_ar || l_ab_av > r_ab_av && l_ab_ar < r_ab_ar)
+							//if (ab_av < 0 && ab_ar > 0 || ab_av > 0 && ab_ar < 0)
+						{
+							// unresolved
+							*tail = N;
+							tail = (Face**)&N->next;
+						}
+						else
+						{
+							// XA NEEDED
+							XA_REF xa_ab[2] = { (XA_REF)vb->x - (XA_REF)va->x, (XA_REF)vb->y - (XA_REF)va->y };
+							XA_REF xa_av[2] = { (XA_REF)v->x - (XA_REF)va->x, (XA_REF)v->y - (XA_REF)va->y };
+							XA_REF xa_ar[2] = { (XA_REF)vr->x - (XA_REF)va->x, (XA_REF)vr->y - (XA_REF)va->y };
+
+							XA_REF xa_ab_av = xa_ab[0] * xa_av[1] - xa_ab[1] * xa_av[0];
+							XA_REF xa_ab_ar = xa_ab[0] * xa_ar[1] - xa_ab[1] * xa_ar[0];
+
+							// todo: optimize it!
+							// compare without subtracting!
+
+							if (xa_ab_av < 0 && xa_ab_ar < 0 || xa_ab_av > 0 && xa_ab_ar > 0)
+							{
+								// resolved
+								N->next = flipped;
+								flipped = N;
+
+								// dbg
+								assert(N->index < 0x4000000);
+								N->index += 0x4000000;
+							}
+							else
+							if (xa_ab_av < 0 && xa_ab_ar > 0 || xa_ab_av > 0 && xa_ab_ar < 0)
 							{
 								// unresolved
 								*tail = N;
 								tail = (Face**)&N->next;
 							}
-							else
-							{
-								// XA NEEDED
-								XA_REF xa_ab[2] = { (XA_REF)vb->x - (XA_REF)va->x, (XA_REF)vb->y - (XA_REF)va->y };
-								XA_REF xa_av[2] = { (XA_REF)v->x - (XA_REF)va->x, (XA_REF)v->y - (XA_REF)va->y };
-								XA_REF xa_ar[2] = { (XA_REF)vr->x - (XA_REF)va->x, (XA_REF)vr->y - (XA_REF)va->y };
-
-								XA_REF xa_ab_av = xa_ab[0] * xa_av[1] - xa_ab[1] * xa_av[0];
-								XA_REF xa_ab_ar = xa_ab[0] * xa_ar[1] - xa_ab[1] * xa_ar[0];
-
-								// todo: optimize it!
-								// compare without subtracting!
-
-								if (xa_ab_av < 0 && xa_ab_ar < 0 || xa_ab_av > 0 && xa_ab_ar > 0)
-								{
-									// resolved
-									N->next = flipped;
-									flipped = N;
-								}
-								else
-									if (xa_ab_av < 0 && xa_ab_ar > 0 || xa_ab_av > 0 && xa_ab_ar < 0)
-									{
-										// unresolved
-										*tail = N;
-										tail = (Face**)&N->next;
-									}
-							}
+						}
 					}
 				}
 				else
@@ -1897,6 +1910,72 @@ struct CDelaBella : IDelaBella
 				N = (Face*)N->next;
 			}
 
+			/*
+			DelaBella_Iterator it;
+			const DelaBella_Triangle* first = va->StartIterator(&it);
+			const DelaBella_Triangle* tri = first;
+
+			int num_tris = 0;
+			while (1)
+			{
+				if (tri->index >= 0 && (tri->v[0]==vb || tri->v[1] == vb || tri->v[2] == vb))
+				{
+					num_tris++;
+
+					int a, b, c;
+					if ((tri->v[0] == va || tri->v[0] == vb) && (tri->v[1] == vb || tri->v[1] == va))
+					{
+						a = 0; b = 1; c = 2;
+					}
+					else
+					if ((tri->v[1] == va || tri->v[1] == vb) && (tri->v[2] == vb || tri->v[2] == va))
+					{
+						a = 1; b = 2; c = 0;
+					}
+					else
+					if ((tri->v[2] == va || tri->v[2] == vb) && (tri->v[0] == vb || tri->v[0] == va))
+					{
+						a = 2; b = 0; c = 1;
+					}
+					else
+						assert(0);
+
+					DelaBella_Iterator it2;
+
+					tri->StartIterator(&it2, c);
+					Face* prev = (Face*)it2.Prev();
+
+					tri->StartIterator(&it2, c);
+					Face* next = (Face*)it2.Next();
+
+					if (prev->f[0] != tri || next->f[0] != tri)
+					{
+						int prb = 1;
+					}
+
+					Face* N = flipped;
+					int found = 0;
+					while (N)
+					{
+						if (N == prev || N == next)
+							found++;
+						N = (Face*)N->next;
+					}
+
+					if (found != 2)
+					{
+						int prb = 2;
+					}
+
+					if (num_tris == 2)
+						break;
+				}
+
+				tri = it.Next();
+				assert(tri != first);
+			}
+			*/
+
 			// 3. Repeatedly until no flip occurs
 			// for every edge from new edges list,
 			// if 2 triangles sharing the edge violates delaunay criterion
@@ -1908,11 +1987,82 @@ struct CDelaBella : IDelaBella
 				Face* N = flipped;
 				while (N)
 				{
+					// ensure convex ?????
+					/*
+					{
+						const int a = 0, b = 1, c = 2;
+						Vert* v0 = (Vert*)(N->v[b]);
+						Vert* v1 = (Vert*)(N->v[c]);
+
+						Face* F = (Face*)(N->f[a]);
+						int d, e, f;
+
+						if (F->f[0] == N)
+						{
+							d = 0;
+							e = 1;
+							f = 2;
+						}
+						else
+						if (F->f[1] == N)
+						{
+							d = 1;
+							e = 2;
+							f = 0;
+						}
+						else
+						{
+							d = 2;
+							e = 0;
+							f = 1;
+						}
+
+						Vert* v = (Vert*)N->v[0]; // may be not same as global va (if we have had a skip)
+						Vert* vr = (Vert*)(F->v[d]);
+
+
+						// is va,v0,vr,v1 a convex quad?
+						IA_VAL a0[2] = { (IA_VAL)v0->x - (IA_VAL)v->x, (IA_VAL)v0->y - (IA_VAL)v->y };
+						IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)v->x, (IA_VAL)v1->y - (IA_VAL)v->y };
+						IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)v->x, (IA_VAL)vr->y - (IA_VAL)v->y };
+
+						//IA_VAL a0r = a0[0] * ar[1] - a0[1] * ar[0];
+						//IA_VAL a1r = a1[0] * ar[1] - a1[1] * ar[0];
+
+						// todo: optimize it!
+						// compare without subtracting!
+						IA_VAL l_a0r = a0[0] * ar[1];
+						IA_VAL r_a0r = a0[1] * ar[0];
+						IA_VAL l_a1r = a1[0] * ar[1];
+						IA_VAL r_a1r = a1[1] * ar[0];
+
+						if (l_a0r > r_a0r || l_a1r < r_a1r)
+							//if (a0r > 0 || a1r < 0)
+						{
+							// CONCAVE CUNT!
+							
+							N = (Face*)N->next;
+							continue;
+						}
+					}
+					*/
+
+
+
 					// ignore constraint edge!!!
+					/*
 					int ab = 0;
 					for (int i = 0; i < 3; i++)
 						ab += N->v[i] == va || N->v[i] == vb;
 					if (ab > 1)
+					{
+						N = (Face*)N->next;
+						continue;
+					}
+					*/
+
+					// fixed?
+					if (N->v[1] == va && N->v[2] == vb || N->v[1] == vb && N->v[2] == va)
 					{
 						N = (Face*)N->next;
 						continue;
@@ -1933,23 +2083,23 @@ struct CDelaBella : IDelaBella
 						f = 2;
 					}
 					else
-						if (F->f[1] == N)
-						{
-							d = 1;
-							e = 2;
-							f = 0;
-						}
-						else
-						{
-							d = 2;
-							e = 0;
-							f = 1;
-						}
+					if (F->f[1] == N)
+					{
+						d = 1;
+						e = 2;
+						f = 0;
+					}
+					else
+					{
+						d = 2;
+						e = 0;
+						f = 1;
+					}
 
 					Vert* v = (Vert*)N->v[0]; // may be not same as global va (if we have had a skip)
 					Vert* vr = (Vert*)(F->v[d]);
 
-					if (N->dotP(*vr))
+					if (N->dotP(*vr) || F->dotP(*v)) // checked! we need to test both of them needed 
 					{
 						no_flips = false;
 						flips++;
@@ -2006,6 +2156,10 @@ struct CDelaBella : IDelaBella
 						N->cross();
 						F->cross();
 					}
+					//else
+					//{
+					//	assert(!F->dotP(*v));
+					//}
 
 					N = (Face*)N->next;
 				}
@@ -2018,12 +2172,14 @@ struct CDelaBella : IDelaBella
 		// clean up the mess we've made with dela faces list !!!
 		int hull_faces = 2 * unique_points - 4;
 		Face** tail = &first_dela_face;
+		int index = 0;
 		for (int i = 0; i < hull_faces; i++)
 		{
 			if (face_alloc[i].index >= 0)
 			{
 				*tail = face_alloc + i;
 				tail = (Face**)&face_alloc[i].next;
+				face_alloc[i].index = index++;
 			}
 		}
 		*tail = 0;
