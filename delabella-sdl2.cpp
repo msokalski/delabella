@@ -479,9 +479,9 @@ int main(int argc, char* argv[])
        	std::random_device rd{};
     	std::mt19937_64 gen{rd()};
 
-        std::uniform_real_distribution</*long*/ double> d(-2.503515625, +2.503515625);
+        //std::uniform_real_distribution</*long*/ double> d(-2.503515625, +2.503515625);
         //std::normal_distribution</*long*/ double> d{0.0,2.0};
-        //std::gamma_distribution</*long*/ double> d(0.1,2.0);
+        std::gamma_distribution</*long*/ double> d(0.1,2.0);
 
         /*
         double dx = 100000000;
@@ -540,8 +540,8 @@ int main(int argc, char* argv[])
         
         for (int i = 0; i<n; i++)
         {
-            //MyPoint p = { d(gen) - 5.0, d(gen) - 5.0 };
-			MyPoint p = { d(gen), d(gen) };
+            MyPoint p = { d(gen) - 5.0, d(gen) - 5.0 };
+			//MyPoint p = { d(gen), d(gen) };
             cloud.push_back(p);
         }
         
@@ -586,16 +586,14 @@ int main(int argc, char* argv[])
 
     int points = (int)cloud.size();
 
-    #define CONSTRAINTS 1
-    int constraint_from[CONSTRAINTS+1] = /*{527}; //*/ {41};
-    int constraint_to[CONSTRAINTS+1] =   /*{41};  //*/ {527};
-    /*
+    #define CONSTRAINTS 10000
+    int constraint_from[CONSTRAINTS];
+    int constraint_to[CONSTRAINTS];
     for (int c = 0; c < CONSTRAINTS; c++)
     {
         constraint_from[c] = rand() % points;
         constraint_to[c] = (constraint_from[c] + 1 + rand() % (points - 1)) % points;
     }
-    */
 
     #ifdef Cdt
 
@@ -614,73 +612,84 @@ int main(int argc, char* argv[])
         {
             CDT::Edge e
             { 
-                (size_t)constraint_from[c] - account_super_triangle, 
-                (size_t)constraint_to[c] - account_super_triangle 
+                (size_t)constraint_from[c], 
+                (size_t)constraint_to[c] 
             };
             edges.push_back(e);
         }
 
-        printf("running cdt...\n");
+        printf("cdt removing dups... ");
         uint64_t t0 = uSec();
 
         CDT::DuplicatesInfo dups = CDT::RemoveDuplicatesAndRemapEdges(nodups,edges);
+        /*
+        for (int c = 0; c < CONSTRAINTS; c++)
+        {
+            CDT::Edge e = edges[c];
+            CDT::Edge f{ e.v1() - account_super_triangle,e.v2() - account_super_triangle };
+            edges[c] = f;
+        }
+        */
 
         uint64_t t1 = uSec();
+        printf("%d ms\n", (int)((t1 - t0) / 1000));
 
+        printf("cdt triangulation... ");
         CDT::Triangulation<double> cdt;
         cdt.insertVertices(nodups);
 
-        uint64_t e0 = uSec();
-        printf("erasing super tri\n");
-        cdt.eraseSuperTriangle();
-        uint64_t e1 = uSec();
+        uint64_t t2 = uSec();
+        printf("%d ms\n", (int)((t2 - t1) / 1000));
 
-        printf("CDT triangles: %d in %d ms (removing dups %d ms) (erasing %d ms)\n", 
-            (int)cdt.triangles.size(), 
-            (int)((e1 - t0) / 1000), 
-            (int)((t1 - t0) / 1000),
-            (int)((e1 - e0) / 1000));
-
-        if (1)
+        //if (0)
         {
-            uint64_t c0 = uSec();
+            printf("cdt constraining... ");
             cdt.insertEdges(edges);
-            uint64_t c1 = uSec();
-            printf("CDT constrained in %d ms\n", (int)((c1 - c0) / 1000));
+            uint64_t t3 = uSec();
+            printf("%d ms\n", (int)((t3 - t2) / 1000));
         }
+
+        uint64_t t4 = uSec();
+        printf("cdt erasing super tri... ");
+        cdt.eraseSuperTriangle();
+        uint64_t t5 = uSec();
+        printf("%d ms\n", (int)((t5 - t4) / 1000));
+        printf("CDT TOTAL: %d\n", (int)((t5 - t0) / 1000));
 
     #endif
 
 
     #ifdef DELAUNATOR
-    std::vector<double> coords;
-    for (int i=0; i<points; i++)
     {
-        coords.push_back(cloud[i].x);
-        coords.push_back(cloud[i].y);
+        std::vector<double> coords;
+        for (int i=0; i<points; i++)
+        {
+            coords.push_back(cloud[i].x);
+            coords.push_back(cloud[i].y);
+        }
+        uint64_t t0 = uSec();
+        printf("running delaunator...\n");
+        delaunator::Delaunator* d = 0;
+        try
+        {
+            d = new delaunator::Delaunator(coords);
+        }
+        catch (...)
+        {
+            printf("delaunator threw an exception!\n");
+            d = 0;
+        }
+        int tris_delaunator = d ? (int)d->triangles.size() / 3 : 0;
+        uint64_t t1 = uSec();
+        printf("elapsed %d ms\n", (int)((t1-t0)/1000));
+        printf("delaunator triangles: %d\n", tris_delaunator);
+        /*
+        for(std::size_t i = 0; i < d.triangles.size(); i+=3) 
+        {
+            printf("%d %d %d\n", (int)d.triangles[i], (int)d.triangles[i+1], (int)d.triangles[i+2]);
+        }
+        */
     }
-    uint64_t t0 = uSec();
-    printf("running delaunator...\n");
-    delaunator::Delaunator* d = 0;
-    try
-    {
-        d = new delaunator::Delaunator(coords);
-    }
-    catch (...)
-    {
-        printf("delaunator threw an exception!\n");
-        d = 0;
-    }
-    int tris_delaunator = d ? (int)d->triangles.size() / 3 : 0;
-    uint64_t t1 = uSec();
-    printf("elapsed %d ms\n", (int)((t1-t0)/1000));
-    printf("delaunator triangles: %d\n", tris_delaunator);
-    /*
-    for(std::size_t i = 0; i < d.triangles.size(); i+=3) 
-    {
-        printf("%d %d %d\n", (int)d.triangles[i], (int)d.triangles[i+1], (int)d.triangles[i+2]);
-    }
-    */
     #endif
 
 	#ifdef CRUDE_XA
@@ -691,7 +700,7 @@ int main(int argc, char* argv[])
 	idb->SetErrLog(errlog, stdout);
 	
     printf("running delabella...\n");
-    uint64_t t2 = uSec();
+    uint64_t t6 = uSec();
 	int verts = idb->Triangulate(points, &cloud.data()->x, &cloud.data()->y, sizeof(MyPoint));
 	int tris_delabella = verts > 0 ? verts / 3 : 0;
     int contour = idb->GetNumBoundaryVerts();
@@ -720,8 +729,8 @@ int main(int argc, char* argv[])
     }
     */
 
-    uint64_t t3 = uSec();
-    printf("elapsed %d ms\n", (int)((t3-t2)/1000));
+    uint64_t t7 = uSec();
+    printf("elapsed %d ms\n", (int)((t7-t6)/1000));
     printf("delabella triangles: %d\n", tris_delabella);
     printf("delabella contour: %d\n", contour);
 
@@ -732,6 +741,9 @@ int main(int argc, char* argv[])
         uint64_t c1 = uSec();
         printf("%d flips in %d ms\n", flips, (int)((c1 - c0) / 1000));
     }
+
+    uint64_t t8 = uSec();
+    printf("Delabella TOTAL: %d\n", (int)((t8 - t6) / 1000));
 
     //return 0;
 
@@ -757,15 +769,29 @@ int main(int argc, char* argv[])
 
         struct MyTri
         {
-            MyTri()
-            {
-            }
-
             MyTri(const MyTri& tri)
             {
                 p[0] = tri.p[0];
                 p[1] = tri.p[1];
                 p[2] = tri.p[2];
+            }
+
+            bool dot0(const MyPoint* q) const
+            {
+                XA_REF px = q->x;
+                XA_REF py = q->y;
+
+                XA_REF adx = (XA_REF)p[0].x - px;
+                XA_REF ady = (XA_REF)p[0].y - py;
+                XA_REF bdx = (XA_REF)p[1].x - px;
+                XA_REF bdy = (XA_REF)p[1].y - py;
+                XA_REF cdx = (XA_REF)p[2].x - px;
+                XA_REF cdy = (XA_REF)p[2].y - py;
+
+                return
+                    (adx * adx + ady * ady) * (cdx * bdy - bdx * cdy) +
+                    (bdx * bdx + bdy * bdy) * (adx * cdy - cdx * ady) ==
+                    (cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady);
             }
 
             MyTri& operator = (const MyTri& tri)
@@ -899,11 +925,79 @@ int main(int argc, char* argv[])
         }
         std::sort(dela_set.begin(), dela_set.end());
 
-        //return 0;
+        printf("COMPARING...\n");
+        int diffs = -1;
+        if (tris_delabella == tris_cdt)
+        {
+            diffs = 0;
+            for (int i = 0; i < tris_delabella; i++)
+            {
+                if (dela_set[i] == cdt_set[i])
+                    // ok, exact match
+                    continue;
+
+                // try advancing one of sets
+                if (dela_set[i] < cdt_set[i])
+                {
+                    bool found = false;
+                    for (int j = i + 1; j < tris_delabella; j++)
+                    {
+                        if (dela_set[j].p[0].x > cdt_set[i].p[2].x)
+                            break;
+                        if (dela_set[j] == cdt_set[i])
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (found)
+                        continue;
+                }
+                else
+                {
+                    bool found = false;
+                    for (int j = i + 1; j < tris_delabella; j++)
+                    {
+                        if (dela_set[i].p[2].x < cdt_set[j].p[0].x)
+                            break;
+                        if (dela_set[i] == cdt_set[j])
+                        {
+                            found = true;
+                            break;
+                        }
+                    }
+
+                    if (found)
+                        continue;
+                }
+
+                /*
+                if (dela_set[i].dot0(cdt_set[i].p + 0) &&
+                    dela_set[i].dot0(cdt_set[i].p + 1) &&
+                    dela_set[i].dot0(cdt_set[i].p + 2))
+                    // probably ok, (degenerated triangulation)
+                    // checking it requires polygonization on both data!
+                    continue;
+                */
+
+                diffs++;
+            }
+        }
+
+        if (!diffs)
+            printf("COMPARE OK!\n");
+        else
+            printf("COMPARE FAIL %d DIFFS!\n", diffs);
+
+
+        /*
+        // may return false negative for degenerated triangulations
         if (dela_set != cdt_set)
             printf("COMPARE FAIL!\n");
         else
             printf("COMPARE OK!\n");
+        */
 
         #endif
     }
@@ -1201,16 +1295,40 @@ int main(int argc, char* argv[])
     ibo_delaunator.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_cdt);
     {
         ibo_ptr = (GLuint*)ibo_delaunator.Map();
-        for (int i = 0; i < tris_cdt; i++)
-        {
-            int a = cdt.triangles[i].vertices[0];
-            int b = cdt.triangles[i].vertices[1];
-            int c = cdt.triangles[i].vertices[2];
-            // how to remap to old indices?
 
-            ibo_ptr[3 * i + 0] = (GLuint)c;
-            ibo_ptr[3 * i + 1] = (GLuint)b;
-            ibo_ptr[3 * i + 2] = (GLuint)a;
+        if (dups.duplicates.size())
+        {
+            // let's make inverse mapping first
+            int* invmap = 0;
+            int invmap_size = dups.mapping.size() - dups.duplicates.size();
+            invmap = (int*)malloc(sizeof(int) * invmap_size);
+            for (int i = 0; i < dups.mapping.size(); i++)
+                invmap[dups.mapping[i]] = i;
+
+            for (int i = 0; i < tris_cdt; i++)
+            {
+                int a = cdt.triangles[i].vertices[0];
+                int b = cdt.triangles[i].vertices[1];
+                int c = cdt.triangles[i].vertices[2];
+                ibo_ptr[3 * i + 0] = (GLuint)invmap[c];
+                ibo_ptr[3 * i + 1] = (GLuint)invmap[b];
+                ibo_ptr[3 * i + 2] = (GLuint)invmap[a];
+            }
+
+            free(invmap);
+        }
+        else
+        {
+            // 1:1 mapping (no dups)
+            for (int i = 0; i < tris_cdt; i++)
+            {
+                int a = cdt.triangles[i].vertices[0];
+                int b = cdt.triangles[i].vertices[1];
+                int c = cdt.triangles[i].vertices[2];
+                ibo_ptr[3 * i + 0] = (GLuint)c;
+                ibo_ptr[3 * i + 1] = (GLuint)b;
+                ibo_ptr[3 * i + 2] = (GLuint)a;
+            }
         }
         ibo_delaunator.Unmap();
     }
@@ -1434,7 +1552,7 @@ int main(int argc, char* argv[])
         glDrawElements(GL_LINE_LOOP, /*contour_min, contour_max,*/ contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella*3);
         glLineWidth(1.0f);
 
-        // delaunator
+        // compare with CDT
 		#if 1
         #ifdef Cdt
         glEnable(GL_BLEND);

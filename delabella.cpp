@@ -56,7 +56,6 @@ IDelaBella::~IDelaBella()
 {
 }
 
-static int cmp_calls = 0;
 struct CDelaBella : IDelaBella
 {
 	struct Face;
@@ -81,7 +80,6 @@ struct CDelaBella : IDelaBella
 
 		bool operator < (const Vert& v) const
 		{
-			cmp_calls++;
 			return u28cmp(this, &v) < 0;
 		}
 
@@ -160,7 +158,15 @@ struct CDelaBella : IDelaBella
 
 		bool dot0(const Vert& p)
 		{
-			//always exact?
+			Vect pv = p - *(Vert*)v[0];
+			Signed62 approx_dot =
+				(Signed62)n.x * (Signed62)pv.x +
+				(Signed62)n.y * (Signed62)pv.y +
+				(Signed62)n.z * (Signed62)pv.z;
+
+			if (approx_dot < 0 || approx_dot > 0)
+				return false;
+
 			XA_REF px = p.x;
 			XA_REF py = p.y;
 
@@ -313,8 +319,6 @@ struct CDelaBella : IDelaBella
 		int points = inp_verts;
 
 		std::sort(vert_alloc, vert_alloc + points);
-		printf("cmp_calls=%d\n", cmp_calls);
-		cmp_calls = 0;
 
 		// rmove dups
 		{
@@ -1294,7 +1298,7 @@ struct CDelaBella : IDelaBella
 	}
 
 	// private
-	Face* FindConstraintOffenders(Vert* va, Vert* vb, Face*** ptail, int* edges, int* skips)
+	Face* FindConstraintOffenders(Vert* va, Vert* vb, Face*** ptail)
 	{
 		static const int rotate[3][3] = { {0,1,2},{1,2,0},{2,0,1} };
 		static const int other_vert[3][2] = { {1,2},{2,0},{0,1} };
@@ -1312,10 +1316,7 @@ struct CDelaBella : IDelaBella
 		int xa_ready = 0; // 0:none, 1:xa_b only, 2:all
 		XA_REF xa_b[2];
 
-		*edges = 0;
-		*skips = -1;
 	restart:
-		++*skips;
 
 		const DelaBella_Triangle* first = va->StartIterator(&it);
 		const DelaBella_Triangle* face = first;
@@ -1458,13 +1459,8 @@ struct CDelaBella : IDelaBella
 			}
 
 			// add edge
-			++*edges;
 			*tail = N;
 			tail = (Face**)&N->next;
-
-			// dbg check/mark
-			//assert(N->index < 0x40000000);
-			//N->index += 0x40000000;
 
 			// what is our next face?
 			Face* F = (Face*)(N->f[0]);
@@ -1614,8 +1610,6 @@ struct CDelaBella : IDelaBella
 			if (!first_dela_face || a == b)
 				continue;
 
-			int skips = 0;
-
 			// current
 			Vert* va = (Vert*)GetVertexByIndex(a);
 			if (!va)
@@ -1627,9 +1621,8 @@ struct CDelaBella : IDelaBella
 				continue;
 
 			// 1. Make list of offenders
-			int edges;
 			Face** tail = 0;
-			Face* list = FindConstraintOffenders(va, vb, &tail, &edges, &skips);
+			Face* list = FindConstraintOffenders(va, vb, &tail);
 			Face* flipped = 0;
 
 			// will we relink'em back to dela and replace indexes?
@@ -1802,10 +1795,6 @@ struct CDelaBella : IDelaBella
 						// resolved!
 						N->next = flipped;
 						flipped = N;
-
-						// dbg
-						assert(N->index < 0x4000000);
-						N->index += 0x4000000;
 					}
 					else
 					{
@@ -1829,10 +1818,6 @@ struct CDelaBella : IDelaBella
 							// resolved
 							N->next = flipped;
 							flipped = N;
-
-							// dbg
-							assert(N->index < 0x4000000);
-							N->index += 0x4000000;
 						}
 						else
 						if (l_ab_av < r_ab_av && l_ab_ar > r_ab_ar || l_ab_av > r_ab_av && l_ab_ar < r_ab_ar)
@@ -1860,10 +1845,6 @@ struct CDelaBella : IDelaBella
 								// resolved
 								N->next = flipped;
 								flipped = N;
-
-								// dbg
-								assert(N->index < 0x4000000);
-								N->index += 0x4000000;
 							}
 							else
 							if (xa_ab_av < 0 && xa_ab_ar > 0 || xa_ab_av > 0 && xa_ab_ar < 0)
@@ -2099,7 +2080,9 @@ struct CDelaBella : IDelaBella
 					Vert* v = (Vert*)N->v[0]; // may be not same as global va (if we have had a skip)
 					Vert* vr = (Vert*)(F->v[d]);
 
-					if (N->dotP(*vr) || F->dotP(*v)) // checked! we need to test both of them needed 
+					// do we need to test both of them?
+					// it causes deadlocks!
+					if (N->dotP(*vr) /* || F->dotP(*v)*/) 
 					{
 						no_flips = false;
 						flips++;
@@ -2348,7 +2331,7 @@ struct CDelaBella : IDelaBella
 		return first_internal_vert;
 	}
 
-	virtual const DelaBella_Vertex* GetVertexByIndex(int i)
+	virtual const DelaBella_Vertex* GetVertexByIndex(int i) const
 	{
 		if (i < 0 || i >= inp_verts)
 			return 0;
