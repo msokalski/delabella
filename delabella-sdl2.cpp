@@ -436,7 +436,7 @@ static const unsigned int big_circle[] =
 int main(int argc, char* argv[])
 {
 	#ifdef _WIN32
-	//SetProcessDPIAware();
+	SetProcessDPIAware();
 	#endif
 
 	if (argc<2)
@@ -465,85 +465,41 @@ int main(int argc, char* argv[])
 	};
 	
 	std::vector<MyPoint> cloud;
+    std::vector<int> constr;
 
 	FILE* f = fopen(argv[1],"r");
     int n = atoi(argv[1]);
-	if (!f)
-	{
-        if (n<=2)
+    if (!f)
+    {
+        if (n <= 2)
         {
-		    printf("can't open %s file, terminating!\n", argv[1]);
+            printf("can't open %s file, terminating!\n", argv[1]);
             return -1;
         }
         printf("generating random %d points\n", n);
-       	std::random_device rd{};
-    	std::mt19937_64 gen{rd()};
+        std::random_device rd{};
+        std::mt19937_64 gen{ rd() };
 
-        //std::uniform_real_distribution</*long*/ double> d(-2.503515625, +2.503515625);
+        std::uniform_real_distribution</*long*/ double> d(-2.503515625, +2.503515625);
         //std::normal_distribution</*long*/ double> d{0.0,2.0};
-        std::gamma_distribution</*long*/ double> d(0.1,2.0);
+        //std::gamma_distribution</*long*/ double> d(0.1,2.0);
 
-        /*
-        double dx = 100000000;
-        double dy = 80000000;
-        for (int r = 1; r<=1000; r++)
+        for (int i = 0; i < n; i++)
         {
-            double d = 1.0 / r;
-            int big = sizeof(big_circle) / sizeof(unsigned int) / 2;
-            MyPoint p;
-
-            // 4 axial points
-            p.x = big_circle[0] * d + dx;
-            p.y = big_circle[1] * d + dy;
-
-            cloud.push_back(p);
-            p.x = -p.x;
-            cloud.push_back(p);
-
-            p.x = big_circle[1] * d + dx;
-            p.y = big_circle[0] * d + dy;
-
-            cloud.push_back(p);
-            p.y = -p.y;
-            cloud.push_back(p);
-
-            for (int i = 1; i < big; i++)
-            {
-                int j = 2 * i;
-
-                // 8 octants
-                p.x = big_circle[j] * d + dx;
-                p.y = big_circle[j + 1] * d + dy;
-
-                cloud.push_back(p);
-                p.x = -p.x;
-                cloud.push_back(p);
-                p.y = -p.y;
-                cloud.push_back(p);
-                p.x = -p.x;
-                cloud.push_back(p);
-
-                p.x = big_circle[j+1] * d + dx;
-                p.y = big_circle[j] * d + dy;
-
-                cloud.push_back(p);
-                p.x = -p.x;
-                cloud.push_back(p);
-                p.y = -p.y;
-                cloud.push_back(p);
-                p.x = -p.x;
-                cloud.push_back(p);
-            };
-        }
-        */
-
-        
-        for (int i = 0; i<n; i++)
-        {
-            MyPoint p = { d(gen) - 5.0, d(gen) - 5.0 };
-			//MyPoint p = { d(gen), d(gen) };
+            //MyPoint p = { (d(gen) - 5.0)*m, (d(gen) - 5.0)*m };
+            MyPoint p = { d(gen), d(gen) };
+            assert(isfinite(p.x) && isfinite(p.y));
             cloud.push_back(p);
         }
+
+        for (int i = 0; i < 100; i++)
+        {
+            int f = rand() % n;
+            int t = (f + rand() % (n-1)) % n;
+            constr.push_back(f);
+            constr.push_back(t);
+        }
+
         
         //std::sort(cloud.begin(), cloud.end());
 
@@ -554,46 +510,38 @@ int main(int argc, char* argv[])
             //p.y = p.x;
             cloud.push_back(p);
         }
-        MyPoint p = { 0,0.000000000000000001 };
+        MyPoint p = { 0, 1};
         cloud.push_back(p);
         */
+        
 	}
     else
     {
-        bool first = true;
-        while (1)
+        int r,n,c;
+        r = fscanf(f, "%d %d", &n, &c);
+
+        for (int i=0; i<n; i++)
         {
             double x,y;
             // allow variety of separators and extra fields till end of the line
             int n = fscanf(f,"%lf%*[,; \v\t]%lf%*[^\n]", &x, &y);
-            if (n != 2)
-            {
-                if (first && n == 1)
-                {
-                    // skip header (ie num of points) at the begining
-                    first = false;
-                    continue;
-                }
-                break;
-            }
 
             MyPoint p = {x,y};
             cloud.push_back(p);
-            first = false;
         }
+
+        for (int i = 0; i < c; i++)
+        {
+            int a, b;
+            r = fscanf(f, "%d %d", &a, &b);
+            constr.push_back(a);
+            constr.push_back(b);
+        }
+
         fclose(f);
     }
 
     int points = (int)cloud.size();
-
-    #define CONSTRAINTS 10000
-    int constraint_from[CONSTRAINTS];
-    int constraint_to[CONSTRAINTS];
-    for (int c = 0; c < CONSTRAINTS; c++)
-    {
-        constraint_from[c] = rand() % points;
-        constraint_to[c] = (constraint_from[c] + 1 + rand() % (points - 1)) % points;
-    }
 
     #ifdef Cdt
 
@@ -606,14 +554,13 @@ int main(int argc, char* argv[])
             nodups.push_back(v);
         }
 
-        int account_super_triangle = 3;
         std::vector<CDT::Edge> edges;
-        for (int c = 0; c < CONSTRAINTS; c++)
+        for (int c = 0; c < constr.size()/2/*CONSTRAINTS*/; c++)
         {
             CDT::Edge e
             { 
-                (size_t)constraint_from[c], 
-                (size_t)constraint_to[c] 
+                (size_t)constr[2 * c + 0],//constraint_from[c], 
+                (size_t)constr[2 * c + 1] //constraint_to[c] 
             };
             edges.push_back(e);
         }
@@ -641,7 +588,7 @@ int main(int argc, char* argv[])
         uint64_t t2 = uSec();
         printf("%d ms\n", (int)((t2 - t1) / 1000));
 
-        //if (0)
+        if (constr.size()>=2)
         {
             printf("cdt constraining... ");
             cdt.insertEdges(edges);
@@ -734,10 +681,12 @@ int main(int argc, char* argv[])
     printf("delabella triangles: %d\n", tris_delabella);
     printf("delabella contour: %d\n", contour);
 
-    //if (0)
+    if (constr.size()>=2)
     {
         uint64_t c0 = uSec();
-        int flips = idb->Constrain(CONSTRAINTS, constraint_from, constraint_to, sizeof(int));
+        const int* data = constr.data();
+        //int flips = idb->Constrain(CONSTRAINTS, constraint_from, constraint_to, sizeof(int));
+        int flips = idb->Constrain(constr.size()/2, data, data + 1, 2 * sizeof(int));
         uint64_t c1 = uSec();
         printf("%d flips in %d ms\n", flips, (int)((c1 - c0) / 1000));
     }
@@ -761,8 +710,6 @@ int main(int argc, char* argv[])
     // if (0)
     {
         #ifdef Cdt
-
-        printf("comparing....\n");
 
         int tris_cdt = (int)cdt.triangles.size();
         assert(tris_delabella == tris_cdt);
@@ -1485,6 +1432,7 @@ int main(int argc, char* argv[])
                 case SDL_KEYUP:
                     if (event.key.keysym.sym == SDLK_ESCAPE)
                     {
+                        /*
                         printf("CONSTRAINTS DUMP:\n");
                         for (int i = 0; i < CONSTRAINTS; i++)
                             printf("%d - %d\n", constraint_from[i], constraint_to[i]);
@@ -1493,6 +1441,7 @@ int main(int argc, char* argv[])
                         {
                             printf("%f %f\n", cloud[i].x, cloud[i].y);
                         }
+                        */
                     }
                     break;
             }

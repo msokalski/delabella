@@ -32,6 +32,10 @@ struct IA_FastRound { IA_FastRound() {} };
 
 static Unsigned28 s14sqr(const Signed14& s)
 {
+//	Signed29 m = 0x1p-1019;
+//	Signed29 t = (Signed29)s * m;
+//	Signed29 tt = t * t;
+//	return tt;
 	return (Unsigned28)((Signed29)s*(Signed29)s);
 }
 
@@ -80,7 +84,22 @@ struct CDelaBella : IDelaBella
 
 		bool operator < (const Vert& v) const
 		{
-			return u28cmp(this, &v) < 0;
+			if (z < v.z)
+				return true;
+			if (z > v.z || x == v.x && y == v.y)
+				return false;
+
+			XA_REF ax = x;
+			XA_REF ay = y;
+			XA_REF az = ax * ax + ay * ay;
+			XA_REF bx = v.x;
+			XA_REF by = v.y;
+			XA_REF bz = bx * bx + by * by;
+
+			if (az < bz || az == bz && (x < v.x || x == v.x && y < v.y))
+				return true;
+
+			return false;
 		}
 
 		static int u28cmp(const void* a, const void* b)
@@ -365,6 +384,23 @@ struct CDelaBella : IDelaBella
 				points = w;
 			}
 		}
+
+		// sort back to see if we're robust even for unsureted input
+		/*
+		{
+			struct Unsort
+			{
+				bool operator () (const Vert& a, const Vert& b) const
+				{
+					return a.i < b.i;
+				}
+			} u;
+
+			std::sort(vert_alloc, vert_alloc + points, u);
+			for (int i = 0; i < points; i++)
+				vert_map[vert_alloc[i].i] = i;
+		}
+		*/
 
 		if (points < 3)
 		{
@@ -1298,7 +1334,7 @@ struct CDelaBella : IDelaBella
 	}
 
 	// private
-	Face* FindConstraintOffenders(Vert* va, Vert* vb, Face*** ptail)
+	Face* FindConstraintOffenders(Vert* va, Vert* vb, Face*** ptail, Vert** restart)
 	{
 		static const int rotate[3][3] = { {0,1,2},{1,2,0},{2,0,1} };
 		static const int other_vert[3][2] = { {1,2},{2,0},{0,1} };
@@ -1316,7 +1352,7 @@ struct CDelaBella : IDelaBella
 		int xa_ready = 0; // 0:none, 1:xa_b only, 2:all
 		XA_REF xa_b[2];
 
-	restart:
+	//restart:
 
 		const DelaBella_Triangle* first = va->StartIterator(&it);
 		const DelaBella_Triangle* face = first;
@@ -1417,15 +1453,27 @@ struct CDelaBella : IDelaBella
 				if (xa_a0b == 0)
 				{
 					// v0 overlap
-					va = v0;
-					goto restart;
+					
+					//va = v0;
+					//goto restart;
+					
+					*restart = v0;
+					*tail = 0;
+					*ptail = list ? tail : 0;
+					return list;
 				}
 
 				if (xa_a1b == 0)
 				{
 					// v1 overlap
-					va = v1;
-					goto restart;
+
+					//va = v1;
+					//goto restart;
+
+					*restart = v1;
+					*tail = 0;
+					*ptail = list ? tail : 0;
+					return list;
 				}
 
 				if (xa_a0b < 0 && xa_a1b > 0)
@@ -1490,6 +1538,7 @@ struct CDelaBella : IDelaBella
 
 			if (vr == vb)
 			{
+				*restart = 0;
 				*tail = 0;
 				*ptail = list ? tail : 0;
 				return list;
@@ -1552,8 +1601,14 @@ struct CDelaBella : IDelaBella
 				if (xa_abr == 0)
 				{
 					// if overlap
-					va = vr;
-					goto restart;
+					
+					//va = vr;
+					//goto restart;
+
+					*restart = vr;
+					*tail = 0;
+					*ptail = list ? tail : 0;
+					return list;
 				}
 
 				if (xa_abr > 0)
@@ -1576,6 +1631,7 @@ struct CDelaBella : IDelaBella
 		}
 
 		assert(0);
+		*restart = 0;
 		*ptail = 0;
 		return 0;
 	}
@@ -1616,14 +1672,24 @@ struct CDelaBella : IDelaBella
 				continue;
 
 			// destination
-			Vert* vb = (Vert*)GetVertexByIndex(b);
-			if (!vb)
+			Vert* vc = (Vert*)GetVertexByIndex(b);
+			if (!vc)
 				continue;
 
+			do {
 			// 1. Make list of offenders
 			Face** tail = 0;
-			Face* list = FindConstraintOffenders(va, vb, &tail);
+			Vert* restart = 0;
+			Face* list = FindConstraintOffenders(va, vc, &tail, &restart);
+			//if (!list && restart)
+			//{
+			//	va = restart;
+			//	continue;
+			//}
+
 			Face* flipped = 0;
+
+			Vert* vb = restart ? restart : vc;
 
 			// will we relink'em back to dela and replace indexes?
 
@@ -2150,6 +2216,9 @@ struct CDelaBella : IDelaBella
 				if (no_flips)
 					break;
 			}
+
+			va = restart;
+			} while (va);
 		}
 
 		// clean up the mess we've made with dela faces list !!!
