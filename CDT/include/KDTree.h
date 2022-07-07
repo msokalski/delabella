@@ -206,7 +206,7 @@ public:
             }
             else
             {
-                coord_type mid;
+                coord_type mid(0);
                 NodeSplitDirection::Enum newDir;
                 point_type newMin, newMax;
                 calcSplitInfo(t.min, t.max, t.dir, mid, newDir, newMin, newMax);
@@ -246,7 +246,7 @@ private:
     /// Add a new node and return it's index in nodes buffer
     node_index addNewNode()
     {
-        const node_index newNodeIndex = m_nodes.size();
+        const node_index newNodeIndex = (node_index)m_nodes.size();
         m_nodes.push_back(Node());
         return newNodeIndex;
     }

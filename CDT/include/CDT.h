@@ -60,6 +60,22 @@ struct CDT_EXPORT SuperGeometryType
     };
 };
 
+/**
+ * Enum of strategies for treating intersecting constraint edges
+ */
+struct CDT_EXPORT IntersectingConstraintEdges
+{
+    /**
+     * The Enum itself
+     * @note needed to pre c++11 compilers that don't support 'class enum'
+     */
+    enum Enum
+    {
+        Ignore,  ///< constraint edge intersections are not checked
+        Resolve, ///< constraint edge intersections are resolved
+    };
+};
+
 /// Constant representing no valid neighbor for a triangle
 const static TriInd noNeighbor(std::numeric_limits<TriInd>::max());
 /// Constant representing no valid vertex for a triangle
@@ -73,6 +89,9 @@ const static VertInd noVertex(std::numeric_limits<VertInd>::max());
 typedef unsigned short LayerDepth;
 typedef LayerDepth BoundaryOverlapCount;
 
+/// Triangles by vertex index
+typedef std::vector<TriIndVec> VerticesTriangles;
+
 /**
  * Data structure representing a 2D constrained Delaunay triangulation
  *
@@ -85,12 +104,17 @@ template <typename T, typename TNearPointLocator = LocatorKDTree<T> >
 class CDT_EXPORT Triangulation
 {
 public:
-    typedef std::vector<V2d<T> > V2dVec;              ///< Vertices vector
-    typedef std::vector<TriIndVec> VerticesTriangles; ///< Triangles by vertex
-    V2dVec vertices;            ///< triangulation's vertices
-    TriangleVec triangles;      ///< triangulation's triangles
-    EdgeUSet fixedEdges;        ///<  triangulation's constraints (fixed edges)
-    VerticesTriangles vertTris; ///< triangles adjacent to each vertex
+    typedef std::vector<V2d<T> > V2dVec; ///< Vertices vector
+    V2dVec vertices;                     ///< triangulation's vertices
+    TriangleVec triangles;               ///< triangulation's triangles
+    EdgeUSet fixedEdges; ///< triangulation's constraints (fixed edges)
+    /**
+     * triangles adjacent to each vertex
+     * @note will be reset to empty when super-triangle is removed and
+     * triangulation is finalized. To re-calculate adjacent triangles use
+     * @ref CDT::calculateTrianglesByVertex helper
+     */
+    VerticesTriangles vertTris;
 
     /** Stores count of overlapping boundaries for a fixed edge. If no entry is
      * present for an edge: no boundaries overlap.
@@ -100,6 +124,13 @@ public:
      * overlapping boundaries
      */
     unordered_map<Edge, BoundaryOverlapCount> overlapCount;
+
+    /** Stores list of original edges represented by a given fixed edge
+     * @note map only has entries for edges where multiple original fixed edges
+     * overlap or where a fixed edge is a part of original edge created by
+     * conforming Delaunay triangulation vertex insertion
+     */
+    unordered_map<Edge, EdgeVec> pieceToOriginals;
 
     /*____ API _____*/
     /// Default constructor
@@ -112,12 +143,32 @@ public:
     /**
      * Constructor
      * @param vertexInsertionOrder strategy used for ordering vertex insertions
-     * @param nearPtLocator class providing locating near point for efficiently
-     * inserting new points
+     * @param intersectingEdgesStrategy strategy for treating intersecting
+     * constraint edges
+     * @param minDistToConstraintEdge distance within which point is considered
+     * to be lying on a constraint edge. Used when adding constraints to the
+     * triangulation.
      */
     Triangulation(
         VertexInsertionOrder::Enum vertexInsertionOrder,
-        const TNearPointLocator& nearPtLocator);
+        IntersectingConstraintEdges::Enum intersectingEdgesStrategy,
+        T minDistToConstraintEdge);
+    /**
+     * Constructor
+     * @param vertexInsertionOrder strategy used for ordering vertex insertions
+     * @param nearPtLocator class providing locating near point for efficiently
+     * inserting new points
+     * @param intersectingEdgesStrategy strategy for treating intersecting
+     * constraint edges
+     * @param minDistToConstraintEdge distance within which point is considered
+     * to be lying on a constraint edge. Used when adding constraints to the
+     * triangulation.
+     */
+    Triangulation(
+        VertexInsertionOrder::Enum vertexInsertionOrder,
+        const TNearPointLocator& nearPtLocator,
+        IntersectingConstraintEdges::Enum intersectingEdgesStrategy,
+        T minDistToConstraintEdge);
     /**
      * Insert custom point-types specified by iterator range and X/Y-getters
      * @tparam TVertexIter iterator that dereferences to custom point type
@@ -139,10 +190,16 @@ public:
         TVertexIter last,
         TGetVertexCoordX getX,
         TGetVertexCoordY getY);
-    /// Insert vertices into triangulation
+    /**
+     * See @ref
+     * insertVertices(TVertexIter,TVertexIter,TGetVertexCoordX,TGetVertexCoordY)
+     */
     void insertVertices(const std::vector<V2d<T> >& vertices);
     /**
      * Insert constraints (custom-type fixed edges) into triangulation
+     * @note Each fixed edge is inserted by deleting the triangles it crosses,
+     * followed by the triangulation of the polygons on each side of the edge.
+     * <b> No new vertices are inserted.</b>
      * @note If some edge appears more than once in @ref insertEdges input this
      * means that multiple boundaries overlap at the edge and impacts
      * how hole detection algorithm of @ref eraseOuterTrianglesAndHoles works.
@@ -168,13 +225,44 @@ public:
         TGetEdgeVertexStart getStart,
         TGetEdgeVertexEnd getEnd);
     /**
-     * Insert constraints (fixed edges) into triangulation
+     * See @ref
+     * insertEdges(TEdgeIter,TEdgeIter,TGetEdgeVertexStart,TGetEdgeVertexEnd)
+     */
+    void insertEdges(const std::vector<Edge>& edges);
+    /**
+     * Ensure that triangulation conforms to constraints (fixed edges)
+     * @note For each fixed edge that is not present in the triangulation its
+     * midpoint is recursively added until the original edge is represented by a
+     * sequence of its pieces. <b> New vertices are inserted.</b>
      * @note If some edge appears more than once in @ref insertEdges input this
      * means that multiple boundaries overlap at the edge and impacts
      * how hole detection algorithm of @ref eraseOuterTrianglesAndHoles works.
      * <b>Make sure there are no erroneous duplicates.</b>
+     * @tparam TEdgeIter iterator that dereferences to custom edge type
+     * @tparam TGetEdgeVertexStart function object getting start vertex index
+     * from an edge.
+     * Getter signature: const TEdgeIter::value_type& -> CDT::VertInd
+     * @tparam TGetEdgeVertexEnd function object getting end vertex index from
+     * an edge. Getter signature: const TEdgeIter::value_type& -> CDT::VertInd
+     * @param first beginning of the range of edges to add
+     * @param last end of the range of edges to add
+     * @param getStart getter of edge start vertex index
+     * @param getEnd getter of edge end vertex index
      */
-    void insertEdges(const std::vector<Edge>& edges);
+    template <
+        typename TEdgeIter,
+        typename TGetEdgeVertexStart,
+        typename TGetEdgeVertexEnd>
+    void conformToEdges(
+        TEdgeIter first,
+        TEdgeIter last,
+        TGetEdgeVertexStart getStart,
+        TGetEdgeVertexEnd getEnd);
+    /**
+     * See @ref
+     * conformToEdges(TEdgeIter,TEdgeIter,TGetEdgeVertexStart,TGetEdgeVertexEnd)
+     */
+    void conformToEdges(const std::vector<Edge>& edges);
     /**
      * Erase triangles adjacent to super triangle
      *
@@ -196,17 +284,84 @@ public:
      */
     void initializedWithCustomSuperGeometry();
 
+    /**
+     * Check if the triangulation was finalized with `erase...` method and
+     * super-triangle was removed.
+     * @return true if triangulation is finalized, false otherwise
+     */
+    bool isFinalized() const;
+
+    /**
+     * @defgroup Advanced
+     * Advanced methods for manually modifying the triangulation from
+     * outside. Please only use them when you know what you are doing.
+     */
+    ///@{
+
+    /**
+     * Flip an edge between two triangle.
+     * @note Advanced method for manually modifying the triangulation from
+     * outside. Please call it when you know what you are doing.
+     * @param iT first triangle
+     * @param iTopo second triangle
+
+     */
+    void flipEdge(const TriInd iT, const TriInd iTopo);
+
+    /**
+     * Flag triangle as dummy
+     * @note Advanced method for manually modifying the triangulation from
+     * outside. Please call it when you know what you are doing.
+     * @param iT index of a triangle to flag
+     */
+    void makeDummy(const TriInd iT);
+
+    /**
+     * Erase all dummy triangles
+     * @note Advanced method for manually modifying the triangulation from
+     * outside. Please call it when you know what you are doing.
+     */
+    void eraseDummies();
+
+    ///@}
+
 private:
     /*____ Detail __*/
     void addSuperTriangle(const Box2d<T>& box);
     void addNewVertex(const V2d<T>& pos, const TriIndVec& tris);
     void insertVertex(const VertInd iVert);
-    void insertEdge(Edge edge);
+    void ensureDelaunayByEdgeFlips(
+        const V2d<T>& v,
+        const VertInd iVert,
+        std::stack<TriInd>& triStack);
+    /// Flip fixed edges and return a list of flipped fixed edges
+    std::vector<Edge> insertVertex_FlipFixedEdges(const VertInd iVert);
+    /**
+     * Insert an edge into constraint Delaunay triangulation
+     * @param edge edge to insert
+     * @param originalEdge original edge inserted edge is part of
+     */
+    void insertEdge(Edge edge, Edge originalEdge);
+    /**
+     * Conform Delaunay triangulation to a fixed edge by recursively inserting
+     * mid point of the edge and then conforming to its halves
+     * @param edge fixed edge to conform to
+     * @param originalEdges original edges that new edge is piece of
+     * @param overlaps count of overlapping boundaries at the edge. Only used
+     * when re-introducing edge with overlaps > 0
+     * @param orientationTolerance tolerance for orient2d predicate,
+     * values [-tolerance,+tolerance] are considered as 0.
+     */
+    void conformToEdge(
+        Edge edge,
+        EdgeVec originalEdges,
+        BoundaryOverlapCount overlaps);
     tuple<TriInd, VertInd, VertInd> intersectedTriangle(
         const VertInd iA,
         const std::vector<TriInd>& candidates,
         const V2d<T>& a,
-        const V2d<T>& b) const;
+        const V2d<T>& b,
+        T orientationTolerance = T(0)) const;
     /// Returns indices of three resulting triangles
     std::stack<TriInd> insertPointInTriangle(const VertInd v, const TriInd iT);
     /// Returns indices of four resulting triangles
@@ -216,11 +371,16 @@ private:
     array<TriInd, 2> walkingSearchTrianglesAt(const V2d<T>& pos) const;
     TriInd walkTriangles(const VertInd startVertex, const V2d<T>& pos) const;
     bool isFlipNeeded(
-        const V2d<T>& pos,
+        const V2d<T>& v,
+        const VertInd iV,
+        const VertInd iV1,
+        const VertInd iV2,
+        const VertInd iV3) const;
+    bool isFlipNeeded(
+        const V2d<T>& v,
         const TriInd iT,
         const TriInd iTopo,
         const VertInd iVert) const;
-    void flipEdge(const TriInd iT, const TriInd iTopo);
     void changeNeighbor(
         const TriInd iT,
         const TriInd oldNeighbor,
@@ -254,20 +414,34 @@ private:
     TriInd pseudopolyOuterTriangle(const VertInd ia, const VertInd ib) const;
     TriInd addTriangle(const Triangle& t); // note: invalidates iterators!
     TriInd addTriangle(); // note: invalidates triangle iterators!
-    void makeDummy(const TriInd iT);
-    void eraseDummies();
-    void eraseSuperTriangleVertices(); // no effect if custom geometry is used
-    template <typename TriIndexIter>
-    void eraseTrianglesAtIndices(TriIndexIter first, TriIndexIter last);
+    /**
+     * Remove super-triangle (if used) and triangles with specified indices.
+     * Adjust internal triangulation state accordingly.
+     * @removedTriangles indices of triangles to remove
+     */
+    void finalizeTriangulation(const TriIndUSet& removedTriangles);
     TriIndUSet growToBoundary(std::stack<TriInd> seeds) const;
+    void fixEdge(const Edge& edge, const BoundaryOverlapCount overlaps);
     void fixEdge(const Edge& edge);
+    void fixEdge(const Edge& edge, const Edge& originalEdge);
 
     std::vector<TriInd> m_dummyTris;
     TNearPointLocator m_nearPtLocator;
     std::size_t m_nTargetVerts;
     SuperGeometryType::Enum m_superGeomType;
     VertexInsertionOrder::Enum m_vertexInsertionOrder;
+    IntersectingConstraintEdges::Enum m_intersectingEdgesStrategy;
+    T m_minDistToConstraintEdge;
 };
+
+/**
+ * Calculate triangles adjacent to vertices (triangles by vertex index)
+ * @param triangles triangulation
+ * @param verticesSize total number of vertices to pre-allocate the output
+ * @return triangles by vertex index
+ */
+CDT_EXPORT VerticesTriangles
+calculateTrianglesByVertex(const TriangleVec& triangles, VertInd verticesSize);
 
 /**
  * Information about removed duplicated vertices.
@@ -309,7 +483,7 @@ DuplicatesInfo FindDuplicates(
 
 /**
  * Remove duplicates in-place from vector of custom points
- * @tparam TVertexIter iterator that dereferences to custom point type
+ * @tparam TVertex vertex type
  * @tparam TAllocator allocator used by input vector of vertices
  * @param vertices vertices to remove duplicates from
  * @param duplicates information about duplicates
@@ -344,7 +518,8 @@ RemapEdges(std::vector<Edge>& edges, const std::vector<std::size_t>& mapping);
  * (in-place)
  * @note Same as a chained call of @ref FindDuplicates, @ref RemoveDuplicates,
  * and @ref RemapEdges
- * @tparam TVertexIter iterator that dereferences to custom point type
+ * @tparam T type of vertex coordinates (e.g., float, double)
+ * @tparam TVertex type of vertex
  * @tparam TGetVertexCoordX function object getting x coordinate from vertex.
  * Getter signature: const TVertexIter::value_type& -> T
  * @tparam TGetVertexCoordY function object getting y coordinate from vertex.
@@ -487,6 +662,27 @@ unordered_map<TriInd, LayerDepth> PeelLayer(
  */
 CDT_EXPORT EdgeUSet extractEdgesFromTriangles(const TriangleVec& triangles);
 
+/*!
+ * Converts piece->original_edges mapping to original_edge->pieces
+ * @param pieceToOriginals maps pieces to original edges
+ * @return mapping of original edges to pieces
+ */
+CDT_EXPORT unordered_map<Edge, EdgeVec>
+EdgeToPiecesMapping(const unordered_map<Edge, EdgeVec>& pieceToOriginals);
+
+/*!
+ * Convert edge-to-pieces mapping into edge-to-split-vertices mapping
+ * @tparam T type of vertex coordinates (e.g., float, double)
+ * @param edgeToPieces edge-to-pieces mapping
+ * @param vertices vertex buffer
+ * @return mapping of edge-to-split-points.
+ * Split points are sorted from edge's start (v1) to end (v2)
+ */
+template <typename T>
+CDT_EXPORT unordered_map<Edge, std::vector<VertInd> > EdgeToSplitVertices(
+    const unordered_map<Edge, EdgeVec>& edgeToPieces,
+    const std::vector<V2d<T> >& vertices);
+
 } // namespace CDT
 
 //*****************************************************************************
@@ -549,6 +745,12 @@ void Triangulation<T, TNearPointLocator>::insertVertices(
     TGetVertexCoordX getX,
     TGetVertexCoordY getY)
 {
+    if(isFinalized())
+    {
+        throw std::runtime_error(
+            "Triangulation was finalized with 'erase...' method. Inserting new "
+            "vertices is not possible");
+    }
     detail::randGenerator.seed(9001); // ensure deterministic behavior
     if(vertices.empty())
     {
@@ -570,10 +772,10 @@ void Triangulation<T, TNearPointLocator>::insertVertices(
     case VertexInsertionOrder::Randomized:
         std::vector<VertInd> ii(std::distance(first, last));
         typedef std::vector<VertInd>::iterator Iter;
-        VertInd value = nExistingVerts;
+        VertInd value = (VertInd)nExistingVerts;
         for(Iter it = ii.begin(); it != ii.end(); ++it, ++value)
             *it = value;
-        detail::random_shuffle(ii.begin(),ii.end());
+        detail::random_shuffle(ii.begin(), ii.end());
         for(Iter it = ii.begin(); it != ii.end(); ++it)
             insertVertex(*it);
         break;
@@ -591,12 +793,47 @@ void Triangulation<T, TNearPointLocator>::insertEdges(
     TGetEdgeVertexStart getStart,
     TGetEdgeVertexEnd getEnd)
 {
+    if(isFinalized())
+    {
+        throw std::runtime_error(
+            "Triangulation was finalized with 'erase...' method. Inserting new "
+            "edges is not possible");
+    }
     for(; first != last; ++first)
     {
         // +3 to account for super-triangle vertices
-        insertEdge(Edge(
+        const Edge edge(
             VertInd(getStart(*first) + m_nTargetVerts),
-            VertInd(getEnd(*first) + m_nTargetVerts)));
+            VertInd(getEnd(*first) + m_nTargetVerts));
+        insertEdge(edge, edge);
+    }
+    eraseDummies();
+}
+
+template <typename T, typename TNearPointLocator>
+template <
+    typename TEdgeIter,
+    typename TGetEdgeVertexStart,
+    typename TGetEdgeVertexEnd>
+void Triangulation<T, TNearPointLocator>::conformToEdges(
+    TEdgeIter first,
+    const TEdgeIter last,
+    TGetEdgeVertexStart getStart,
+    TGetEdgeVertexEnd getEnd)
+{
+    if(isFinalized())
+    {
+        throw std::runtime_error(
+            "Triangulation was finalized with 'erase...' method. Conforming to "
+            "new edges is not possible");
+    }
+    for(; first != last; ++first)
+    {
+        // +3 to account for super-triangle vertices
+        const Edge e(
+            VertInd(getStart(*first) + m_nTargetVerts),
+            VertInd(getEnd(*first) + m_nTargetVerts));
+        conformToEdge(e, EdgeVec(1, e), 0);
     }
     eraseDummies();
 }
@@ -669,6 +906,65 @@ DuplicatesInfo RemoveDuplicatesAndRemapEdges(
     RemoveDuplicates(vertices, di.duplicates);
     RemapEdges(edges, di.mapping);
     return di;
+}
+
+template <typename T>
+unordered_map<Edge, std::vector<VertInd> > EdgeToSplitVertices(
+    const unordered_map<Edge, EdgeVec>& edgeToPieces,
+    const std::vector<V2d<T> >& vertices)
+{
+    typedef std::pair<VertInd, T> VertCoordPair;
+    struct ComparePred
+    {
+        bool operator()(const VertCoordPair& a, const VertCoordPair& b) const
+        {
+            return a.second < b.second;
+        }
+    } comparePred;
+
+    unordered_map<Edge, std::vector<VertInd> > edgeToSplitVerts;
+    typedef unordered_map<Edge, EdgeVec>::const_iterator It;
+    for(It it = edgeToPieces.begin(); it != edgeToPieces.end(); ++it)
+    {
+        const Edge& e = it->first;
+        const T dX = vertices[e.v2()].x - vertices[e.v1()].x;
+        const T dY = vertices[e.v2()].y - vertices[e.v1()].y;
+        const bool isX = std::abs(dX) >= std::abs(dY); // X-coord longer
+        const bool isAscending =
+            isX ? dX >= 0 : dY >= 0; // Longer coordinate ascends
+        const EdgeVec& pieces = it->second;
+        std::vector<VertCoordPair> splitVerts;
+        // size is:  2[ends] + (pieces - 1)[split vertices] = pieces + 1
+        splitVerts.reserve(pieces.size() + 1);
+        typedef EdgeVec::const_iterator EIt;
+        for(EIt it = pieces.begin(); it != pieces.end(); ++it)
+        {
+            const array<VertInd, 2> vv = {it->v1(), it->v2()};
+            typedef array<VertInd, 2>::const_iterator VIt;
+            for(VIt v = vv.begin(); v != vv.end(); ++v)
+            {
+                const T c = isX ? vertices[*v].x : vertices[*v].y;
+                splitVerts.push_back(std::make_pair(*v, isAscending ? c : -c));
+            }
+        }
+        // sort by longest coordinate
+        std::sort(splitVerts.begin(), splitVerts.end(), comparePred);
+        // remove duplicates
+        splitVerts.erase(
+            std::unique(splitVerts.begin(), splitVerts.end()),
+            splitVerts.end());
+        assert(splitVerts.size() > 2); // 2 end points with split vertices
+        std::pair<Edge, std::vector<VertInd> > val =
+            std::make_pair(e, std::vector<VertInd>());
+        val.second.reserve(splitVerts.size());
+        typedef typename std::vector<VertCoordPair>::const_iterator SEIt;
+        for(SEIt it = splitVerts.begin() + 1; it != splitVerts.end() - 1; ++it)
+        {
+            val.second.push_back(it->first);
+        }
+        edgeToSplitVerts.insert(val);
+    }
+    return edgeToSplitVerts;
 }
 
 } // namespace CDT

@@ -518,7 +518,6 @@ struct CDelaBella : IDelaBella
 		if (colinear)
 		{
 			// choose x or y axis to sort verts (no need to be exact)
-			// todo: choose direction based on which side of contour it-h vertex appears at (so we won't have to reverse)
 			if (hi_x - lo_x > hi_y - lo_y)
 			{
 				struct { bool operator()(const Vert& a, const Vert& b) const { return a.x < b.x; } } c;
@@ -804,18 +803,6 @@ struct CDelaBella : IDelaBella
 				// if i-th vert can see the contour we will flip every face
 				one = 2;
 				two = 1;
-
-				/*
-				// if i-th vert can see the contour we reverse entire base
-				int h = i / 2;
-				for (int j = 0; j < h; j++)
-				{
-					int k = i - 1 - j;
-					Vert v = vert_alloc[j];
-					vert_alloc[j] = vert_alloc[k];
-					vert_alloc[k] = v;
-				}
-				*/
 			}
 
 			Face* next_p = Face::Alloc(cache);
@@ -1403,11 +1390,6 @@ struct CDelaBella : IDelaBella
 			IA_VAL a0[2] = { (IA_VAL)v0->x - ia_a[0], (IA_VAL)v0->y - ia_a[1] };
 			IA_VAL a1[2] = { (IA_VAL)v1->x - ia_a[0], (IA_VAL)v1->y - ia_a[1] };
 
-			//IA_VAL a0b = a0[0] * ab[1] - a0[1] * ab[0];
-			//IA_VAL a1b = a1[0] * ab[1] - a1[1] * ab[0];
-
-			// todo: optimize it!
-			// compare without subtracting!
 			IA_VAL l_a0b = a0[0] * ab[1];
 			IA_VAL r_a0b = a0[1] * ab[0];
 			IA_VAL l_a1b = a1[0] * ab[1];
@@ -1415,7 +1397,6 @@ struct CDelaBella : IDelaBella
 
 
 			if (l_a0b < r_a0b && l_a1b > r_a1b)
-			//if (a0b < 0 && a1b > 0)
 			{
 				// offending edge!
 				N = (Face*)face;
@@ -1423,7 +1404,6 @@ struct CDelaBella : IDelaBella
 			}
 
 			if (!(l_a0b > r_a0b || l_a1b < r_a1b))
-			//if (a0b <= 0 && a1b >= 0)
 			{
 				if (xa_ready < 2)
 				{
@@ -1444,11 +1424,6 @@ struct CDelaBella : IDelaBella
 
 				XA_REF xa_a0b = xa_a0[0] * xa_ab[1] - xa_a0[1] * xa_ab[0];
 				XA_REF xa_a1b = xa_a1[0] * xa_ab[1] - xa_a1[1] * xa_ab[0];
-
-				// todo: optimize it!
-				// compare without subtracting!
-				// xa_a0[0] * xa_ab[1] with xa_a0[1] * xa_ab[0] and
-				// xa_a1[0] * xa_ab[1] with xa_a1[1] * xa_ab[0]
 
 				if (xa_a0b == 0)
 				{
@@ -1547,15 +1522,11 @@ struct CDelaBella : IDelaBella
 			// is vr above or below ab ?
 
 			IA_VAL ar[2] = { (IA_VAL)vr->x - ia_a[0], (IA_VAL)vr->y - ia_a[1] };
-			//IA_VAL abr = ab[0] * ar[1] - ab[1] * ar[0];
 
-			// todo: optimize it!
-			// compare without subtracting!
 			IA_VAL l_abr = ab[0] * ar[1];
 			IA_VAL r_abr = ab[1] * ar[0];
 
 			if (l_abr > r_abr)
-			//if (abr > 0)
 			{
 				// above: de edge (a' = f vert)
 				a = f;
@@ -1565,7 +1536,6 @@ struct CDelaBella : IDelaBella
 			}
 			else
 			if (l_abr < r_abr)
-			//if (abr < 0)
 			{
 				// below: fd edge (a' = e vert)
 				a = e;
@@ -1593,10 +1563,6 @@ struct CDelaBella : IDelaBella
 
 				XA_REF xa_ar[2] = { (XA_REF)vr->x - xa_a[0], (IA_VAL)vr->y - xa_a[1] };
 				XA_REF xa_abr = xa_ab[0] * xa_ar[1] - xa_ab[1] * xa_ar[0];
-
-				// todo: optimize it!
-				// compare without subtracting!
-				// xa_ab[0] * xa_ar[1] with xa_ab[1] * xa_ar[0];
 
 				if (xa_abr == 0)
 				{
@@ -1741,18 +1707,12 @@ struct CDelaBella : IDelaBella
 				IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)v->x, (IA_VAL)v1->y - (IA_VAL)v->y };
 				IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)v->x, (IA_VAL)vr->y - (IA_VAL)v->y };
 
-				//IA_VAL a0r = a0[0] * ar[1] - a0[1] * ar[0];
-				//IA_VAL a1r = a1[0] * ar[1] - a1[1] * ar[0];
-
-				// todo: optimize it!
-				// compare without subtracting!
 				IA_VAL l_a0r = a0[0] * ar[1];
 				IA_VAL r_a0r = a0[1] * ar[0];
 				IA_VAL l_a1r = a1[0] * ar[1];
 				IA_VAL r_a1r = a1[1] * ar[0];
 
 				if (l_a0r > r_a0r || l_a1r < r_a1r)
-					//if (a0r > 0 || a1r < 0)
 				{
 					// CONCAVE CUNT!
 					*tail = N;
@@ -1868,18 +1828,12 @@ struct CDelaBella : IDelaBella
 						IA_VAL av[2] = { (IA_VAL)v->x - (IA_VAL)va->x, (IA_VAL)v->y - (IA_VAL)va->y };
 						IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)va->x, (IA_VAL)vr->y - (IA_VAL)va->y };
 
-						//IA_VAL ab_av = ab[0] * av[1] - ab[1] * av[0];
-						//IA_VAL ab_ar = ab[0] * ar[1] - ab[1] * ar[0];
-
-						// todo: optimize it!
-						// compare without subtracting!
 						IA_VAL l_ab_av = ab[0] * av[1];
 						IA_VAL r_ab_av = ab[1] * av[0];
 						IA_VAL l_ab_ar = ab[0] * ar[1];
 						IA_VAL r_ab_ar = ab[1] * ar[0];
 
 						if (l_ab_av < r_ab_av && l_ab_ar < r_ab_ar || l_ab_av > r_ab_av && l_ab_ar > r_ab_ar)
-							//if (ab_av < 0 && ab_ar < 0 || ab_av > 0 && ab_ar > 0)
 						{
 							// resolved
 							N->next = flipped;
@@ -1902,9 +1856,6 @@ struct CDelaBella : IDelaBella
 
 							XA_REF xa_ab_av = xa_ab[0] * xa_av[1] - xa_ab[1] * xa_av[0];
 							XA_REF xa_ab_ar = xa_ab[0] * xa_ar[1] - xa_ab[1] * xa_ar[0];
-
-							// todo: optimize it!
-							// compare without subtracting!
 
 							if (xa_ab_av < 0 && xa_ab_ar < 0 || xa_ab_av > 0 && xa_ab_ar > 0)
 							{
@@ -1934,9 +1885,6 @@ struct CDelaBella : IDelaBella
 					XA_REF xa_a0r = xa_a0[0] * xa_ar[1] - xa_a0[1] * xa_ar[0];
 					XA_REF xa_a1r = xa_a1[0] * xa_ar[1] - xa_a1[1] * xa_ar[0];
 
-					// todo: optimize it!
-					// compare without subtracting!
-
 					if (xa_a0r >= 0 || xa_a1r <= 0)
 					{
 						// CONCAVE CUNT!
@@ -1949,6 +1897,8 @@ struct CDelaBella : IDelaBella
 				}
 			}
 
+			// now, tail points to 
+
 			// update cross prods
 			Face* N = flipped;
 			while (N)
@@ -1956,72 +1906,6 @@ struct CDelaBella : IDelaBella
 				N->cross();
 				N = (Face*)N->next;
 			}
-
-			/*
-			DelaBella_Iterator it;
-			const DelaBella_Triangle* first = va->StartIterator(&it);
-			const DelaBella_Triangle* tri = first;
-
-			int num_tris = 0;
-			while (1)
-			{
-				if (tri->index >= 0 && (tri->v[0]==vb || tri->v[1] == vb || tri->v[2] == vb))
-				{
-					num_tris++;
-
-					int a, b, c;
-					if ((tri->v[0] == va || tri->v[0] == vb) && (tri->v[1] == vb || tri->v[1] == va))
-					{
-						a = 0; b = 1; c = 2;
-					}
-					else
-					if ((tri->v[1] == va || tri->v[1] == vb) && (tri->v[2] == vb || tri->v[2] == va))
-					{
-						a = 1; b = 2; c = 0;
-					}
-					else
-					if ((tri->v[2] == va || tri->v[2] == vb) && (tri->v[0] == vb || tri->v[0] == va))
-					{
-						a = 2; b = 0; c = 1;
-					}
-					else
-						assert(0);
-
-					DelaBella_Iterator it2;
-
-					tri->StartIterator(&it2, c);
-					Face* prev = (Face*)it2.Prev();
-
-					tri->StartIterator(&it2, c);
-					Face* next = (Face*)it2.Next();
-
-					if (prev->f[0] != tri || next->f[0] != tri)
-					{
-						int prb = 1;
-					}
-
-					Face* N = flipped;
-					int found = 0;
-					while (N)
-					{
-						if (N == prev || N == next)
-							found++;
-						N = (Face*)N->next;
-					}
-
-					if (found != 2)
-					{
-						int prb = 2;
-					}
-
-					if (num_tris == 2)
-						break;
-				}
-
-				tri = it.Next();
-				assert(tri != first);
-			}
-			*/
 
 			// 3. Repeatedly until no flip occurs
 			// for every edge from new edges list,
@@ -2034,81 +1918,6 @@ struct CDelaBella : IDelaBella
 				Face* N = flipped;
 				while (N)
 				{
-					// ensure convex ?????
-					/*
-					{
-						const int a = 0, b = 1, c = 2;
-						Vert* v0 = (Vert*)(N->v[b]);
-						Vert* v1 = (Vert*)(N->v[c]);
-
-						Face* F = (Face*)(N->f[a]);
-						int d, e, f;
-
-						if (F->f[0] == N)
-						{
-							d = 0;
-							e = 1;
-							f = 2;
-						}
-						else
-						if (F->f[1] == N)
-						{
-							d = 1;
-							e = 2;
-							f = 0;
-						}
-						else
-						{
-							d = 2;
-							e = 0;
-							f = 1;
-						}
-
-						Vert* v = (Vert*)N->v[0]; // may be not same as global va (if we have had a skip)
-						Vert* vr = (Vert*)(F->v[d]);
-
-
-						// is va,v0,vr,v1 a convex quad?
-						IA_VAL a0[2] = { (IA_VAL)v0->x - (IA_VAL)v->x, (IA_VAL)v0->y - (IA_VAL)v->y };
-						IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)v->x, (IA_VAL)v1->y - (IA_VAL)v->y };
-						IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)v->x, (IA_VAL)vr->y - (IA_VAL)v->y };
-
-						//IA_VAL a0r = a0[0] * ar[1] - a0[1] * ar[0];
-						//IA_VAL a1r = a1[0] * ar[1] - a1[1] * ar[0];
-
-						// todo: optimize it!
-						// compare without subtracting!
-						IA_VAL l_a0r = a0[0] * ar[1];
-						IA_VAL r_a0r = a0[1] * ar[0];
-						IA_VAL l_a1r = a1[0] * ar[1];
-						IA_VAL r_a1r = a1[1] * ar[0];
-
-						if (l_a0r > r_a0r || l_a1r < r_a1r)
-							//if (a0r > 0 || a1r < 0)
-						{
-							// CONCAVE CUNT!
-							
-							N = (Face*)N->next;
-							continue;
-						}
-					}
-					*/
-
-
-
-					// ignore constraint edge!!!
-					/*
-					int ab = 0;
-					for (int i = 0; i < 3; i++)
-						ab += N->v[i] == va || N->v[i] == vb;
-					if (ab > 1)
-					{
-						N = (Face*)N->next;
-						continue;
-					}
-					*/
-
-					// fixed?
 					if (N->v[1] == va && N->v[2] == vb || N->v[1] == vb && N->v[2] == va)
 					{
 						N = (Face*)N->next;
@@ -2238,6 +2047,123 @@ struct CDelaBella : IDelaBella
 
 		return flips;
 	}
+
+	virtual int Polygonize(const DelaBella_Triangle* poly[])
+	{
+		const DelaBella_Triangle** buf = 0;
+		if (!poly)
+		{
+			buf = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * out_verts / 3);
+			poly = buf;
+		}
+
+		// clear poly indices;
+		Face* f = first_dela_face;
+		while (f)
+		{
+			f->index = 0x40000000;
+			f = (Face*)f->next;
+		}
+
+		int num = 0;
+		f = first_dela_face;
+		while (f)
+		{
+			bool new_poly = true;
+			Face* next = (Face*)f->next;
+			for (int i = 0; i < 3; i++)
+			{
+				Face* a = (Face*)f->f[i];
+				int index = a->index;
+
+				if (index >= 0 && index < 0x40000000)
+				{
+					int j = 0;
+					for (; j < 3; j++)
+					{
+						Vert* v = (Vert*)a->v[j];
+						if (v!=f->v[0] && v!=f->v[1] && v!=f->v[2] && !f->dot0(*v))
+							break;
+					}
+
+					if (j == 3)
+					{
+						int dest = f->index;
+						if (dest < 0x40000000)
+						{
+							// merging polys !!!
+							Face* m = (Face*)poly[index];
+							while (m)
+							{
+								Face* n = (Face*)m->next;
+								m->index = dest;
+								m->next = (Face*)poly[dest];
+								poly[dest] = m;
+								m = n;
+							}
+
+							// fill the gap
+							if (index < num - 1)
+							{
+								dest = index;
+								index = num - 1;
+								poly[dest] = 0;
+
+								m = (Face*)poly[index];
+								while (m)
+								{
+									Face* n = (Face*)m->next;
+									m->index = dest;
+									m->next = (Face*)poly[dest];
+									poly[dest] = m;
+									m = n;
+								}
+							}
+
+							num--;
+						}
+						else
+						{
+							new_poly = false;
+							// merge f with existing poly
+							f->index = index;
+							f->next = (Face*)poly[index];
+							poly[index] = f;
+						}
+					}
+				}
+			}
+
+			if (new_poly)
+			{
+				// start new poly
+				f->next = 0;
+				f->index = num;
+				poly[num++] = f;
+			}
+
+			f = next;
+		}
+
+		// merge polys into single list
+		// they are separated by indexes
+
+		for (int i = 0; i < num-1; i++)
+		{
+			f = (Face*)poly[i];
+			while (f->next)
+				f = (Face*)f->next;
+			f->next = (Face*)poly[i + 1];
+		}
+
+		first_dela_face = (Face*)poly[0];
+
+		if (buf)
+			free(buf);
+
+		return num;
+	}
+
 
 	virtual int Triangulate(int points, const float* x, const float* y = 0, int advance_bytes = 0)
 	{

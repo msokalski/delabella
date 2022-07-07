@@ -195,244 +195,6 @@ struct Buf
     }
 };
 
-// big circle r = 2503515625, (first octant)
-static const unsigned int big_circle[] =
-{
-    2503515625,0,
-    2503514500,2373375,
-    2503486825,12008400,
-    2503462500,16309375,
-    2503312500,31890625,
-    2503051625,48198000,
-    2502983032,51637449,
-    2502890625,55937500,
-    2502122175,83517100,
-    2501975000,87815625,
-    2501890625,90187500,
-    2501525000,99815625,
-    2501429249,102187068,
-    2501349825,104113100,
-    2501250000,106484375,
-    2500653375,119679500,
-    2499924600,134042825,
-    2499820648,135967689,
-    2499690625,138337500,
-    2498521545,158052440,
-    2497489431,173600192,
-    2497187500,177890625,
-    2496484375,187500000,
-    2496305500,189866625,
-    2495975625,194155000,
-    2495015625,206125000,
-    2494657820,210411135,
-    2493684375,221650000,
-    2493299900,225933825,
-    2492187500,237890625,
-    2491440000,245595625,
-    2488109375,277312500,
-    2487845360,279671145,
-    2487629280,281586665,
-    2486750591,289243812,
-    2486250000,293515625,
-    2485970625,295872500,
-    2484375000,308984375,
-    2482309375,325162500,
-    2482000000,327515625,
-    2481433665,331779220,
-    2480138400,341326825,
-    2476504375,366765000,
-    2475074500,376293375,
-    2474424375,380545000,
-    2474062500,382890625,
-    2472197460,394753345,
-    2471515625,399000000,
-    2469692628,410132671,
-    2469376100,412034175,
-    2468984375,414375000,
-    2466968375,426213000,
-    2466232500,430450625,
-    2460549175,461831400,
-    2459912240,465212055,
-    2459109375,469437500,
-    2456829375,481227500,
-    2455999000,485447625,
-    2453786625,496509500,
-    2452930000,500724375,
-    2450500000,512484375,
-    2450013055,514807260,
-    2449615935,516693580,
-    2449125000,519015625,
-    2447109375,528437500,
-    2438437500,567109375,
-    2437898775,569420800,
-    2437459607,571297776,
-    2434137500,585290625,
-    2431015625,598125000,
-    2430447500,600429375,
-    2429412375,604604000,
-    2427067500,613949375,
-    2426484375,616250000,
-    2425422076,620417793,
-    2418437500,647109375,
-    2416425000,654584375,
-    2412109375,670312500,
-    2407890625,685312500,
-    2406709704,689448247,
-    2404575745,696854340,
-    2404038465,698705620,
-    2403375000,700984375,
-    2402709375,703262500,
-    2399985000,712504375,
-    2398757375,716626500,
-    2394250625,731542500,
-    2389434120,747124535,
-    2388405225,750407200,
-    2387112500,754509375,
-    2382738743,768209976,
-    2378652500,780770625,
-    2377307625,784856000,
-    2376562500,787109375,
-    2373515625,796250000,
-    2372759700,798499775,
-    2372144164,800326527,
-    2371384375,802575000,
-    2367116980,815075265,
-    2362395625,828660000,
-    2360968500,832717375,
-    2359822017,835960844,
-    2354326000,851316375,
-    2348981800,865953225,
-    2347490625,869987500,
-    2344125000,879015625,
-    2343290625,881237500,
-    2342454144,883458583,
-    2341773200,885261975,
-    2337500000,896484375,
-    2331875000,911015625,
-    2330306433,915020444,
-    2325890625,926187500,
-    2323015625,933375000,
-    2310937500,962890625,
-    2310023625,965081000,
-    2306292300,973964225,
-    2304615625,977925000,
-    2303687500,980109375,
-    2298484375,992250000,
-    2291971500,1007202625,
-    2291015625,1009375000,
-    2285361353,1022112504,
-    2274750000,1045515625,
-    2270709375,1054262500,
-    2269708896,1056414697,
-    2268894800,1058162025,
-    2267890625,1060312500,
-    2262778625,1071178500,
-    2260935000,1075064375,
-    2256067775,1085241300,
-    2255231487,1086978116,
-    2254200000,1089115625,
-    2248950000,1099915625,
-    2247057025,1103777700,
-    2245538180,1106864385,
-    2232814416,1132311913,
-    2231256375,1135379000,
-    2229302500,1139210625,
-    2223812500,1149890625,
-    2222721385,1151998320,
-    2221833705,1153709440,
-    2216612500,1163709375,
-    2214609975,1167515800,
-    2208984375,1178125000,
-    2207866500,1180218625,
-    2205835625,1184010000,
-    2201262500,1192490625,
-    2188906815,1215021580,
-    2184214464,1223436823,
-    2182109375,1227187500,
-    2180945000,1229255625,
-    2172890625,1243437500,
-    2166300000,1254884375,
-    2165109375,1256937500,
-    2162946760,1260655305,
-    2159055423,1267308236,
-    2158078975,1268970300,
-    2156875000,1271015625,
-    2140509375,1298387500,
-    2136484375,1305000000,
-    2130200215,1315232880,
-    2127937500,1318890625,
-    2121972937,1328465784,
-    2119687500,1332109375,
-    2113273500,1342261375,
-    2110964375,1345890000,
-    2109687500,1347890625,
-    2104484375,1356000000,
-    2102151660,1359613505,
-    2093648700,1372670975,
-    2082755000,1389144375,
-    2080365375,1392720500,
-    2072330400,1404648425,
-    2064890625,1415562500,
-    2063547720,1417519415,
-    2062455640,1419107895,
-    2061109375,1421062500,
-    2055625000,1428984375,
-    2054269375,1430932500,
-    2051808000,1434459625,
-    2035875000,1456984375,
-    2033368895,1460479860,
-    2031360100,1463272575,
-    2021784375,1476475000,
-    2012555625,1489030000,
-    2009994500,1492485375,
-    2004235625,1500210000,
-    2002812500,1502109375,
-    2001387575,1504007400,
-    2000228919,1505547992,
-    1995584420,1511698815,
-    1992984375,1515125000,
-    1983515625,1527500000,
-    1973522500,1540389375,
-    1968750000,1546484375,
-    1951587480,1568086985,
-    1948890625,1571437500,
-    1947400000,1573284375,
-    1941330625,1580767500,
-    1938612000,1584100375,
-    1937109375,1585937500,
-    1928715000,1596135625,
-    1919513985,1607189020,
-    1918275905,1608666540,
-    1916750000,1610484375,
-    1903985772,1625554879,
-    1891015625,1640625000,
-    1884687500,1647890625,
-    1883124425,1649676600,
-    1881853641,1651126088,
-    1880287500,1652909375,
-    1872337500,1661909375,
-    1869479575,1665123600,
-    1861957500,1673530625,
-    1859079625,1676727000,
-    1851015625,1685625000,
-    1848116988,1688802559,
-    1845794625,1691340500,
-    1824100000,1714715625,
-    1822473601,1716444132,
-    1821151425,1717846900,
-    1812890625,1726562500,
-    1811253000,1728280375,
-    1802109375,1737812500,
-    1799121152,1740905961,
-    1790750000,1749515625,
-    1789090625,1751212500,
-    1786079400,1754283575,
-    1779314625,1761144500,
-//  1761144500,1779314625,
-//  1754283575,1786079400,
-//  ...
-};
-
 int main(int argc, char* argv[])
 {
 	#ifdef _WIN32
@@ -448,24 +210,17 @@ int main(int argc, char* argv[])
 
 	struct MyPoint
 	{
-		/*long*/ double x;
-		/*long*/ double y;
-
-        bool operator == (const MyPoint& p) const
-        {
-            return x == p.x && y == p.y;
-        }
-
-        /*
-        bool operator < (const MyPoint& p)
-        {
-            return x * x + y * y > p.x* p.x + p.y * p.y;
-        }
-        */
+		double x;
+		double y;
 	};
+
+    struct MyEdge
+    {
+        int a, b;
+    };
 	
 	std::vector<MyPoint> cloud;
-    std::vector<int> constr;
+    std::vector<MyEdge> force;
 
 	FILE* f = fopen(argv[1],"r");
     int n = atoi(argv[1]);
@@ -480,29 +235,26 @@ int main(int argc, char* argv[])
         std::random_device rd{};
         std::mt19937_64 gen{ rd() };
 
-        std::uniform_real_distribution</*long*/ double> d(-2.503515625, +2.503515625);
+        //std::uniform_real_distribution</*long*/ double> d(-2.503515625, +2.503515625);
         //std::normal_distribution</*long*/ double> d{0.0,2.0};
-        //std::gamma_distribution</*long*/ double> d(0.1,2.0);
+        std::gamma_distribution</*long*/ double> d(0.1,2.0);
 
         for (int i = 0; i < n; i++)
         {
-            //MyPoint p = { (d(gen) - 5.0)*m, (d(gen) - 5.0)*m };
-            MyPoint p = { d(gen), d(gen) };
+            MyPoint p = { (d(gen) - 5.0), (d(gen) - 5.0) };
+            //MyPoint p = { d(gen), d(gen) };
             assert(isfinite(p.x) && isfinite(p.y));
             cloud.push_back(p);
         }
 
         for (int i = 0; i < 100; i++)
         {
-            int f = rand() % n;
-            int t = (f + rand() % (n-1)) % n;
-            constr.push_back(f);
-            constr.push_back(t);
+            int a = rand() % n;
+            int b = (a + rand() % (n-1)) % n;
+            MyEdge e = { a, b };
+            force.push_back(e);
         }
-
-        
-        //std::sort(cloud.begin(), cloud.end());
-
+     
         /*
         for (int i = 0; i < n; i++)
         {
@@ -534,8 +286,8 @@ int main(int argc, char* argv[])
         {
             int a, b;
             r = fscanf(f, "%d %d", &a, &b);
-            constr.push_back(a);
-            constr.push_back(b);
+            MyEdge e = {a, b};
+            force.push_back(e);
         }
 
         fclose(f);
@@ -555,12 +307,12 @@ int main(int argc, char* argv[])
         }
 
         std::vector<CDT::Edge> edges;
-        for (int c = 0; c < constr.size()/2/*CONSTRAINTS*/; c++)
+        for (int c = 0; c < force.size(); c++)
         {
             CDT::Edge e
             { 
-                (size_t)constr[2 * c + 0],//constraint_from[c], 
-                (size_t)constr[2 * c + 1] //constraint_to[c] 
+                (size_t)force[c].a,
+                (size_t)force[c].b
             };
             edges.push_back(e);
         }
@@ -569,14 +321,6 @@ int main(int argc, char* argv[])
         uint64_t t0 = uSec();
 
         CDT::DuplicatesInfo dups = CDT::RemoveDuplicatesAndRemapEdges(nodups,edges);
-        /*
-        for (int c = 0; c < CONSTRAINTS; c++)
-        {
-            CDT::Edge e = edges[c];
-            CDT::Edge f{ e.v1() - account_super_triangle,e.v2() - account_super_triangle };
-            edges[c] = f;
-        }
-        */
 
         uint64_t t1 = uSec();
         printf("%d ms\n", (int)((t1 - t0) / 1000));
@@ -588,7 +332,7 @@ int main(int argc, char* argv[])
         uint64_t t2 = uSec();
         printf("%d ms\n", (int)((t2 - t1) / 1000));
 
-        if (constr.size()>=2)
+        if (force.size()>0)
         {
             printf("cdt constraining... ");
             cdt.insertEdges(edges);
@@ -597,7 +341,7 @@ int main(int argc, char* argv[])
         }
 
         uint64_t t4 = uSec();
-        printf("cdt erasing super tri... ");
+        printf("cdt erasing super... ");
         cdt.eraseSuperTriangle();
         uint64_t t5 = uSec();
         printf("%d ms\n", (int)((t5 - t4) / 1000));
@@ -681,18 +425,21 @@ int main(int argc, char* argv[])
     printf("delabella triangles: %d\n", tris_delabella);
     printf("delabella contour: %d\n", contour);
 
-    if (constr.size()>=2)
+    if (force.size()>0)
     {
         uint64_t c0 = uSec();
-        const int* data = constr.data();
-        //int flips = idb->Constrain(CONSTRAINTS, constraint_from, constraint_to, sizeof(int));
-        int flips = idb->Constrain(constr.size()/2, data, data + 1, 2 * sizeof(int));
+        int flips = idb->Constrain((int)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge));
         uint64_t c1 = uSec();
         printf("%d flips in %d ms\n", flips, (int)((c1 - c0) / 1000));
     }
 
     uint64_t t8 = uSec();
     printf("Delabella TOTAL: %d\n", (int)((t8 - t6) / 1000));
+
+    const DelaBella_Triangle** poly = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * tris_delabella);
+    int polys = idb->Polygonize();
+    uint64_t t9 = uSec();
+    printf("Polygons: %d in %d ms\n", polys, (int)((t9 - t8) / 1000));
 
     //return 0;
 
@@ -723,6 +470,7 @@ int main(int argc, char* argv[])
                 p[2] = tri.p[2];
             }
 
+            /*
             bool dot0(const MyPoint* q) const
             {
                 XA_REF px = q->x;
@@ -740,6 +488,7 @@ int main(int argc, char* argv[])
                     (bdx * bdx + bdy * bdy) * (adx * cdy - cdx * ady) ==
                     (cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady);
             }
+            */
 
             MyTri& operator = (const MyTri& tri)
             {
@@ -819,6 +568,12 @@ int main(int argc, char* argv[])
             int b = cdt.triangles[i].vertices[1];
             int c = cdt.triangles[i].vertices[2];
 
+            // TODO:
+            // loop over all polygons made of more than 1 face
+            // loop all its faces and mark if a, b and c are used by poly
+            // if all 3 verts span over same polygon, break face & poly loops 
+            // and skip inserting this triangle into comparison vector
+
             double abc[6] =
             {
                 cdt.vertices[a].x,
@@ -840,6 +595,10 @@ int main(int argc, char* argv[])
         pro = 0;
         for (int i = 0; i < tris_delabella; i++)
         {
+            // skip if dela is part of a poly with more than 1 face !!!
+            // 1. get dela face index
+            // 2. check if poly[index]->next != 0
+
             if (i >= pro)
             {
                 int p = (int)((uint64_t)100 * i / tris_delabella);
@@ -874,10 +633,12 @@ int main(int argc, char* argv[])
 
         printf("COMPARING...\n");
         int diffs = -1;
-        if (tris_delabella == tris_cdt)
+        if (dela_set.size() == cdt_set.size())
         {
             diffs = 0;
-            for (int i = 0; i < tris_delabella; i++)
+            int check_tris = (int)dela_set.size();
+
+            for (int i = 0; i < check_tris; i++)
             {
                 if (dela_set[i] == cdt_set[i])
                     // ok, exact match
@@ -919,15 +680,6 @@ int main(int argc, char* argv[])
                         continue;
                 }
 
-                /*
-                if (dela_set[i].dot0(cdt_set[i].p + 0) &&
-                    dela_set[i].dot0(cdt_set[i].p + 1) &&
-                    dela_set[i].dot0(cdt_set[i].p + 2))
-                    // probably ok, (degenerated triangulation)
-                    // checking it requires polygonization on both data!
-                    continue;
-                */
-
                 diffs++;
             }
         }
@@ -937,6 +689,8 @@ int main(int argc, char* argv[])
         else
             printf("COMPARE FAIL %d DIFFS!\n", diffs);
 
+        free(poly);
+        poly = 0;
 
         /*
         // may return false negative for degenerated triangulations
@@ -1247,7 +1001,7 @@ int main(int argc, char* argv[])
         {
             // let's make inverse mapping first
             int* invmap = 0;
-            int invmap_size = dups.mapping.size() - dups.duplicates.size();
+            int invmap_size = (int)dups.mapping.size() - (int)dups.duplicates.size();
             invmap = (int*)malloc(sizeof(int) * invmap_size);
             for (int i = 0; i < dups.mapping.size(); i++)
                 invmap[dups.mapping[i]] = i;

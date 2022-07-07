@@ -215,6 +215,8 @@ struct IDelaBella
 	virtual const DelaBella_Vertex*   GetVertexByIndex(int i) const = 0;
 
 	virtual int Constrain(int num, const int* pa, const int* pb, int advance_bytes) = 0;
+
+	virtual int Polygonize(const DelaBella_Triangle* poly[/*GetNumOutputIndices()/3*/] = 0) = 0;
 };
 
 #endif

@@ -226,7 +226,7 @@ namespace stdx {
 		return result;
 	}
 }
-#endif // CXX11_IS_SUPPORTED
+#endif // PREDICATES_CXX11_IS_SUPPORTED
 
 namespace detail {
 	template<typename T> class ExpansionBase;
@@ -247,8 +247,6 @@ namespace detail {
 				m_size = e.size();
 				return *this;
 			}
-
-			Expansion(const Expansion& other) { *this = other; }
 
 			//vector like convenience functions
 			size_t size() const {return m_size;}
