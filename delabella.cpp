@@ -1720,10 +1720,30 @@ struct CDelaBella : IDelaBella
 					continue;
 				}
 
-				if (l_a0r < r_a0r && l_a1r > r_a1r)
-					//if (a0r < 0 && a1r > 0)
+				if (!(l_a0r < r_a0r && l_a1r > r_a1r))
 				{
-					back_from_xa:
+					// XA NEEDED
+
+					XA_REF xa_a[2] = { (XA_REF)v->x , (XA_REF)v->y };
+					XA_REF xa_a0[2] = { (XA_REF)v0->x - xa_a[0], (XA_REF)v0->y - xa_a[1] };
+					XA_REF xa_a1[2] = { (XA_REF)v1->x - xa_a[0], (XA_REF)v1->y - xa_a[1] };
+					XA_REF xa_ar[2] = { (XA_REF)vr->x - xa_a[0], (XA_REF)vr->y - xa_a[1] };
+
+					XA_REF xa_a0r = xa_a0[0] * xa_ar[1] - xa_a0[1] * xa_ar[0];
+					XA_REF xa_a1r = xa_a1[0] * xa_ar[1] - xa_a1[1] * xa_ar[0];
+
+					if (xa_a0r >= 0 || xa_a1r <= 0)
+					{
+						// CONCAVE CUNT!
+						*tail = N;
+						tail = (Face**)&N->next;
+						continue;
+					}
+				}
+
+				// it's convex, xa already checked
+				// if (l_a0r < r_a0r && l_a1r > r_a1r)
+				{
 					if (f == 0)
 					{
 						/*           *                             *
@@ -1841,7 +1861,6 @@ struct CDelaBella : IDelaBella
 						}
 						else
 						if (l_ab_av < r_ab_av && l_ab_ar > r_ab_ar || l_ab_av > r_ab_av && l_ab_ar < r_ab_ar)
-							//if (ab_av < 0 && ab_ar > 0 || ab_av > 0 && ab_ar < 0)
 						{
 							// unresolved
 							*tail = N;
@@ -1873,36 +1892,15 @@ struct CDelaBella : IDelaBella
 						}
 					}
 				}
-				else
-				{
-					// XA NEEDED
-
-					XA_REF xa_a[2] = { (XA_REF)v->x , (XA_REF)v->y };
-					XA_REF xa_a0[2] = { (XA_REF)v0->x - xa_a[0], (XA_REF)v0->y - xa_a[1] };
-					XA_REF xa_a1[2] = { (XA_REF)v1->x - xa_a[0], (XA_REF)v1->y - xa_a[1] };
-					XA_REF xa_ar[2] = { (XA_REF)vr->x - xa_a[0], (XA_REF)vr->y - xa_a[1] };
-
-					XA_REF xa_a0r = xa_a0[0] * xa_ar[1] - xa_a0[1] * xa_ar[0];
-					XA_REF xa_a1r = xa_a1[0] * xa_ar[1] - xa_a1[1] * xa_ar[0];
-
-					if (xa_a0r >= 0 || xa_a1r <= 0)
-					{
-						// CONCAVE CUNT!
-						*tail = N;
-						tail = (Face**)&N->next;
-						continue;
-					}
-
-					goto back_from_xa;
-				}
 			}
-
-			// now, tail points to 
 
 			// update cross prods
 			Face* N = flipped;
 			while (N)
 			{
+				//how about opposite triangle?
+				//Face* F = (Face*)N->f[0];
+				//F->cross();
 				N->cross();
 				N = (Face*)N->next;
 			}
@@ -1952,8 +1950,13 @@ struct CDelaBella : IDelaBella
 						f = 1;
 					}
 
-					Vert* v = (Vert*)N->v[0]; // may be not same as global va (if we have had a skip)
+					Vert* v = (Vert*)N->v[0];
 					Vert* vr = (Vert*)(F->v[d]);
+
+					// WEIRD asymmetry!
+					//bool np = N->dotP(*vr);
+					//bool fp = F->dotP(*v);
+					//assert(np && fp || !np && !fp);
 
 					// do we need to test both of them?
 					// it causes deadlocks!

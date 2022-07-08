@@ -197,6 +197,57 @@ struct Buf
 
 int main(int argc, char* argv[])
 {
+    /*
+    uint64_t rmin = 1;
+    uint64_t rmax = 0xffffffff;
+
+    uint64_t pro = 0;
+
+    double err = 1000;
+    uint64_t rad = 0;
+    int dx, dy;
+
+    for (uint64_t r = rmin; r <= rmax; r++)
+    {
+        if (r >= pro)
+        {
+            int p = (int)((uint64_t)100 * r / rmax);
+            pro = (uint64_t)(p + 1) * rmax / 100;
+            if (pro >= rmax)
+                pro = rmax - 1;
+            if (r == rmax - 1)
+                p = 100;
+            printf("\r[%2d%s]%s", p, p >= 100 ? "" : "%", p >= 100 ? "\n" : "");
+        }
+
+        uint64_t x0 = (uint64_t)round(r * cos(30 * M_PI / 180))-1;
+
+        for (uint64_t x = x0; x < x0+2; x++)
+        {
+            int64_t yy = (int64_t)r * r - (int64_t)x * x;
+            int64_t y = (int64_t)round(sqrt(yy));
+            if (y * y == yy)
+            {
+                double a = atan2((double)y, (double)x)/M_PI*180;
+                //printf("%d,%d  %f\n", x, y, a);
+
+                double e = fabs(30 - a);
+                if (e < err)
+                {
+                    dx = x;
+                    dy = y;
+                    err = e;
+                    rad = r;
+                }
+                break;
+            }
+        }
+    }
+    printf("\n");
+    printf("minerr = %e rad = %lld, dx=%d, dy=%d)\n", err, rad, dx, dy);
+    exit(0);
+    */
+
 	#ifdef _WIN32
 	SetProcessDPIAware();
 	#endif
@@ -233,12 +284,16 @@ int main(int argc, char* argv[])
         }
         printf("generating random %d points\n", n);
         std::random_device rd{};
-        std::mt19937_64 gen{ rd() };
+        std::mt19937_64 gen{ 0x12345678 /*rd()*/};
 
-        //std::uniform_real_distribution</*long*/ double> d(-2.503515625, +2.503515625);
-        //std::normal_distribution</*long*/ double> d{0.0,2.0};
-        std::gamma_distribution</*long*/ double> d(0.1,2.0);
+        //std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
+        //std::normal_distribution<double> d{0.0,2.0};
+        std::gamma_distribution<double> d(0.1,2.0);
 
+
+
+
+        /*
         for (int i = 0; i < n; i++)
         {
             MyPoint p = { (d(gen) - 5.0), (d(gen) - 5.0) };
@@ -246,11 +301,43 @@ int main(int argc, char* argv[])
             assert(isfinite(p.x) && isfinite(p.y));
             cloud.push_back(p);
         }
+        */
 
-        for (int i = 0; i < 100; i++)
         {
-            int a = rand() % n;
-            int b = (a + rand() % (n-1)) % n;
+            const double x = 0x5af2efc1.p-30;
+            const double y = 0x348268e0.p-30;
+            const double r = 0x6904d1c1.p-30;
+            const MyPoint p[4] = { {0,0}, {0,2*y}, {x,r+y}, {x,r+3*y} };
+
+            const double dx = 2*x;
+            const double dy = 2*(r+y);
+
+            int rows = (int)ceil(sqrt(n * 3 / 21));
+            int cols = (n + 2 * rows) / (4*rows);
+
+            n = rows * cols * 4;
+
+            printf("%d\n", rows* cols * 4);
+
+            for (int row = 0; row < rows; row++)
+            {
+                for (int col = 0; col < cols; col++)
+                {
+                    for (int i = 0; i < 4; i++)
+                    {
+                        MyPoint q = p[i];
+                        q.x += col * dx;
+                        q.y += row * dy;
+                        cloud.push_back(q);
+                    }
+                }
+            }
+        }
+
+        for (int i = 0; i < 1000; i++)
+        {
+            int a = gen() % n;
+            int b = (a + gen() % (n-1)) % n;
             MyEdge e = { a, b };
             force.push_back(e);
         }
@@ -469,26 +556,6 @@ int main(int argc, char* argv[])
                 p[1] = tri.p[1];
                 p[2] = tri.p[2];
             }
-
-            /*
-            bool dot0(const MyPoint* q) const
-            {
-                XA_REF px = q->x;
-                XA_REF py = q->y;
-
-                XA_REF adx = (XA_REF)p[0].x - px;
-                XA_REF ady = (XA_REF)p[0].y - py;
-                XA_REF bdx = (XA_REF)p[1].x - px;
-                XA_REF bdy = (XA_REF)p[1].y - py;
-                XA_REF cdx = (XA_REF)p[2].x - px;
-                XA_REF cdy = (XA_REF)p[2].y - py;
-
-                return
-                    (adx * adx + ady * ady) * (cdx * bdy - bdx * cdy) +
-                    (bdx * bdx + bdy * bdy) * (adx * cdy - cdx * ady) ==
-                    (cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady);
-            }
-            */
 
             MyTri& operator = (const MyTri& tri)
             {
