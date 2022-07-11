@@ -25,7 +25,6 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #include <GL/gl.h>
 
-
 #ifndef _WIN32
 #include <GL/glext.h>
 #else
@@ -41,6 +40,105 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #ifdef Cdt
 #include "CDT/include/CDT.h"
+
+namespace CDT
+{
+    typedef std::list<TriInd> Poly;
+
+    template <typename T, typename L = LocatorKDTree<T>>
+    std::vector<Poly> Polygonize(const Triangulation<T,L>& cdt)
+    {
+        typedef std::size_t PolyInd;
+        std::vector<PolyInd> map; // fer every tri, here we store index of the poly tri belongs to
+        map.resize(cdt.triangles.size());
+
+        std::vector<Poly> polys; // vector of Polys, each as a list of tri indices belonging to the Poly
+
+        PolyInd num = 0;
+        for (TriInd ith = 0; ith < cdt.triangles.size(); ith++)
+        {
+            const Triangle& tri = cdt.triangles[ith];
+            const V2d<T>* v[3] =
+            {
+                &cdt.vertices[tri.vertices[0]],
+                &cdt.vertices[tri.vertices[1]],
+                &cdt.vertices[tri.vertices[2]]
+            };
+
+            bool merged = false;
+
+            // compare i'th tri with its adjacent tris
+            for (int a = 0, b = 1, c = 2; a < 3; b=c, c=a, a++)
+            {
+                TriInd adj = tri.neighbors[a];
+
+                // but only if adjecent is processed already
+                if (adj > ith)
+                    continue;
+
+                // locate reflex vert in adj triangle
+                VertInd r = opposedVertex(cdt.triangles[adj], ith);
+                const V2d<T>& vr = cdt.vertices[r];
+
+                if (0 == predicates::adaptive::incircle(vr.x, vr.y, v[0]->x, v[0]->y, v[1]->x, v[1]->y, v[2]->x, v[2]->y))
+                {
+                    if (!merged)
+                    {
+                        // append tri to already existing poly
+                        merged = true;
+                        PolyInd append_to = map[adj];
+                        map[ith] = append_to;
+                        polys[append_to].push_back(ith);
+                    }
+                    else
+                    {
+                        PolyInd merge_to = map[ith];
+                        PolyInd merge_from = map[adj];
+
+                        if (merge_to != merge_from)
+                        {
+                            // funny case, tri is a bridge between 2 polys
+                            // merge'em all together
+
+                            Poly::iterator it;
+                            for (it = polys[merge_from].begin(); it != polys[merge_from].end(); ++it)
+                            {
+                                map[*it] = merge_to; // remap 
+                                polys[merge_to].push_back(*it); // merge
+                            }
+
+                            num--;
+
+                            if (num != merge_from)
+                            {
+                                // replace merge_from poly with last poly
+                                polys[merge_from] = polys[num];
+                                for (it = polys[merge_from].begin(); it != polys[merge_from].end(); ++it)
+                                    map[*it] = merge_from; // remap 
+                            }
+                            polys.pop_back();
+                        }
+                    }
+                }
+            }
+
+            if (!merged)
+            {
+                // at the moment, just alone tri
+                // make a new poly for it
+                map[ith] = num;
+
+                Poly p;
+                p.push_back(ith);
+                polys.push_back(p);
+                num++;
+            }
+        }
+
+        return polys;
+    }
+}
+
 #endif
 
 PFNGLBINDBUFFERPROC glBindBuffer = 0;
@@ -312,7 +410,7 @@ int main(int argc, char* argv[])
             const double dx = 2*x;
             const double dy = 2*(r+y);
 
-            int rows = (int)ceil(sqrt(n * 3 / 21));
+            int rows = (int)ceil(sqrt(n / 7));
             int cols = (n + 2 * rows) / (4*rows);
 
             n = rows * cols * 4;
@@ -334,6 +432,7 @@ int main(int argc, char* argv[])
             }
         }
 
+        /*
         for (int i = 0; i < 1000; i++)
         {
             int a = gen() % n;
@@ -341,6 +440,7 @@ int main(int argc, char* argv[])
             MyEdge e = { a, b };
             force.push_back(e);
         }
+        */
      
         /*
         for (int i = 0; i < n; i++)
@@ -433,6 +533,12 @@ int main(int argc, char* argv[])
         uint64_t t5 = uSec();
         printf("%d ms\n", (int)((t5 - t4) / 1000));
         printf("CDT TOTAL: %d\n", (int)((t5 - t0) / 1000));
+
+        uint64_t t_p0 = uSec();
+        std::vector<CDT::Poly> cdt_polys = CDT::Polygonize(cdt);
+        uint64_t t_p1 = uSec();
+
+        printf("CDT POLYS = %d (in %d ms)\n", (int)cdt_polys.size(), (int)((t_p1 - t_p0) / 1000));
 
     #endif
 
