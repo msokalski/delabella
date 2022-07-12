@@ -1898,10 +1898,9 @@ struct CDelaBella : IDelaBella
 			Face* N = flipped;
 			while (N)
 			{
-				//how about opposite triangle?
-				//Face* F = (Face*)N->f[0];
-				//F->cross();
 				N->cross();
+				Face* F = (Face*)N->f[0];
+				F->cross(); // fix!
 				N = (Face*)N->next;
 			}
 
@@ -1953,13 +1952,10 @@ struct CDelaBella : IDelaBella
 					Vert* v = (Vert*)N->v[0];
 					Vert* vr = (Vert*)(F->v[d]);
 
-					// WEIRD asymmetry!
-					//bool np = N->dotP(*vr);
-					//bool fp = F->dotP(*v);
-					//assert(np && fp || !np && !fp);
-
-					// do we need to test both of them?
-					// it causes deadlocks!
+					// fixed by calling F->cross()
+					// bool np = N->dotP(*vr);
+					// bool fp = F->dotP(*v);
+					// assert(np && fp || !np && !fp);
 					if (N->dotP(*vr) /* || F->dotP(*v)*/) 
 					{
 						no_flips = false;
@@ -2017,10 +2013,6 @@ struct CDelaBella : IDelaBella
 						N->cross();
 						F->cross();
 					}
-					//else
-					//{
-					//	assert(!F->dotP(*v));
-					//}
 
 					N = (Face*)N->next;
 				}
@@ -2058,6 +2050,8 @@ struct CDelaBella : IDelaBella
 		{
 			buf = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * out_verts / 3);
 			poly = buf;
+			if (!poly)
+				return -1;
 		}
 
 		// clear poly indices;
@@ -2148,6 +2142,176 @@ struct CDelaBella : IDelaBella
 			f = next;
 		}
 
+		#if 1
+		// ALTER POST PROC:
+		// re-order triangles in every polygon and re-order indices in faces:
+		// - first face defines first 3 verts in contour with v[0],v[1],v[2]
+		// - every next face define just 1 additional vertex at v[0]
+		// thay can form fan or strip or arbitraty mix of both
+		// without changing existing edges!
+
+		for (int p = num-1; p >= 0; p--)
+		{
+			if (p == 33)
+			{
+				int dbg = 1;
+			}
+			Face* f = (Face*)(poly[p]);
+			if (!f->next)
+			{
+				// single triangle
+				// just link into list of polys
+				if (p < num - 1)
+					f->next = (Face*)poly[p + 1];
+				continue;
+			}
+
+			Face* first = 0;
+			// break list appart
+			// so we can unmark all poly faces
+			while (f)
+			{
+				Face* n = (Face*)f->next;
+
+				if (!first)
+				{
+					// lookup good starting face (it will appear as last in the poly after all)
+					// having exactly 2 poly boundary edges, exactly 1 inner edge
+
+					int inner_edges =
+						(f->f[0]->index == p) +
+						(f->f[1]->index == p) +
+						(f->f[2]->index == p);
+
+					if (inner_edges == 1)
+						first = f;
+				}
+
+				f->next = 0; // unmark
+				f = n;
+			}
+
+			assert(first);
+
+			Face* list = first; // new rearranged list of faces in the poly
+
+			DelaBella_Triangle sentinel = { {0},{0},{0}, 0, ~0x40000000 };
+			first->next = &sentinel; // mark first as used
+
+			f = first; // current face
+
+			// rotate first face so it's f[1] points to in-poly face
+			if (f->f[1]->index != p)
+			{
+				Face* fr = (Face*)f->f[1];
+				Vert* vr = (Vert*)f->v[1];
+				if (f->f[0]->index == p)
+				{
+					f->f[1] = f->f[0];
+					f->f[0] = f->f[2];
+					f->f[2] = fr;
+					f->v[1] = f->v[0];
+					f->v[0] = f->v[2];
+					f->v[2] = vr;
+				}
+				else
+				if (f->f[2]->index == p)
+				{
+					f->f[1] = f->f[2];
+					f->f[2] = f->f[0];
+					f->f[0] = fr;
+					f->v[1] = f->v[2];
+					f->v[2] = f->v[0];
+					f->v[0] = vr;
+				}
+				else
+					assert(0);
+			}
+
+			Face* last = 0; // will be one inserted right after first
+			Vert* v = (Vert*)f->v[0]; // current vert
+			bool step_on = true; // is current vertex inserted
+
+			DelaBella_Iterator it;
+			f->StartIterator(&it, 0);
+
+			while (1)
+			{
+				Face* n = (Face*)it.Next();
+				if (n == first)
+					break;
+				while (n->index == p)
+				{
+					f = n;
+					if (!step_on && !f->next)
+					{
+						if (list == first)
+							last = f;
+						step_on = true;
+						f->next = list;
+						list = f;
+
+						// rotate it so v[0] == vert (we have it in it.around)
+						if (it.around != 0)
+						{
+							Face* fr = (Face*)f->f[0];
+							Vert* vr = (Vert*)f->v[0];
+							if (f->v[1] == v)
+							{
+								f->f[0] = f->f[1];
+								f->f[1] = f->f[2];
+								f->f[2] = fr;
+								f->v[0] = f->v[1];
+								f->v[1] = f->v[2];
+								f->v[2] = vr;
+							}
+							else
+							if (f->v[2] == v)
+							{
+								f->f[0] = f->f[2];
+								f->f[2] = f->f[1];
+								f->f[1] = fr;
+								f->v[0] = f->v[2];
+								f->v[2] = f->v[1];
+								f->v[1] = vr;
+							}
+							else
+								assert(0);
+
+							// adjust iterator after rot
+							it.around = 0;
+						}
+					}
+					n = (Face*)it.Next();
+				}
+
+				// step on other leg:
+				// and restart iterator
+				
+				// patch, around was for n (outside poly)
+				it.Prev();
+
+				static const int other_leg[3] = { 2,0,1 };
+				f->StartIterator(&it, other_leg[it.around]);
+				step_on = false;
+				v = (Vert*)f->v[it.around];
+
+				// patch
+				f = (Face*)it.Prev();
+			}
+
+			// rotate list so first will be wrapped back to head of the face list
+			first->next = list;
+			list = first;
+
+			// link last face with first face in next poly
+			last->next = (p < num - 1) ? (Face*)poly[p + 1] : 0;
+
+			// store ordered list in poly
+			poly[p] = list;
+		}
+
+		#else
 		// merge polys into single list
 		// they are separated by indexes
 
@@ -2158,6 +2322,7 @@ struct CDelaBella : IDelaBella
 				f = (Face*)f->next;
 			f->next = (Face*)poly[i + 1];
 		}
+		#endif
 
 		first_dela_face = (Face*)poly[0];
 

@@ -43,6 +43,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 namespace CDT
 {
+#if 0
     typedef std::list<TriInd> Poly;
 
     template <typename T, typename L = LocatorKDTree<T>>
@@ -111,7 +112,7 @@ namespace CDT
 
                             if (num != merge_from)
                             {
-                                // replace merge_from poly with last poly
+                                // replace merge_from poly with last poly in polys
                                 polys[merge_from] = polys[num];
                                 for (it = polys[merge_from].begin(); it != polys[merge_from].end(); ++it)
                                     map[*it] = merge_from; // remap 
@@ -137,6 +138,86 @@ namespace CDT
 
         return polys;
     }
+#else
+    typedef std::vector<TriInd> Poly;
+    template <typename T, typename L = LocatorKDTree<T> >
+    std::vector<Poly> Polygonize(const Triangulation<T, L>& cdt)
+    {
+        typedef TriInd PolyInd;
+        // fer every tri, here we store index of the poly the tri belongs to
+        auto map = std::vector<PolyInd>(cdt.triangles.size());
+        // vector of Polys, each as a list of tri indices belonging to the Poly
+        auto polys = std::vector<Poly>();
+
+        for (TriInd iT = 0; iT < cdt.triangles.size(); iT++)
+        {
+            const auto& tri = cdt.triangles[iT];
+            auto merged = false;
+
+            // compare i'th tri with its adjacent tris
+            for (const auto adj : tri.neighbors)
+            {
+                // but only if adjacent is processed already
+                if (adj > iT)
+                    continue;
+                // locate reflex vert in adj triangle
+                const auto& vr =
+                    cdt.vertices[opposedVertex(cdt.triangles[adj], iT)];
+                const auto& v1 = cdt.vertices[tri.vertices[0]];
+                const auto& v2 = cdt.vertices[tri.vertices[1]];
+                const auto& v3 = cdt.vertices[tri.vertices[2]];
+                using predicates::adaptive::incircle;
+                if (!incircle(vr.x, vr.y, v1.x, v1.y, v2.x, v2.y, v3.x, v3.y))
+                {
+                    if (!merged)
+                    {
+                        // append tri to already existing poly
+                        merged = true;
+                        const auto append_to = map[adj];
+                        map[iT] = append_to;
+                        polys[append_to].push_back(iT);
+                    }
+                    else
+                    {
+                        const auto merge_to = map[iT];
+                        const auto merge_from = map[adj];
+
+                        if (merge_to == merge_from)
+                            continue;
+
+                        // funny case, tri is a bridge between 2 polys merge'em all
+                        // together
+                        for (const auto i : polys[merge_from])
+                        {
+                            map[i] = merge_to;            // remap
+                            polys[merge_to].push_back(i); // merge
+                        }
+                        if (merge_from != polys.size() - 1)
+                        {
+                            // replace merge_from poly with last poly in polys
+                            polys[merge_from] = polys.back();
+                            for (const auto i : polys[merge_from])
+                            {
+                                map[i] = merge_from; // remap
+                            }
+                        }
+                        polys.pop_back();
+                    }
+                }
+            }
+
+            if (!merged)
+            {
+                // at the moment, just alone tri
+                // make a new poly for it
+                map[iT] = polys.size();
+                polys.push_back({ iT });
+            }
+        }
+
+        return polys;
+    }
+#endif
 }
 
 #endif
@@ -388,9 +469,6 @@ int main(int argc, char* argv[])
         //std::normal_distribution<double> d{0.0,2.0};
         std::gamma_distribution<double> d(0.1,2.0);
 
-
-
-
         /*
         for (int i = 0; i < n; i++)
         {
@@ -432,7 +510,6 @@ int main(int argc, char* argv[])
             }
         }
 
-        /*
         for (int i = 0; i < 1000; i++)
         {
             int a = gen() % n;
@@ -440,7 +517,6 @@ int main(int argc, char* argv[])
             MyEdge e = { a, b };
             force.push_back(e);
         }
-        */
      
         /*
         for (int i = 0; i < n; i++)
@@ -533,6 +609,8 @@ int main(int argc, char* argv[])
         uint64_t t5 = uSec();
         printf("%d ms\n", (int)((t5 - t4) / 1000));
         printf("CDT TOTAL: %d\n", (int)((t5 - t0) / 1000));
+
+        printf("CDT triangles = %d\n", (int)cdt.triangles.size());
 
         uint64_t t_p0 = uSec();
         std::vector<CDT::Poly> cdt_polys = CDT::Polygonize(cdt);
