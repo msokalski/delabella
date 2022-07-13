@@ -2152,10 +2152,6 @@ struct CDelaBella : IDelaBella
 
 		for (int p = num-1; p >= 0; p--)
 		{
-			if (p == 33)
-			{
-				int dbg = 1;
-			}
 			Face* f = (Face*)(poly[p]);
 			if (!f->next)
 			{
@@ -2169,6 +2165,8 @@ struct CDelaBella : IDelaBella
 			Face* first = 0;
 			// break list appart
 			// so we can unmark all poly faces
+
+			int dbg_num = 0;
 			while (f)
 			{
 				Face* n = (Face*)f->next;
@@ -2189,115 +2187,80 @@ struct CDelaBella : IDelaBella
 
 				f->next = 0; // unmark
 				f = n;
+
+				dbg_num++;
 			}
 
 			assert(first);
 
-			Face* list = first; // new rearranged list of faces in the poly
-
-			DelaBella_Triangle sentinel = { {0},{0},{0}, 0, ~0x40000000 };
-			first->next = &sentinel; // mark first as used
+			Face* list = first; // here list is empty, first is used as sentinel
 
 			f = first; // current face
 
-			// rotate first face so it's f[1] points to in-poly face
-			if (f->f[1]->index != p)
-			{
-				Face* fr = (Face*)f->f[1];
-				Vert* vr = (Vert*)f->v[1];
-				if (f->f[0]->index == p)
-				{
-					f->f[1] = f->f[0];
-					f->f[0] = f->f[2];
-					f->f[2] = fr;
-					f->v[1] = f->v[0];
-					f->v[0] = f->v[2];
-					f->v[2] = vr;
-				}
-				else
-				if (f->f[2]->index == p)
-				{
-					f->f[1] = f->f[2];
-					f->f[2] = f->f[0];
-					f->f[0] = fr;
-					f->v[1] = f->v[2];
-					f->v[2] = f->v[0];
-					f->v[0] = vr;
-				}
-				else
-					assert(0);
-			}
-
 			Face* last = 0; // will be one inserted right after first
-			Vert* v = (Vert*)f->v[0]; // current vert
-			bool step_on = true; // is current vertex inserted
+			
+			bool step_on = false; // is current vertex inserted
 
 			DelaBella_Iterator it;
-			f->StartIterator(&it, 0);
+			f->StartIterator(&it, f->f[0]->index == p ? 2 : f->f[1]->index == p ? 0 : 1);
+
+			int dbg = 0;
 
 			while (1)
 			{
-				Face* n = (Face*)it.Next();
-				if (n == first)
-					break;
-				while (n->index == p)
+				if (!step_on && !f->next)
 				{
-					f = n;
-					if (!step_on && !f->next)
+					if (list == first)
+						last = f;
+					step_on = true;
+					f->next = list;
+					list = f;
+					dbg++;
+
+					// rotate such it.around becomes 0
+					if (it.around != 0)
 					{
-						if (list == first)
-							last = f;
-						step_on = true;
-						f->next = list;
-						list = f;
+						Face* fr = (Face*)f->f[0];
+						Vert* vr = (Vert*)f->v[0];
 
-						// rotate it so v[0] == vert (we have it in it.around)
-						if (it.around != 0)
+						if (it.around == 1)
 						{
-							Face* fr = (Face*)f->f[0];
-							Vert* vr = (Vert*)f->v[0];
-							if (f->v[1] == v)
-							{
-								f->f[0] = f->f[1];
-								f->f[1] = f->f[2];
-								f->f[2] = fr;
-								f->v[0] = f->v[1];
-								f->v[1] = f->v[2];
-								f->v[2] = vr;
-							}
-							else
-							if (f->v[2] == v)
-							{
-								f->f[0] = f->f[2];
-								f->f[2] = f->f[1];
-								f->f[1] = fr;
-								f->v[0] = f->v[2];
-								f->v[2] = f->v[1];
-								f->v[1] = vr;
-							}
-							else
-								assert(0);
-
-							// adjust iterator after rot
-							it.around = 0;
+							f->f[0] = f->f[1];
+							f->f[1] = f->f[2];
+							f->f[2] = fr;
+							f->v[0] = f->v[1];
+							f->v[1] = f->v[2];
+							f->v[2] = vr;
 						}
+						else // it.around == 2
+						{
+							f->f[0] = f->f[2];
+							f->f[2] = f->f[1];
+							f->f[1] = fr;
+							f->v[0] = f->v[2];
+							f->v[2] = f->v[1];
+							f->v[1] = vr;
+						}
+
+						// adjust iterator after rot
+						it.around = 0;
 					}
-					n = (Face*)it.Next();
 				}
 
-				// step on other leg:
-				// and restart iterator
-				
-				// patch, around was for n (outside poly)
-				it.Prev();
+				static const int next_probe[] = { 1,2,0 };
+				if (f->f[next_probe[it.around]]->index != p)
+				{
+					// step on other leg:
+					// and restart iterator
+					static const int other_leg[3] = { 2,0,1 };
+					f->StartIterator(&it, other_leg[it.around]);
+					step_on = false;
+					continue;
+				}
 
-				static const int other_leg[3] = { 2,0,1 };
-				f->StartIterator(&it, other_leg[it.around]);
-				step_on = false;
-				v = (Vert*)f->v[it.around];
-
-				// patch
-				f = (Face*)it.Prev();
+				f = (Face*)it.Next();
+				if (f == first)
+					break;
 			}
 
 			// rotate list so first will be wrapped back to head of the face list
@@ -2309,6 +2272,8 @@ struct CDelaBella : IDelaBella
 
 			// store ordered list in poly
 			poly[p] = list;
+
+			assert(dbg == dbg_num);
 		}
 
 		#else

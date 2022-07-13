@@ -43,181 +43,225 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 namespace CDT
 {
-#if 0
-    typedef std::list<TriInd> Poly;
+typedef std::vector<TriInd> Poly;
+template <typename T, typename L = LocatorKDTree<T> >
+std::vector<Poly> Polygonize(/*const*/ Triangulation<T, L>& cdt)
+{
+    typedef TriInd PolyInd;
+    // for every tri, here we store index of the poly the tri belongs to
+    auto map = std::vector<PolyInd>(cdt.triangles.size());
+    // vector of Polys, each as a vector of tri indices belonging to the Poly
+    auto polys = std::vector<Poly>();
 
-    template <typename T, typename L = LocatorKDTree<T>>
-    std::vector<Poly> Polygonize(const Triangulation<T,L>& cdt)
+    for (TriInd iT = 0; iT < cdt.triangles.size(); iT++)
     {
-        typedef std::size_t PolyInd;
-        std::vector<PolyInd> map; // fer every tri, here we store index of the poly tri belongs to
-        map.resize(cdt.triangles.size());
+        const auto& tri = cdt.triangles[iT];
+        auto merged = false;
 
-        std::vector<Poly> polys; // vector of Polys, each as a list of tri indices belonging to the Poly
-
-        PolyInd num = 0;
-        for (TriInd ith = 0; ith < cdt.triangles.size(); ith++)
+        // compare i'th tri with its adjacent tris
+        for (const auto adj : tri.neighbors)
         {
-            const Triangle& tri = cdt.triangles[ith];
-            const V2d<T>* v[3] =
+            // but only if there's adjacent tri and it is processed already
+            if (adj == noNeighbor || adj > iT)
+                continue;
+            // locate reflex vert in adj triangle
+            const auto& vr =
+                cdt.vertices[opposedVertex(cdt.triangles[adj], iT)];
+            const auto& v1 = cdt.vertices[tri.vertices[0]];
+            const auto& v2 = cdt.vertices[tri.vertices[1]];
+            const auto& v3 = cdt.vertices[tri.vertices[2]];
+            using predicates::adaptive::incircle;
+            if (!incircle(vr.x, vr.y, v1.x, v1.y, v2.x, v2.y, v3.x, v3.y))
             {
-                &cdt.vertices[tri.vertices[0]],
-                &cdt.vertices[tri.vertices[1]],
-                &cdt.vertices[tri.vertices[2]]
-            };
-
-            bool merged = false;
-
-            // compare i'th tri with its adjacent tris
-            for (int a = 0, b = 1, c = 2; a < 3; b=c, c=a, a++)
-            {
-                TriInd adj = tri.neighbors[a];
-
-                // but only if adjecent is processed already
-                if (adj > ith)
-                    continue;
-
-                // locate reflex vert in adj triangle
-                VertInd r = opposedVertex(cdt.triangles[adj], ith);
-                const V2d<T>& vr = cdt.vertices[r];
-
-                if (0 == predicates::adaptive::incircle(vr.x, vr.y, v[0]->x, v[0]->y, v[1]->x, v[1]->y, v[2]->x, v[2]->y))
+                if (!merged)
                 {
-                    if (!merged)
-                    {
-                        // append tri to already existing poly
-                        merged = true;
-                        PolyInd append_to = map[adj];
-                        map[ith] = append_to;
-                        polys[append_to].push_back(ith);
-                    }
-                    else
-                    {
-                        PolyInd merge_to = map[ith];
-                        PolyInd merge_from = map[adj];
-
-                        if (merge_to != merge_from)
-                        {
-                            // funny case, tri is a bridge between 2 polys
-                            // merge'em all together
-
-                            Poly::iterator it;
-                            for (it = polys[merge_from].begin(); it != polys[merge_from].end(); ++it)
-                            {
-                                map[*it] = merge_to; // remap 
-                                polys[merge_to].push_back(*it); // merge
-                            }
-
-                            num--;
-
-                            if (num != merge_from)
-                            {
-                                // replace merge_from poly with last poly in polys
-                                polys[merge_from] = polys[num];
-                                for (it = polys[merge_from].begin(); it != polys[merge_from].end(); ++it)
-                                    map[*it] = merge_from; // remap 
-                            }
-                            polys.pop_back();
-                        }
-                    }
+                    // append tri to already existing poly
+                    merged = true;
+                    const auto append_to = map[adj];
+                    map[iT] = append_to;
+                    polys[append_to].push_back(iT);
                 }
-            }
-
-            if (!merged)
-            {
-                // at the moment, just alone tri
-                // make a new poly for it
-                map[ith] = num;
-
-                Poly p;
-                p.push_back(ith);
-                polys.push_back(p);
-                num++;
-            }
-        }
-
-        return polys;
-    }
-#else
-    typedef std::vector<TriInd> Poly;
-    template <typename T, typename L = LocatorKDTree<T> >
-    std::vector<Poly> Polygonize(const Triangulation<T, L>& cdt)
-    {
-        typedef TriInd PolyInd;
-        // fer every tri, here we store index of the poly the tri belongs to
-        auto map = std::vector<PolyInd>(cdt.triangles.size());
-        // vector of Polys, each as a list of tri indices belonging to the Poly
-        auto polys = std::vector<Poly>();
-
-        for (TriInd iT = 0; iT < cdt.triangles.size(); iT++)
-        {
-            const auto& tri = cdt.triangles[iT];
-            auto merged = false;
-
-            // compare i'th tri with its adjacent tris
-            for (const auto adj : tri.neighbors)
-            {
-                // but only if adjacent is processed already
-                if (adj > iT)
-                    continue;
-                // locate reflex vert in adj triangle
-                const auto& vr =
-                    cdt.vertices[opposedVertex(cdt.triangles[adj], iT)];
-                const auto& v1 = cdt.vertices[tri.vertices[0]];
-                const auto& v2 = cdt.vertices[tri.vertices[1]];
-                const auto& v3 = cdt.vertices[tri.vertices[2]];
-                using predicates::adaptive::incircle;
-                if (!incircle(vr.x, vr.y, v1.x, v1.y, v2.x, v2.y, v3.x, v3.y))
+                else
                 {
-                    if (!merged)
+                    const auto merge_to = map[iT];
+                    const auto merge_from = map[adj];
+
+                    if (merge_to == merge_from)
+                        continue;
+
+                    // funny case, tri is a bridge between 2 polys merge'em all
+                    // together
+                    for (const auto i : polys[merge_from])
                     {
-                        // append tri to already existing poly
-                        merged = true;
-                        const auto append_to = map[adj];
-                        map[iT] = append_to;
-                        polys[append_to].push_back(iT);
+                        map[i] = merge_to;            // remap
+                        polys[merge_to].push_back(i); // merge
                     }
-                    else
+                    if (merge_from != polys.size() - 1)
                     {
-                        const auto merge_to = map[iT];
-                        const auto merge_from = map[adj];
-
-                        if (merge_to == merge_from)
-                            continue;
-
-                        // funny case, tri is a bridge between 2 polys merge'em all
-                        // together
+                        // replace merge_from poly with last poly in polys
+                        polys[merge_from] = polys.back();
                         for (const auto i : polys[merge_from])
                         {
-                            map[i] = merge_to;            // remap
-                            polys[merge_to].push_back(i); // merge
+                            map[i] = merge_from; // remap
                         }
-                        if (merge_from != polys.size() - 1)
-                        {
-                            // replace merge_from poly with last poly in polys
-                            polys[merge_from] = polys.back();
-                            for (const auto i : polys[merge_from])
-                            {
-                                map[i] = merge_from; // remap
-                            }
-                        }
-                        polys.pop_back();
                     }
+                    polys.pop_back();
                 }
-            }
-
-            if (!merged)
-            {
-                // at the moment, just alone tri
-                // make a new poly for it
-                map[iT] = polys.size();
-                polys.push_back({ iT });
             }
         }
 
-        return polys;
+        if (!merged)
+        {
+            // at the moment, just alone tri
+            // make a new poly for it
+            map[iT] = polys.size();
+            polys.push_back({ iT });
+        }
     }
-#endif
+
+    // post proc
+
+    struct Stepper
+    {
+        const Triangulation<T, L>& cdt;
+        TriInd current;
+        int around;
+
+        Stepper(const Triangulation<T, L>& cdt, TriInd t, int a) : cdt(cdt), current(t), around(a) {}
+            
+        void StepOver(int a) 
+        { 
+            around = a; 
+        }
+
+        TriInd Clockwise()
+        {
+            const auto& prev = cdt.triangles[current];
+
+            current = prev.neighbors[around];
+            const auto& next = cdt.triangles[current];
+
+            VertInd v = prev.vertices[around];
+            if (next.vertices[0] == v)
+                around = 0;
+            else
+            if (next.vertices[1] == v)
+                around = 1;
+            else
+                around = 2;
+
+            return current;
+        }
+    };
+
+    const PolyInd mask = (~(PolyInd)0) >> 1;
+
+    for (PolyInd p = 0; p < polys.size(); p++)
+    {
+        const PolyInd q = p | ~mask; // unmarked
+
+        // single triangle polys are ok already
+        if (polys[p].size() == 1)
+            continue;
+
+        // find good starting triangle,
+        // one with exeactly 1 inner edge
+        TriInd first = noNeighbor;
+        for (const auto t : polys[p])
+        {
+            if (first == noNeighbor)
+            {
+                const auto& tri = cdt.triangles[t];
+                int inner_edges =
+                    (tri.neighbors[0] != noNeighbor && (map[tri.neighbors[0]] & mask) == p) +
+                    (tri.neighbors[1] != noNeighbor && (map[tri.neighbors[1]] & mask) == p) +
+                    (tri.neighbors[2] != noNeighbor && (map[tri.neighbors[2]] & mask) == p);
+
+                if (inner_edges == 1)
+                    first = t;
+            }
+
+            // mark all tris as not inserted
+            map[t] = q;
+        }
+
+        // we can clear current poly now, 
+        // as we depend only on map and adjacency
+        polys[p].clear();
+
+        TriInd f = first; // current face
+        bool step_on = false; // is current vertex inserted
+        int insert = 2; // first triangle should end with 2
+
+        Stepper it(cdt, f, 
+            cdt.triangles[f].neighbors[0] != noNeighbor && map[cdt.triangles[f].neighbors[0]] == q ? 0 :
+            cdt.triangles[f].neighbors[1] != noNeighbor && map[cdt.triangles[f].neighbors[1]] == q ? 1 : 2);
+
+        while (1)
+        {
+            if (!step_on && map[f] == q)
+            {
+                step_on = true;
+                map[f] = p; // mark as inserted
+
+                if (it.around != insert)
+                {
+                    auto& tri = cdt.triangles[f];
+                    static const int rot[3][3] = { {0,1,2},{2,0,1},{1,2,0} };
+                    const int r = rot[it.around][insert];
+                    const auto v = tri.vertices[r];
+                    const auto n = tri.neighbors[r];
+                    switch (r)
+                    {
+                    case 1:
+                        tri.vertices[1] = tri.vertices[0];
+                        tri.vertices[0] = tri.vertices[2];
+                        tri.vertices[2] = v;
+                        tri.neighbors[1] = tri.neighbors[0];
+                        tri.neighbors[0] = tri.neighbors[2];
+                        tri.neighbors[2] = n;
+                        break;
+                    case 2:
+                        tri.vertices[2] = tri.vertices[0];
+                        tri.vertices[0] = tri.vertices[1];
+                        tri.vertices[1] = v;
+                        tri.neighbors[2] = tri.neighbors[0];
+                        tri.neighbors[0] = tri.neighbors[1];
+                        tri.neighbors[1] = n;
+                        break;
+                    default:
+                        break;
+                    }
+                    it.StepOver(insert);
+                }
+
+                polys[p].push_back(f);
+                insert = 0; // everything but first should use 0
+            }
+
+            TriInd probe = cdt.triangles[f].neighbors[it.around];
+            if (probe == noNeighbor || (map[probe] & mask) != p)
+            {
+                // check if we've covered current vertex 
+                // with some face before stepping over
+                assert(step_on); 
+
+                // we're on last tri inside poly (marked or unmarked)
+                // step on other leg:
+                static const int other_leg[3] = { 1,2,0 };
+                it.StepOver(other_leg[it.around]);
+                step_on = false;
+                continue;
+            }
+
+            f = it.Clockwise();
+            if (f == first)
+                break;
+        }
+    }
+
+    return polys;
+}
 }
 
 #endif
@@ -442,6 +486,20 @@ int main(int argc, char* argv[])
 	{
 		double x;
 		double y;
+
+        bool operator == (const MyPoint& p) const
+        {
+            return x == p.x && y == p.y;
+        }
+
+        bool operator < (const MyPoint& p) const
+        {
+            if (x < p.x)
+                return true;
+            if (x == p.x)
+                return y < p.y;
+            return false;
+        }
 	};
 
     struct MyEdge
@@ -510,9 +568,9 @@ int main(int argc, char* argv[])
             }
         }
 
+        int a = gen() % n;
         for (int i = 0; i < 1000; i++)
         {
-            int a = gen() % n;
             int b = (a + gen() % (n-1)) % n;
             MyEdge e = { a, b };
             force.push_back(e);
@@ -707,10 +765,10 @@ int main(int argc, char* argv[])
     uint64_t t8 = uSec();
     printf("Delabella TOTAL: %d\n", (int)((t8 - t6) / 1000));
 
-    const DelaBella_Triangle** poly = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * tris_delabella);
-    int polys = idb->Polygonize();
+    const DelaBella_Triangle** dela_polys = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * tris_delabella);
+    int polys_delabella = idb->Polygonize(dela_polys);
     uint64_t t9 = uSec();
-    printf("Polygons: %d in %d ms\n", polys, (int)((t9 - t8) / 1000));
+    printf("Polygons: %d in %d ms\n", polys_delabella, (int)((t9 - t8) / 1000));
 
     //return 0;
 
@@ -731,225 +789,128 @@ int main(int argc, char* argv[])
 
         int tris_cdt = (int)cdt.triangles.size();
         assert(tris_delabella == tris_cdt);
+        assert(polys_delabella == cdt_polys.size());
 
-        struct MyTri
+        int poly_indices = 2 * polys_delabella + tris_delabella;
+
+        struct MyPoly
         {
-            MyTri(const MyTri& tri)
-            {
-                p[0] = tri.p[0];
-                p[1] = tri.p[1];
-                p[2] = tri.p[2];
-            }
-
-            MyTri& operator = (const MyTri& tri)
-            {
-                p[0] = tri.p[0];
-                p[1] = tri.p[1];
-                p[2] = tri.p[2];
-                return *this;
-            }
-
-            bool operator == (const MyTri& tri) const
-            {
-                if (memcmp(this, &tri, sizeof(MyTri)) == 0)
-                    return true;
-                return false;
-            }
-
-            bool operator < (const MyTri& tri) const
-            {
-                for (int i = 0; i < 3; i++)
-                {
-                    if (p[i].x < tri.p[i].x)
-                        return true;
-                    if (p[i].x > tri.p[i].x)
-                        return false;
-                    if (p[i].y < tri.p[i].y)
-                        return true;
-                    if (p[i].y > tri.p[i].y)
-                        return false;
-                }
-
-                return false; // equal
-            }
-
-            MyTri(const double xy3[6])
-            {
-                p[0].x = xy3[0]; p[0].y = xy3[1];
-                p[1].x = xy3[2]; p[1].y = xy3[3];
-                p[2].x = xy3[4]; p[2].y = xy3[5];
-
-                struct C
-                {
-                    bool operator () (const MyPoint& p1, const MyPoint& p2) const
-                    {
-                        if (p1.x < p2.x)
-                            return true;
-                        if (p1.x > p2.x)
-                            return false;
-                        if (p1.y < p2.y)
-                            return true;
-                        return false;
-                    }
-                };
-
-                C c;
-                std::sort(p, p + 3, c);
-            }
-            MyPoint p[3];
+            int size;
+            int offs;
         };
 
-        std::vector<MyTri> cdt_set;
-
-        int pro = 0;
-        for (int i = 0; i < tris_cdt; i++)
+        std::vector<MyPoint> cdt_v(poly_indices);
+        std::vector<MyPoly> cdt_p(cdt_polys.size());
+        for (int p = 0, n = 0; p < cdt_polys.size(); p++)
         {
-            if (i >= pro)
+            int s = 0;
+
+            for (int i = 0; i < 3; i++)
             {
-                int p = (int)((uint64_t)100 * i / tris_cdt);
-                pro = (int)((uint64_t)(p + 1) * tris_cdt / 100);
-                if (pro >= tris_cdt)
-                    pro = tris_cdt - 1;
-                if (i == tris_cdt - 1)
-                    p = 100;
-                printf("\r[%2d%s] analysing cdt %s", p, p >= 100 ? "" : "%", p >= 100 ? "\n" : "");
+                int j = n + s;
+                int k = cdt.triangles[cdt_polys[p][0]].vertices[i];
+                cdt_v[j].x = cdt.vertices[k].x;
+                cdt_v[j].y = cdt.vertices[k].y;
+                s++;
             }
 
-            int a = cdt.triangles[i].vertices[0];
-            int b = cdt.triangles[i].vertices[1];
-            int c = cdt.triangles[i].vertices[2];
-
-            // TODO:
-            // loop over all polygons made of more than 1 face
-            // loop all its faces and mark if a, b and c are used by poly
-            // if all 3 verts span over same polygon, break face & poly loops 
-            // and skip inserting this triangle into comparison vector
-
-            double abc[6] =
+            for (int i = 1; i < cdt_polys[p].size(); i++)
             {
-                cdt.vertices[a].x,
-                cdt.vertices[a].y,
-                cdt.vertices[b].x,
-                cdt.vertices[b].y,
-                cdt.vertices[c].x,
-                cdt.vertices[c].y
-            };
-
-            MyTri tri{abc};
-            cdt_set.push_back(tri);
-        }
-        std::sort(cdt_set.begin(), cdt_set.end());
-
-        std::vector<MyTri> dela_set;
-
-        const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
-        pro = 0;
-        for (int i = 0; i < tris_delabella; i++)
-        {
-            // skip if dela is part of a poly with more than 1 face !!!
-            // 1. get dela face index
-            // 2. check if poly[index]->next != 0
-
-            if (i >= pro)
-            {
-                int p = (int)((uint64_t)100 * i / tris_delabella);
-                pro = (int)((uint64_t)(p + 1) * tris_delabella / 100);
-                if (pro >= tris_delabella)
-                    pro = tris_delabella - 1;
-                if (i == tris_delabella - 1)
-                    p = 100;
-                printf("\r[%2d%s] analysing dela %s", p, p >= 100 ? "" : "%", p >= 100 ? "\n" : "");
+                int j = n + s;
+                int k = cdt.triangles[cdt_polys[p][i]].vertices[0];
+                cdt_v[j].x = cdt.vertices[k].x;
+                cdt_v[j].y = cdt.vertices[k].y;
+                s++;
             }
 
-            int a = dela->v[0]->i;
-            int b = dela->v[1]->i;
-            int c = dela->v[2]->i;
+            // convert from ccw to cw
+            std::reverse(cdt_v.begin() + n, cdt_v.begin() + n + s);
 
-            double abc[6] =
-            {
-                dela->v[0]->x,
-                dela->v[0]->y,
-                dela->v[1]->x,
-                dela->v[1]->y,
-                dela->v[2]->x,
-                dela->v[2]->y
-            };
+            // find smallest point, make it leftmost
+            std::vector<MyPoint>::iterator smallest = std::min_element(cdt_v.begin() + n, cdt_v.begin() + n + s);
+            std::rotate(cdt_v.begin() + n, smallest, cdt_v.begin() + n + s);
 
-            MyTri tri{ abc };
-            dela_set.push_back(tri);
 
-            dela = dela->next;
+            cdt_p[p].size = s;
+            cdt_p[p].offs = n;
+
+            n += cdt_p[p].size;
         }
-        std::sort(dela_set.begin(), dela_set.end());
 
-        printf("COMPARING...\n");
-        int diffs = -1;
-        if (dela_set.size() == cdt_set.size())
+        std::vector<MyPoint> idb_v(poly_indices);
+        std::vector<MyPoly> idb_p(polys_delabella);
+        for (int p = 0, n = 0; p < polys_delabella; p++)
         {
-            diffs = 0;
-            int check_tris = (int)dela_set.size();
+            int s = 0;
 
-            for (int i = 0; i < check_tris; i++)
+            const DelaBella_Triangle* f = dela_polys[p];
+
+            for (int i = 0; i < 3; i++)
             {
-                if (dela_set[i] == cdt_set[i])
-                    // ok, exact match
-                    continue;
+                int j = n + s;
+                const DelaBella_Vertex* k = f->v[i];
+                idb_v[j].x = k->x;
+                idb_v[j].y = k->y;
+                s++;
+            }
 
-                // try advancing one of sets
-                if (dela_set[i] < cdt_set[i])
+            f = f->next;
+
+            while (f && f->index == p)
+            {
+                int j = n + s;
+                const DelaBella_Vertex* k = f->v[0];
+                idb_v[j].x = k->x;
+                idb_v[j].y = k->y;
+                s++;
+                f = f->next;
+            }
+
+            // find smallest point, rotate it to the left
+            std::vector<MyPoint>::iterator smallest = std::min_element(idb_v.begin() + n, idb_v.begin() + n + s);
+            std::rotate(idb_v.begin() + n, smallest, idb_v.begin() + n + s);
+            
+            idb_p[p].size = s;
+            idb_p[p].offs = n;
+
+            n += s;
+        }
+
+        struct PolyPred
+        {
+            PolyPred(const std::vector<MyPoint>& v) : v(v) {}
+            bool operator () (const MyPoly& p, const MyPoly& q) const
+            {
+                if (p.size < q.size)
+                    return true;
+                if (p.size == q.size)
                 {
-                    bool found = false;
-                    for (int j = i + 1; j < tris_delabella; j++)
+                    for (size_t i = 0; i < p.size; i++)
                     {
-                        if (dela_set[j].p[0].x > cdt_set[i].p[2].x)
-                            break;
-                        if (dela_set[j] == cdt_set[i])
-                        {
-                            found = true;
-                            break;
-                        }
+                        if (v[i + p.offs] == v[i + q.offs])
+                            continue;
+                        return v[i + p.offs] < v[i + q.offs];
                     }
-
-                    if (found)
-                        continue;
                 }
-                else
-                {
-                    bool found = false;
-                    for (int j = i + 1; j < tris_delabella; j++)
-                    {
-                        if (dela_set[i].p[2].x < cdt_set[j].p[0].x)
-                            break;
-                        if (dela_set[i] == cdt_set[j])
-                        {
-                            found = true;
-                            break;
-                        }
-                    }
-
-                    if (found)
-                        continue;
-                }
-
-                diffs++;
+                return false;
             }
+            const std::vector<MyPoint>& v;
+        };
+
+        std::sort(cdt_p.begin(), cdt_p.end(), PolyPred(cdt_v));
+        std::sort(idb_p.begin(), idb_p.end(), PolyPred(idb_v));
+
+        for (int p = 0; p < polys_delabella; p++)
+        {
+            MyPoly p_idb = idb_p[p];
+            MyPoly p_cdt = cdt_p[p];
+
+            MyPoint* data_idb = idb_v.data() + p_idb.offs;
+            MyPoint* data_cdt = cdt_v.data() + p_cdt.offs;
+
+            assert(p_idb.size == p_cdt.size);
+            //assert(memcmp(data_idb, data_cdt, sizeof(MyPoint)* p_idb.size) == 0);
         }
-
-        if (!diffs)
-            printf("COMPARE OK!\n");
-        else
-            printf("COMPARE FAIL %d DIFFS!\n", diffs);
-
-        free(poly);
-        poly = 0;
-
-        /*
-        // may return false negative for degenerated triangulations
-        if (dela_set != cdt_set)
-            printf("COMPARE FAIL!\n");
-        else
-            printf("COMPARE OK!\n");
-        */
 
         #endif
     }
@@ -1302,6 +1263,11 @@ int main(int argc, char* argv[])
     double cy = 0.5 * (box[1]+box[3]);
     double scale = 2.0 * fmin((double)vpw/(box[2]-box[0]),(double)vph/(box[3]-box[1]));
     int zoom = -3+(int)round(log(scale) / log(1.01));
+
+    zoom = 434;
+    cx = -39.377282015153533;
+    cy = 21.140141563632085;
+
 
     int drag_x, drag_y, drag_zoom;
     double drag_cx, drag_cy;
