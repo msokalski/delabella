@@ -909,7 +909,7 @@ int main(int argc, char* argv[])
             MyPoint* data_cdt = cdt_v.data() + p_cdt.offs;
 
             assert(p_idb.size == p_cdt.size);
-            //assert(memcmp(data_idb, data_cdt, sizeof(MyPoint)* p_idb.size) == 0);
+            assert(memcmp(data_idb, data_cdt, sizeof(MyPoint)* p_idb.size) == 0);
         }
 
         #endif
@@ -1263,11 +1263,6 @@ int main(int argc, char* argv[])
     double cy = 0.5 * (box[1]+box[3]);
     double scale = 2.0 * fmin((double)vpw/(box[2]-box[0]),(double)vph/(box[3]-box[1]));
     int zoom = -3+(int)round(log(scale) / log(1.01));
-
-    zoom = 434;
-    cx = -39.377282015153533;
-    cy = 21.140141563632085;
-
 
     int drag_x, drag_y, drag_zoom;
     double drag_cx, drag_cy;
