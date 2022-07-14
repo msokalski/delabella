@@ -1350,14 +1350,17 @@ struct CDelaBella : IDelaBella
 
 		DelaBella_Iterator it;
 
+		#ifndef USE_PREDICATES
 		int xa_ready = 0; // 0:none, 1:xa_b only, 2:all
 		XA_REF xa_b[2];
+		#endif
 
 	//restart:
 
 		const DelaBella_Triangle* first = va->StartIterator(&it);
 		const DelaBella_Triangle* face = first;
 
+		#ifndef USE_PREDICATES
 		if (xa_ready == 2)
 			xa_ready = 1;
 
@@ -1366,6 +1369,7 @@ struct CDelaBella : IDelaBella
 
 		XA_REF xa_a[2];
 		XA_REF xa_ab[2];
+		#endif
 
 		// find first face around va, containing offending edge
 		Vert* v0;
@@ -1401,6 +1405,38 @@ struct CDelaBella : IDelaBella
 				return list; // ab is already there
 			}
 
+			#ifdef USE_PREDICATES
+			double a0b = predicates::adaptive::orient2d(va->x,va->y, v0->x,v0->y, vb->x,vb->y);
+			double a1b = predicates::adaptive::orient2d(va->x,va->y, v1->x,v1->y, vb->x,vb->y);
+
+			if (a0b < 0 && a1b > 0)
+			{
+				// offending edge!
+				N = (Face*)face;
+				break;
+			}
+
+			// brainfuck!
+			if (!(a0b > 0 || a1b < 0))
+			{
+				if (a0b == 0)
+				{
+					*restart = v0;
+					*tail = 0;
+					*ptail = list ? tail : 0;
+					return list;
+				}
+
+				if (a1b == 0)
+				{
+					*restart = v1;
+					*tail = 0;
+					*ptail = list ? tail : 0;
+					return list;
+				}
+			}
+
+			#else
 			IA_VAL a0[2] = { (IA_VAL)v0->x - ia_a[0], (IA_VAL)v0->y - ia_a[1] };
 			IA_VAL a1[2] = { (IA_VAL)v1->x - ia_a[0], (IA_VAL)v1->y - ia_a[1] };
 
@@ -1408,7 +1444,6 @@ struct CDelaBella : IDelaBella
 			IA_VAL r_a0b = a0[1] * ab[0];
 			IA_VAL l_a1b = a1[0] * ab[1];
 			IA_VAL r_a1b = a1[1] * ab[0];
-
 
 			if (l_a0b < r_a0b && l_a1b > r_a1b)
 			{
@@ -1472,6 +1507,7 @@ struct CDelaBella : IDelaBella
 					break;
 				}
 			}
+			#endif
 
 			face = it.Next();
 			assert(face != first);
@@ -1534,7 +1570,36 @@ struct CDelaBella : IDelaBella
 			}
 
 			// is vr above or below ab ?
+			#ifdef USE_PREDICATES
+			double abr = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, vr->x, vr->y);
+			
+			if (abr == 0)
+			{
+				*restart = vr;
+				*tail = 0;
+				*ptail = list ? tail : 0;
+				return list;
+			}
 
+			if (abr > 0)
+			{
+				// above: de edge (a' = f vert)
+				a = f;
+				v0 = (Vert*)F->v[d];
+				v1 = (Vert*)F->v[e];
+				N = F;
+			}
+			else
+			{
+				// below: fd edge (a' = e vert)
+				a = e;
+				v0 = (Vert*)F->v[f];
+				v1 = (Vert*)F->v[d];
+				N = F;
+			}
+			
+
+			#else
 			IA_VAL ar[2] = { (IA_VAL)vr->x - ia_a[0], (IA_VAL)vr->y - ia_a[1] };
 
 			IA_VAL l_abr = ab[0] * ar[1];
@@ -1580,6 +1645,7 @@ struct CDelaBella : IDelaBella
 
 				if (xa_abr == 0)
 				{
+					assert(abr == 0);
 					// if overlap
 					
 					//va = vr;
@@ -1593,6 +1659,7 @@ struct CDelaBella : IDelaBella
 
 				if (xa_abr > 0)
 				{
+					assert(abr > 0);
 					// above: de edge (a' = f vert)
 					a = f;
 					v0 = (Vert*)F->v[d];
@@ -1601,6 +1668,7 @@ struct CDelaBella : IDelaBella
 				}
 				else
 				{
+					assert(abr < 0);
 					// below: fd edge (a' = e vert)
 					a = e;
 					v0 = (Vert*)F->v[f];
@@ -1608,6 +1676,7 @@ struct CDelaBella : IDelaBella
 					N = F;
 				}
 			}
+			#endif
 		}
 
 		assert(0);
@@ -1717,6 +1786,19 @@ struct CDelaBella : IDelaBella
 				Vert* vr = (Vert*)(F->v[d]);
 
 				// is va,v0,vr,v1 a convex quad?
+				#ifdef USE_PREDICATES
+				double a0r = predicates::adaptive::orient2d(va->x, va->y, v0->x, v0->y, vr->x, vr->y);
+				double a1r = predicates::adaptive::orient2d(va->x, va->y, v1->x, v1->y, vr->x, vr->y);
+
+				if (a0r >= 0 || a1r <= 0)
+				{
+					// CONCAVE CUNT!
+					*tail = N;
+					tail = (Face**)&N->next;
+					continue;
+				}
+
+				#else
 				IA_VAL a0[2] = { (IA_VAL)v0->x - (IA_VAL)v->x, (IA_VAL)v0->y - (IA_VAL)v->y };
 				IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)v->x, (IA_VAL)v1->y - (IA_VAL)v->y };
 				IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)v->x, (IA_VAL)vr->y - (IA_VAL)v->y };
@@ -1754,6 +1836,7 @@ struct CDelaBella : IDelaBella
 						continue;
 					}
 				}
+				#endif
 
 				// it's convex, xa already checked
 				// if (l_a0r < r_a0r && l_a1r > r_a1r)
@@ -1858,6 +1941,9 @@ struct CDelaBella : IDelaBella
 					}
 					else
 					{
+						//#ifdef USE_PREDICATES
+						/// hmmm
+						//#else
 						IA_VAL ab[2] = { (IA_VAL)vb->x - (IA_VAL)va->x, (IA_VAL)vb->y - (IA_VAL)va->y };
 						IA_VAL av[2] = { (IA_VAL)v->x - (IA_VAL)va->x, (IA_VAL)v->y - (IA_VAL)va->y };
 						IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)va->x, (IA_VAL)vr->y - (IA_VAL)va->y };
@@ -1904,6 +1990,7 @@ struct CDelaBella : IDelaBella
 								tail = (Face**)&N->next;
 							}
 						}
+						//#endif
 					}
 				}
 			}
