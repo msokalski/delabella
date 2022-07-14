@@ -6,6 +6,8 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #ifndef DELABELLA_H
 #define DELABELLA_H
 
+#define USE_PREDICATES
+
 //#define DB_AUTO_TEST
 
 #ifdef CRUDE_XA
@@ -71,16 +73,21 @@ struct DelaBella_Vertex
 	inline const DelaBella_Triangle* StartIterator(DelaBella_Iterator* it/*not_null*/) const;
 };
 
+#ifndef USE_PREDICATES
 struct DelaBella_Circumcenter
 {
 	Signed45 x; // voronoi vertex = {x/(-2*z),y/(-2*z)}
 	Signed45 y; // keeping it as a ratio avoids any rounding
 	Signed31 z; // additionally, if z<0 this is delaunay triangle
 }; 
+#endif
 
 struct DelaBella_Triangle
 {
+	#ifndef USE_PREDICATES
 	DelaBella_Circumcenter n; // normal / circumcenter
+	#endif
+
 	DelaBella_Vertex* v[3]; // 3 vertices spanning this triangle
 	DelaBella_Triangle* f[3]; // 3 adjacent faces, f[i] is at the edge opposite to vertex v[i]
 	DelaBella_Triangle* next; // next triangle (of delaunay set or hull set)

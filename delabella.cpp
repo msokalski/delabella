@@ -9,12 +9,12 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #include <algorithm>
 #include "delabella.h"
 
-#define USE_PREDICATES
-
-#ifdef USE_PREDICATES
+#if 0
+//#ifdef USE_PREDICATES
 #include "CDT/include/predicates.h"
 struct IA_FastRound { IA_FastRound() {} };
 #else
+#include "CDT/include/predicates.h"
 
 #ifdef IA_FAST
 #include <fenv.h>
@@ -49,8 +49,8 @@ static Unsigned28 s14sqr(const Signed14& s)
 	return (Unsigned28)((Signed29)s*(Signed29)s);
 }
 
+#ifndef USE_PREDICATES
 typedef DelaBella_Circumcenter Norm;
-
 struct Vect
 {
 	Signed15 x, y;
@@ -65,6 +65,7 @@ struct Vect
 		return n;
 	}
 };
+#endif
 
 IDelaBella::~IDelaBella()
 {
@@ -78,6 +79,7 @@ struct CDelaBella : IDelaBella
 	{
 		Unsigned28 z;
 
+		#ifndef USE_PREDICATES
 		Vect operator - (const Vert& v) const // diff
 		{
 			Vect d;
@@ -86,6 +88,7 @@ struct CDelaBella : IDelaBella
 			d.z = (Signed29)z - (Signed29)v.z;
 			return d;
 		}
+		#endif
 
 		static bool overlap(const Vert* v1, const Vert* v2)
 		{
@@ -165,8 +168,54 @@ struct CDelaBella : IDelaBella
 			return 0;
 		}
 
+		bool signN() const
+		{
+			#ifdef USE_PREDICATES
+			return 0 > predicates::adaptive::orient2d(v[0]->x, v[0]->y, v[1]->x, v[1]->y, v[2]->x, v[2]->y);
+			#else
+			// try aprox
+			if (n.z < 0 || n.z > 0)
+				return false;
+
+			// calc exact
+			XA_REF x0 = v[0]->x, y0 = v[0]->y;
+			XA_REF x1 = v[1]->x, y1 = v[1]->y;
+			XA_REF x2 = v[2]->x, y2 = v[2]->y;
+
+			XA_REF v1x = x1 - x0, v1y = y1 - y0;
+			XA_REF v2x = x2 - x0, v2y = y2 - y0;
+
+			return (v1x * v2y).cmp(v1y * v2x) < 0;
+			#endif
+		}
+
+		bool sign0() const
+		{
+			#ifdef USE_PREDICATES
+			return 0 == predicates::adaptive::orient2d(v[0]->x, v[0]->y, v[1]->x, v[1]->y, v[2]->x, v[2]->y);
+			#else
+			// try aprox
+			if (n.z < 0 || n.z > 0)
+				return false;
+
+			// calc exact
+			XA_REF x0 = v[0]->x, y0 = v[0]->y;
+			XA_REF x1 = v[1]->x, y1 = v[1]->y;
+			XA_REF x2 = v[2]->x, y2 = v[2]->y;
+
+			XA_REF v1x = x1 - x0, v1y = y1 - y0;
+			XA_REF v2x = x2 - x0, v2y = y2 - y0;
+
+			return (v1x * v2y).cmp(v1y * v2x) == 0;
+			#endif
+		}
+
+		/*
 		int sign() const
 		{
+			#ifdef USE_PREDICATES
+			return predicates::adaptive::orient2d(v[0]->x, v[0]->y, v[1]->x, v[1]->y, v[2]->x, v[2]->y);
+			#else
 			// try aprox
 			if (n.z < 0)
 				return -1;
@@ -182,7 +231,9 @@ struct CDelaBella : IDelaBella
 			XA_REF v2x = x2 - x0, v2y = y2 - y0;
 
 			return (v1x * v2y).cmp(v1y * v2x);
+			#endif
 		}
+		*/
 
 
 		bool dot0(const Vert& p)
@@ -336,10 +387,12 @@ struct CDelaBella : IDelaBella
 			#endif
 		}
 
+		#ifndef USE_PREDICATES
 		void cross() // cross of diffs
 		{
 			n = (*(Vert*)v[1] - *(Vert*)v[0]).cross(*(Vert*)v[2] - *(Vert*)v[0]);
 		}
+		#endif
 	};
 
 	Vert* vert_alloc;
@@ -483,8 +536,9 @@ struct CDelaBella : IDelaBella
 			hi_y = v->y > hi_y ? v->y : hi_y;
 		}
 		
+		#ifndef USE_PREDICATES
 		f.cross();
-
+		#endif
 
 		int pro = 0;
 		// skip until points are coplanar
@@ -528,7 +582,7 @@ struct CDelaBella : IDelaBella
 			i++;
 		}
 
-		bool colinear = f.sign() == 0; // hybrid
+		bool colinear = f.sign0(); // hybrid
 		if (colinear)
 		{
 			// choose x or y axis to sort verts (no need to be exact)
@@ -767,14 +821,20 @@ struct CDelaBella : IDelaBella
 				p->v[0] = vert_alloc + 0;
 				p->v[1] = vert_alloc + j-1;
 				p->v[2] = vert_alloc + j;
+
+				#ifndef USE_PREDICATES
 				p->cross();
+				#endif
 
 				// mirrored
 				Face* q = next_q;
 				q->v[0] = vert_alloc + 0;
 				q->v[1] = vert_alloc + j;
 				q->v[2] = vert_alloc + j-1;
+
+				#ifndef USE_PREDICATES
 				q->cross();
+				#endif
 
 				if (j < i - 1)
 				{
@@ -809,7 +869,10 @@ struct CDelaBella : IDelaBella
 			f.v[0] = vert_alloc + 0;
 			f.v[1] = vert_alloc + 1;
 			f.v[2] = vert_alloc + 2;
+
+			#ifndef USE_PREDICATES
 			f.cross();
+			#endif
 
 			int one = 1, two = 2;
 			if (!f.dotNP(vert_alloc[i]))
@@ -832,7 +895,10 @@ struct CDelaBella : IDelaBella
 				p->v[0] = vert_alloc + 0;
 				p->v[one] = vert_alloc + j - 1;
 				p->v[two] = vert_alloc + j;
+
+				#ifndef USE_PREDICATES
 				p->cross();
+				#endif
 
 				Face* q;
 
@@ -843,7 +909,10 @@ struct CDelaBella : IDelaBella
 					q->v[0] = vert_alloc + i;
 					q->v[one] = vert_alloc + 1;
 					q->v[two] = vert_alloc + 0;
+
+					#ifndef USE_PREDICATES
 					q->cross();
+					#endif
 
 					q->f[0] = p;
 					q->f[one] = 0; // LAST_Q;
@@ -857,7 +926,10 @@ struct CDelaBella : IDelaBella
 				q->v[0] = vert_alloc + i;
 				q->v[one] = vert_alloc + j;
 				q->v[two] = vert_alloc + j-1;
+
+				#ifndef USE_PREDICATES
 				q->cross();
+				#endif
 
 				next_q = Face::Alloc(cache);
 
@@ -879,7 +951,10 @@ struct CDelaBella : IDelaBella
 					q->v[0] = vert_alloc + i;
 					q->v[one] = vert_alloc + 0;
 					q->v[two] = vert_alloc + i-1;
+
+					#ifndef USE_PREDICATES
 					q->cross();
+					#endif
 
 					q->f[0] = p;
 					q->f[one] = prev_q;
@@ -1023,7 +1098,10 @@ struct CDelaBella : IDelaBella
 							s->v[1] = b;
 							s->v[2] = q;
 
+							#ifndef USE_PREDICATES
 							s->cross();
+							#endif
+
 							s->f[2] = n;
 
 							// change neighbour's adjacency from old visible face to cone side
@@ -1180,7 +1258,7 @@ struct CDelaBella : IDelaBella
 			#else
 			{
 				// calc xa only where necessary
-				nz_neg = f->sign() < 0; // hybrid
+				nz_neg = f->signN(); // hybrid
 			}
 			#endif
 
@@ -1408,17 +1486,13 @@ struct CDelaBella : IDelaBella
 			#ifdef USE_PREDICATES
 			double a0b = predicates::adaptive::orient2d(va->x,va->y, v0->x,v0->y, vb->x,vb->y);
 			double a1b = predicates::adaptive::orient2d(va->x,va->y, v1->x,v1->y, vb->x,vb->y);
-
-			if (a0b < 0 && a1b > 0)
+			
+			if (a0b <= 0 && a1b >= 0)
 			{
-				// offending edge!
-				N = (Face*)face;
-				break;
-			}
+				// note: 
+				// check co-linearity only if v0,v1 are pointing
+				// to the right direction (from va to vb)
 
-			// brainfuck!
-			if (!(a0b > 0 || a1b < 0))
-			{
 				if (a0b == 0)
 				{
 					*restart = v0;
@@ -1434,7 +1508,12 @@ struct CDelaBella : IDelaBella
 					*ptail = list ? tail : 0;
 					return list;
 				}
+
+				// offending edge!
+				N = (Face*)face;
+				break;
 			}
+			
 
 			#else
 			IA_VAL a0[2] = { (IA_VAL)v0->x - ia_a[0], (IA_VAL)v0->y - ia_a[1] };
@@ -1447,6 +1526,7 @@ struct CDelaBella : IDelaBella
 
 			if (l_a0b < r_a0b && l_a1b > r_a1b)
 			{
+				assert(a0b < 0 && a1b>0);
 				// offending edge!
 				N = (Face*)face;
 				break;
@@ -1476,6 +1556,7 @@ struct CDelaBella : IDelaBella
 
 				if (xa_a0b == 0)
 				{
+					assert(a0b == 0);
 					// v0 overlap
 					
 					//va = v0;
@@ -1489,6 +1570,7 @@ struct CDelaBella : IDelaBella
 
 				if (xa_a1b == 0)
 				{
+					assert(a1b == 0);
 					// v1 overlap
 
 					//va = v1;
@@ -1502,6 +1584,8 @@ struct CDelaBella : IDelaBella
 
 				if (xa_a0b < 0 && xa_a1b > 0)
 				{
+					assert(a0b < 0 && a1b > 0);
+
 					// offending edge!
 					N = (Face*)face;
 					break;
@@ -1573,6 +1657,7 @@ struct CDelaBella : IDelaBella
 			#ifdef USE_PREDICATES
 			double abr = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, vr->x, vr->y);
 			
+			
 			if (abr == 0)
 			{
 				*restart = vr;
@@ -1598,7 +1683,6 @@ struct CDelaBella : IDelaBella
 				N = F;
 			}
 			
-
 			#else
 			IA_VAL ar[2] = { (IA_VAL)vr->x - ia_a[0], (IA_VAL)vr->y - ia_a[1] };
 
@@ -1607,6 +1691,7 @@ struct CDelaBella : IDelaBella
 
 			if (l_abr > r_abr)
 			{
+				assert(abr > 0);
 				// above: de edge (a' = f vert)
 				a = f;
 				v0 = (Vert*)F->v[d];
@@ -1616,6 +1701,8 @@ struct CDelaBella : IDelaBella
 			else
 			if (l_abr < r_abr)
 			{
+				assert(abr < 0);
+
 				// below: fd edge (a' = e vert)
 				a = e;
 				v0 = (Vert*)F->v[f];
@@ -1785,12 +1872,12 @@ struct CDelaBella : IDelaBella
 				Vert* v = (Vert*)N->v[0]; // may be not same as global va (if we have had a skip)
 				Vert* vr = (Vert*)(F->v[d]);
 
-				// is va,v0,vr,v1 a convex quad?
+				// is v,v0,vr,v1 a convex quad?
 				#ifdef USE_PREDICATES
-				double a0r = predicates::adaptive::orient2d(va->x, va->y, v0->x, v0->y, vr->x, vr->y);
-				double a1r = predicates::adaptive::orient2d(va->x, va->y, v1->x, v1->y, vr->x, vr->y);
-
-				if (a0r >= 0 || a1r <= 0)
+				double v0r = predicates::adaptive::orient2d(v->x, v->y, v0->x, v0->y, vr->x, vr->y);
+				double v1r = predicates::adaptive::orient2d(v->x, v->y, v1->x, v1->y, vr->x, vr->y);
+				
+				if (v0r >= 0 || v1r <= 0)
 				{
 					// CONCAVE CUNT!
 					*tail = N;
@@ -1810,6 +1897,7 @@ struct CDelaBella : IDelaBella
 
 				if (l_a0r > r_a0r || l_a1r < r_a1r)
 				{
+					assert(v0r >= 0 || v1r <= 0);
 					// CONCAVE CUNT!
 					*tail = N;
 					tail = (Face**)&N->next;
@@ -1830,6 +1918,7 @@ struct CDelaBella : IDelaBella
 
 					if (xa_a0r >= 0 || xa_a1r <= 0)
 					{
+						assert(v0r >= 0 || v1r <= 0);
 						// CONCAVE CUNT!
 						*tail = N;
 						tail = (Face**)&N->next;
@@ -1837,6 +1926,9 @@ struct CDelaBella : IDelaBella
 					}
 				}
 				#endif
+
+				assert(v0r < 0 && v1r > 0);
+
 
 				// it's convex, xa already checked
 				// if (l_a0r < r_a0r && l_a1r > r_a1r)
@@ -1941,9 +2033,25 @@ struct CDelaBella : IDelaBella
 					}
 					else
 					{
-						//#ifdef USE_PREDICATES
-						/// hmmm
-						//#else
+						#ifdef USE_PREDICATES
+						// check if v and vr are on the same side of a--b
+						double abv = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, v->x, v->y);
+						double abr = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, vr->x, vr->y);
+						
+						if (abv >= 0 && abr >= 0 || abv <= 0 && abr <= 0)
+						{
+							// resolved
+							N->next = flipped;
+							flipped = N;
+						}
+						else
+						{
+							// unresolved
+							*tail = N;
+							tail = (Face**)&N->next;
+						}
+						
+						#else
 						IA_VAL ab[2] = { (IA_VAL)vb->x - (IA_VAL)va->x, (IA_VAL)vb->y - (IA_VAL)va->y };
 						IA_VAL av[2] = { (IA_VAL)v->x - (IA_VAL)va->x, (IA_VAL)v->y - (IA_VAL)va->y };
 						IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)va->x, (IA_VAL)vr->y - (IA_VAL)va->y };
@@ -1955,6 +2063,7 @@ struct CDelaBella : IDelaBella
 
 						if (l_ab_av < r_ab_av && l_ab_ar < r_ab_ar || l_ab_av > r_ab_av && l_ab_ar > r_ab_ar)
 						{
+							assert(abv >= 0 && abr >= 0 || abv <= 0 && abr <= 0);
 							// resolved
 							N->next = flipped;
 							flipped = N;
@@ -1962,6 +2071,7 @@ struct CDelaBella : IDelaBella
 						else
 						if (l_ab_av < r_ab_av && l_ab_ar > r_ab_ar || l_ab_av > r_ab_av && l_ab_ar < r_ab_ar)
 						{
+							assert(abv >= 0 && abr <= 0 || abv <= 0 && abr >= 0);
 							// unresolved
 							*tail = N;
 							tail = (Face**)&N->next;
@@ -1978,6 +2088,7 @@ struct CDelaBella : IDelaBella
 
 							if (xa_ab_av < 0 && xa_ab_ar < 0 || xa_ab_av > 0 && xa_ab_ar > 0)
 							{
+								assert(abv >= 0 && abr >= 0 || abv <= 0 && abr <= 0);
 								// resolved
 								N->next = flipped;
 								flipped = N;
@@ -1985,16 +2096,18 @@ struct CDelaBella : IDelaBella
 							else
 							if (xa_ab_av < 0 && xa_ab_ar > 0 || xa_ab_av > 0 && xa_ab_ar < 0)
 							{
+								assert(abv >= 0 && abr <= 0 || abv <= 0 && abr >= 0);
 								// unresolved
 								*tail = N;
 								tail = (Face**)&N->next;
 							}
 						}
-						//#endif
+						#endif
 					}
 				}
 			}
 
+			#ifndef USE_PREDICATES
 			// update cross prods
 			Face* N = flipped;
 			while (N)
@@ -2004,6 +2117,7 @@ struct CDelaBella : IDelaBella
 				F->cross(); // fix!
 				N = (Face*)N->next;
 			}
+			#endif
 
 			// 3. Repeatedly until no flip occurs
 			// for every edge from new edges list,
@@ -2111,8 +2225,10 @@ struct CDelaBella : IDelaBella
 							v1->sew = N;
 						}
 
+						#ifndef USE_PREDICATES
 						N->cross();
 						F->cross();
+						#endif
 					}
 
 					N = (Face*)N->next;

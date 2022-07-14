@@ -5,7 +5,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #define _CRT_SECURE_NO_WARNINGS
 
-//#define DELAUNATOR
+#define DELAUNATOR
 #define Cdt
 
 #include <math.h>
@@ -799,6 +799,28 @@ int main(int argc, char* argv[])
             int offs;
         };
 
+        struct PolyPred
+        {
+            PolyPred(const std::vector<MyPoint>& v) : v(v) {}
+            bool operator () (const MyPoly& p, const MyPoly& q) const
+            {
+                if (p.size < q.size)
+                    return true;
+                if (p.size == q.size)
+                {
+                    for (size_t i = 0; i < p.size; i++)
+                    {
+                        if (v[i + p.offs] == v[i + q.offs])
+                            continue;
+                        return v[i + p.offs] < v[i + q.offs];
+                    }
+                }
+                return false;
+            }
+            const std::vector<MyPoint>& v;
+        };
+
+        printf("preping cdt for cmp ...\n");
         std::vector<MyPoint> cdt_v(poly_indices);
         std::vector<MyPoly> cdt_p(cdt_polys.size());
         for (int p = 0, n = 0; p < cdt_polys.size(); p++)
@@ -836,7 +858,10 @@ int main(int argc, char* argv[])
 
             n += s;
         }
+        std::sort(cdt_p.begin(), cdt_p.end(), PolyPred(cdt_v));
 
+
+        printf("preping idb for cmp ...\n");
         std::vector<MyPoint> idb_v(poly_indices);
         std::vector<MyPoly> idb_p(polys_delabella);
         for (int p = 0, n = 0; p < polys_delabella; p++)
@@ -875,31 +900,9 @@ int main(int argc, char* argv[])
 
             n += s;
         }
-
-        struct PolyPred
-        {
-            PolyPred(const std::vector<MyPoint>& v) : v(v) {}
-            bool operator () (const MyPoly& p, const MyPoly& q) const
-            {
-                if (p.size < q.size)
-                    return true;
-                if (p.size == q.size)
-                {
-                    for (size_t i = 0; i < p.size; i++)
-                    {
-                        if (v[i + p.offs] == v[i + q.offs])
-                            continue;
-                        return v[i + p.offs] < v[i + q.offs];
-                    }
-                }
-                return false;
-            }
-            const std::vector<MyPoint>& v;
-        };
-
-        std::sort(cdt_p.begin(), cdt_p.end(), PolyPred(cdt_v));
         std::sort(idb_p.begin(), idb_p.end(), PolyPred(idb_v));
 
+        printf("COMPARING...\n");
         for (int p = 0; p < polys_delabella; p++)
         {
             MyPoly p_idb = idb_p[p];
@@ -1072,6 +1075,10 @@ int main(int argc, char* argv[])
 
         // put it into vbo_voronoi at 'i'
 
+        // TODO:
+        // WE"RE REMOVING dela->n completely!
+        // (transition to predicates)
+
 		// almost exact in hybrid
 		/*
 		vbo_voronoi_ptr[3 * i + 0] = (gl_t)dela->n.x;
@@ -1079,10 +1086,12 @@ int main(int argc, char* argv[])
 		vbo_voronoi_ptr[3 * i + 2] = (gl_t)(-2.0*dela->n.z);
 		*/
 
-		// less jumping on extreme zooming
+        // less jumping on extreme zooming
+        /*
         vbo_voronoi_ptr[3*i+0] = (gl_t)(-0.5 * (double)dela->n.x / (double)dela->n.z - vbo_x);
         vbo_voronoi_ptr[3*i+1] = (gl_t)(-0.5 * (double)dela->n.y / (double)dela->n.z - vbo_y);
         vbo_voronoi_ptr[3*i+2] = (gl_t)(1.0);
+        */
 
 		dela = dela->next;
 	}
