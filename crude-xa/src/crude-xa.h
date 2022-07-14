@@ -464,25 +464,25 @@ struct IA_VAL
 	static double inflate_neg_lo(double lo)
 	{
 		//return nexttoward(lo, -INFINITY);
-		return lo * (1.0 + 1.0 * DBL_EPSILON) - DBL_MIN;
+		return lo * (1.0 + 1.0 * DBL_EPSILON) - DBL_TRUE_MIN/*DBL_MIN*/;
 	}
 
 	static double inflate_pos_lo(double lo)
 	{
 		//return nexttoward(lo, -INFINITY);
-		return lo * (1.0 - 0.5 * DBL_EPSILON) - DBL_MIN;
+		return lo * (1.0 - 0.5 * DBL_EPSILON) - DBL_TRUE_MIN/*DBL_MIN*/;
 	}
 
 	static double inflate_neg_hi(double hi)
 	{
 		//return nexttoward(hi, +INFINITY);
-		return hi * (1.0 - 0.5 * DBL_EPSILON) + DBL_MIN;
+		return hi * (1.0 - 0.5 * DBL_EPSILON) + DBL_TRUE_MIN/*DBL_MIN*/;
 	}
 
 	static double inflate_pos_hi(double hi)
 	{
 		//return nexttoward(hi, +INFINITY);
-		return hi * (1.0 + 1.0 * DBL_EPSILON) + DBL_MIN;
+		return hi * (1.0 + 1.0 * DBL_EPSILON) + DBL_TRUE_MIN/*DBL_MIN*/;
 	}
 
 	inline void inflate()

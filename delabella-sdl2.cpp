@@ -632,8 +632,8 @@ int main(int argc, char* argv[])
         {
             CDT::Edge e
             { 
-                (size_t)force[c].a,
-                (size_t)force[c].b
+                (CDT::VertInd)force[c].a,
+                (CDT::VertInd)force[c].b
             };
             edges.push_back(e);
         }
@@ -834,7 +834,7 @@ int main(int argc, char* argv[])
             cdt_p[p].size = s;
             cdt_p[p].offs = n;
 
-            n += cdt_p[p].size;
+            n += s;
         }
 
         std::vector<MyPoint> idb_v(poly_indices);

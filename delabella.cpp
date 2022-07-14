@@ -11,6 +11,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #ifdef IA_FAST
 #include <fenv.h>
+//anyone support this?
 //#pragma STDC FENV_ACCESS ON
 struct IA_FastRound
 {
@@ -384,23 +385,6 @@ struct CDelaBella : IDelaBella
 				points = w;
 			}
 		}
-
-		// sort back to see if we're robust even for unsureted input
-		/*
-		{
-			struct Unsort
-			{
-				bool operator () (const Vert& a, const Vert& b) const
-				{
-					return a.i < b.i;
-				}
-			} u;
-
-			std::sort(vert_alloc, vert_alloc + points, u);
-			for (int i = 0; i < points; i++)
-				vert_map[vert_alloc[i].i] = i;
-		}
-		*/
 
 		if (points < 3)
 		{
