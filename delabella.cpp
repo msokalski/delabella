@@ -9,6 +9,13 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #include <algorithm>
 #include "delabella.h"
 
+#define USE_PREDICATES
+
+#ifdef USE_PREDICATES
+#include "CDT/include/predicates.h"
+struct IA_FastRound { IA_FastRound() {} };
+#else
+
 #ifdef IA_FAST
 #include <fenv.h>
 //anyone support this?
@@ -29,6 +36,8 @@ struct IA_FastRound
 };
 #else
 struct IA_FastRound { IA_FastRound() {} };
+#endif
+
 #endif
 
 static Unsigned28 s14sqr(const Signed14& s)
@@ -178,6 +187,10 @@ struct CDelaBella : IDelaBella
 
 		bool dot0(const Vert& p)
 		{
+			#ifdef USE_PREDICATES
+			return predicates::adaptive::incircle(p.x, p.y, v[0]->x, v[0]->y, v[1]->x, v[1]->y, v[2]->x, v[2]->y) == 0;
+			#else
+
 			Vect pv = p - *(Vert*)v[0];
 			Signed62 approx_dot =
 				(Signed62)n.x * (Signed62)pv.x +
@@ -201,10 +214,16 @@ struct CDelaBella : IDelaBella
 				(adx * adx + ady * ady) * (cdx * bdy - bdx * cdy) +
 				(bdx * bdx + bdy * bdy) * (adx * cdy - cdx * ady) ==
 				(cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady);
+
+			#endif
 		}
 
 		bool dotP(const Vert& p)
 		{
+			#ifdef USE_PREDICATES
+			return predicates::adaptive::incircle(p.x, p.y, v[0]->x, v[0]->y, v[1]->x, v[1]->y, v[2]->x, v[2]->y) > 0;
+			#else
+
 			Vect pv = p - *(Vert*)v[0];
 			Signed62 approx_dot =
 				(Signed62)n.x * (Signed62)pv.x +
@@ -230,10 +249,16 @@ struct CDelaBella : IDelaBella
 				(adx * adx + ady * ady) * (cdx * bdy - bdx * cdy) +
 				(bdx * bdx + bdy * bdy) * (adx * cdy - cdx * ady) >
 				(cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady); // re-swapped
+
+			#endif
 		}
 
 		bool dotN(const Vert& p)
 		{
+			#ifdef USE_PREDICATES
+			return predicates::adaptive::incircle(p.x, p.y, v[0]->x, v[0]->y, v[1]->x, v[1]->y, v[2]->x, v[2]->y) < 0;
+			#else
+
 			Vect pv = p - *(Vert*)v[0];
 			Signed62 approx_dot =
 				(Signed62)n.x * (Signed62)pv.x +
@@ -259,11 +284,15 @@ struct CDelaBella : IDelaBella
 				(adx * adx + ady * ady) * (cdx * bdy - bdx * cdy) +
 				(bdx * bdx + bdy * bdy) * (adx * cdy - cdx * ady) <
 				(cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady); // re-swapped
+			#endif
 		}
 
 		// test
 		bool dotNP(const Vert& p)
 		{
+			#ifdef USE_PREDICATES
+			return predicates::adaptive::incircle(p.x,p.y, v[0]->x,v[0]->y, v[1]->x,v[1]->y, v[2]->x,v[2]->y) <= 0;
+			#else
 			Vect pv = 
 			{ 
 				(Signed15)p.x - (Signed15)v[0]->x,
@@ -304,6 +333,7 @@ struct CDelaBella : IDelaBella
 			#endif
 
 			return ret;
+			#endif
 		}
 
 		void cross() // cross of diffs
