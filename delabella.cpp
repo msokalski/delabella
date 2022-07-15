@@ -1,6 +1,6 @@
 /*
 DELABELLA - Delaunay triangulation library
-Copyright (C) 2018 GUMIX - Marcin Sokalski
+Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 */
 
 #include <cassert>
@@ -8,85 +8,65 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #include <cstdlib>
 #include <algorithm>
 #include "delabella.h"
+#include "predicates.h"
 
-#ifdef USE_PREDICATES
-#include "CDT/include/predicates.h"
-#else
-#include "CDT/include/predicates.h"
-
-#ifdef IA_FAST
-#include <fenv.h>
-//anyone support this?
-//#pragma STDC FENV_ACCESS ON
-struct IA_FastRound
-{
-	const int restore;
-
-	IA_FastRound() : restore(fegetround()) 
-	{ 
-		fesetround(FE_DOWNWARD); 
-	}
-
-	~IA_FastRound() 
-	{ 
-		fesetround(restore); 
-	}
-};
-#else
-struct IA_FastRound { IA_FastRound() {} };
+#ifdef _WIN32
+#include <windows.h>
 #endif
 
-#endif
-
-static Unsigned28 s14sqr(const Signed14& s)
+static uint64_t uSec()
 {
-//	Signed29 m = 0x1p-1019;
-//	Signed29 t = (Signed29)s * m;
-//	Signed29 tt = t * t;
-//	return tt;
-	return (Unsigned28)((Signed29)s*(Signed29)s);
+#ifdef _WIN32
+	LARGE_INTEGER c;
+	static LARGE_INTEGER f;
+	static BOOL bf = QueryPerformanceFrequency(&f);
+	QueryPerformanceCounter(&c);
+	uint64_t n = c.QuadPart;
+	uint64_t d = f.QuadPart;
+	uint64_t m = 1000000;
+	// calc microseconds = n*m/d carefully!
+	// naive mul/div would work only for upto 5h on 1GHz freq
+	// we exploit fact that m*d fits in uint64 (upto 18THz freq)
+	// so n%d*m fits as well,
+	return n / d * m + n % d * m / d;
+#else
+	timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (uint64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+#endif
 }
 
-#ifndef USE_PREDICATES
-typedef DelaBella_Circumcenter Norm;
-struct Vect
-{
-	Signed15 x, y;
-	Signed29 z;
 
-	Norm cross (const Vect& v) const // cross prod
+template <typename T>
+IDelaBella<T>::~IDelaBella()
+{
+}
+
+template <typename T>
+struct CDelaBella : IDelaBella<T>
+{
+	CDelaBella() : 
+		vert_map(0),
+		vert_alloc(0),
+		face_alloc(0),
+		max_verts(0),
+		max_faces(0),
+		first_dela_face(0),
+		first_hull_face(0),
+		first_boundary_vert(0),
+		inp_verts(0),
+		out_verts(0),
+		out_hull_faces(0),
+		unique_points(0),
+		errlog_proc(0),
+		errlog_file(0)
 	{
-		Norm n;
-		n.x = (Signed45)y*(Signed45)v.z - (Signed45)z*(Signed45)v.y;
-		n.y = (Signed45)z*(Signed45)v.x - (Signed45)x*(Signed45)v.z;
-		n.z = (Signed31)x*(Signed31)v.y - (Signed31)y*(Signed31)v.x;
-		return n;
 	}
-};
-#endif
 
-IDelaBella::~IDelaBella()
-{
-}
-
-struct CDelaBella : IDelaBella
-{
 	struct Face;
 
-	struct Vert : DelaBella_Vertex
+	struct Vert : DelaBella_Vertex<T>
 	{
-		#ifndef USE_PREDICATES
-		Unsigned28 z;
-		Vect operator - (const Vert& v) const // diff
-		{
-			Vect d;
-			d.x = (Signed15)x - (Signed15)v.x;
-			d.y = (Signed15)y - (Signed15)v.y;
-			d.z = (Signed29)z - (Signed29)v.z;
-			return d;
-		}
-		#endif
-
 		static bool overlap(const Vert* v1, const Vert* v2)
 		{
 			return v1->x == v2->x && v1->y == v2->y;
@@ -94,69 +74,19 @@ struct CDelaBella : IDelaBella
 
 		bool operator < (const Vert& v) const
 		{
-			#ifdef USE_PREDICATES
-			double dif = predicates::adaptive::sqrlendif2d(x, y, v.x, v.y);
+			T dif = predicates::adaptive::sqrlendif2d(this->x, this->y, v.x, v.y);
 
 			if (dif < 0)
 				return true;
 			if (dif > 0)
 				return false;
-			if (x < v.x || x == v.x && y < v.y)
+			if (this->x < v.x || this->x == v.x && this->y < v.y)
 				return true;
 			return false;
-
-			#else
-
-			if (z < v.z)
-			{
-				return true;
-			}
-			if (z > v.z || x == v.x && y == v.y)
-			{
-				return false;
-			}
-
-			XA_REF ax = x;
-			XA_REF ay = y;
-			XA_REF az = ax * ax + ay * ay;
-			XA_REF bx = v.x;
-			XA_REF by = v.y;
-			XA_REF bz = bx * bx + by * by;
-
-			if (az < bz || az == bz && (x < v.x || x == v.x && y < v.y))
-			{
-				return true;
-			}
-
-			return false;
-			#endif
-		}
-
-		static int u28cmp(const void* a, const void* b)
-		{
-			const Vert* va = (const Vert*)a;
-			const Vert* vb = (const Vert*)b;
-			if (va->x* va->x + va->y * va->y < vb->x * vb->x + vb->y * vb->y)
-				return -1;
-			if (va->x * va->x + va->y * va->y > vb->x * vb->x + vb->y * vb->y)
-				return 1;
-			if (va->y < vb->y)
-				return -1;
-			if (va->y > vb->y)
-				return 1;
-			if (va->x < vb->x)
-				return -1;
-			if (va->x > vb->x)
-				return 1;
-			if (va->i < vb->i)
-				return -1;
-			if (va->i > vb->i)
-				return 1;
-			return 0;
 		}
 	};
 
-	struct Face : DelaBella_Triangle
+	struct Face : DelaBella_Triangle<T>
 	{
 		static Face* Alloc(Face** from)
 		{
@@ -168,222 +98,72 @@ struct CDelaBella : IDelaBella
 
 		void Free(Face** to)
 		{
-			next = *to;
+			this->next = *to;
 			*to = this;
 		}
 
 		Face* Next(const Vert* p) const
 		{
-			// return next face in same direction as face vertices are (cw/ccw)
-
-			if (v[0] == p)
-				return (Face*)f[1];
-			if (v[1] == p)
-				return (Face*)f[2];
-			if (v[2] == p)
-				return (Face*)f[0];
+			if (this->v[0] == p)
+				return (Face*)this->f[1];
+			if (this->v[1] == p)
+				return (Face*)this->f[2];
+			if (this->v[2] == p)
+				return (Face*)this->f[0];
 			return 0;
 		}
 
 		bool signN() const
 		{
-			#ifdef USE_PREDICATES
-			return 0 > predicates::adaptive::orient2d(v[0]->x, v[0]->y, v[1]->x, v[1]->y, v[2]->x, v[2]->y);
-			#else
-			// try aprox
-			if (n.z < 0 || n.z > 0)
-				return false;
-
-			// calc exact
-			XA_REF x0 = v[0]->x, y0 = v[0]->y;
-			XA_REF x1 = v[1]->x, y1 = v[1]->y;
-			XA_REF x2 = v[2]->x, y2 = v[2]->y;
-
-			XA_REF v1x = x1 - x0, v1y = y1 - y0;
-			XA_REF v2x = x2 - x0, v2y = y2 - y0;
-
-			return (v1x * v2y).cmp(v1y * v2x) < 0;
-			#endif
+			return 0 > predicates::adaptive::orient2d(
+				this->v[0]->x, this->v[0]->y, 
+				this->v[1]->x, this->v[1]->y, 
+				this->v[2]->x, this->v[2]->y);
 		}
 
 		bool sign0() const
 		{
-			#ifdef USE_PREDICATES
-			return 0 == predicates::adaptive::orient2d(v[0]->x, v[0]->y, v[1]->x, v[1]->y, v[2]->x, v[2]->y);
-			#else
-			// try aprox
-			if (n.z < 0 || n.z > 0)
-				return false;
-
-			// calc exact
-			XA_REF x0 = v[0]->x, y0 = v[0]->y;
-			XA_REF x1 = v[1]->x, y1 = v[1]->y;
-			XA_REF x2 = v[2]->x, y2 = v[2]->y;
-
-			XA_REF v1x = x1 - x0, v1y = y1 - y0;
-			XA_REF v2x = x2 - x0, v2y = y2 - y0;
-
-			return (v1x * v2y).cmp(v1y * v2x) == 0;
-			#endif
+			return 0 == predicates::adaptive::orient2d(
+				this->v[0]->x, this->v[0]->y, 
+				this->v[1]->x, this->v[1]->y, 
+				this->v[2]->x, this->v[2]->y);
 		}
 
-		bool dot0(const Vert& p)
+		bool dot0(const Vert& p) const
 		{
-			#ifdef USE_PREDICATES
-			return predicates::adaptive::incircle(p.x, p.y, v[0]->x, v[0]->y, v[1]->x, v[1]->y, v[2]->x, v[2]->y) == 0;
-			#else
-
-			Vect pv = p - *(Vert*)v[0];
-			Signed62 approx_dot =
-				(Signed62)n.x * (Signed62)pv.x +
-				(Signed62)n.y * (Signed62)pv.y +
-				(Signed62)n.z * (Signed62)pv.z;
-
-			if (approx_dot < 0 || approx_dot > 0)
-				return false;
-
-			XA_REF px = p.x;
-			XA_REF py = p.y;
-
-			XA_REF adx = (XA_REF)v[0]->x - px;
-			XA_REF ady = (XA_REF)v[0]->y - py;
-			XA_REF bdx = (XA_REF)v[1]->x - px;
-			XA_REF bdy = (XA_REF)v[1]->y - py;
-			XA_REF cdx = (XA_REF)v[2]->x - px;
-			XA_REF cdy = (XA_REF)v[2]->y - py;
-
-			return
-				(adx * adx + ady * ady) * (cdx * bdy - bdx * cdy) +
-				(bdx * bdx + bdy * bdy) * (adx * cdy - cdx * ady) ==
-				(cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady);
-
-			#endif
+			return predicates::adaptive::incircle(
+				p.x, p.y, 
+				this->v[0]->x, this->v[0]->y, 
+				this->v[1]->x, this->v[1]->y, 
+				this->v[2]->x, this->v[2]->y) == 0;
 		}
 
-		bool dotP(const Vert& p)
+		bool dotP(const Vert& p) const
 		{
-			#ifdef USE_PREDICATES
-			return predicates::adaptive::incircle(p.x, p.y, v[0]->x, v[0]->y, v[1]->x, v[1]->y, v[2]->x, v[2]->y) > 0;
-			#else
-
-			Vect pv = p - *(Vert*)v[0];
-			Signed62 approx_dot =
-				(Signed62)n.x * (Signed62)pv.x +
-				(Signed62)n.y * (Signed62)pv.y +
-				(Signed62)n.z * (Signed62)pv.z;
-
-			if (approx_dot > 0)
-				return true;
-			if (approx_dot < 0)
-				return false;
-
-			XA_REF px = p.x;
-			XA_REF py = p.y;
-
-			XA_REF adx = (XA_REF)v[0]->x - px;
-			XA_REF ady = (XA_REF)v[0]->y - py;
-			XA_REF bdx = (XA_REF)v[1]->x - px;
-			XA_REF bdy = (XA_REF)v[1]->y - py;
-			XA_REF cdx = (XA_REF)v[2]->x - px;
-			XA_REF cdy = (XA_REF)v[2]->y - py;
-
-			return
-				(adx * adx + ady * ady) * (cdx * bdy - bdx * cdy) +
-				(bdx * bdx + bdy * bdy) * (adx * cdy - cdx * ady) >
-				(cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady); // re-swapped
-
-			#endif
+			return predicates::adaptive::incircle(
+				p.x, p.y, 
+				this->v[0]->x, this->v[0]->y, 
+				this->v[1]->x, this->v[1]->y, 
+				this->v[2]->x, this->v[2]->y) > 0;
 		}
 
-		bool dotN(const Vert& p)
+		bool dotN(const Vert& p) const
 		{
-			#ifdef USE_PREDICATES
-			return predicates::adaptive::incircle(p.x, p.y, v[0]->x, v[0]->y, v[1]->x, v[1]->y, v[2]->x, v[2]->y) < 0;
-			#else
-
-			Vect pv = p - *(Vert*)v[0];
-			Signed62 approx_dot =
-				(Signed62)n.x * (Signed62)pv.x +
-				(Signed62)n.y * (Signed62)pv.y +
-				(Signed62)n.z * (Signed62)pv.z;
-
-			if (approx_dot < 0)
-				return true;
-			if (approx_dot > 0)
-				return false;
-
-			XA_REF px = p.x;
-			XA_REF py = p.y;
-
-			XA_REF adx = (XA_REF)v[0]->x - px;
-			XA_REF ady = (XA_REF)v[0]->y - py;
-			XA_REF bdx = (XA_REF)v[1]->x - px;
-			XA_REF bdy = (XA_REF)v[1]->y - py;
-			XA_REF cdx = (XA_REF)v[2]->x - px;
-			XA_REF cdy = (XA_REF)v[2]->y - py;
-
-			return
-				(adx * adx + ady * ady) * (cdx * bdy - bdx * cdy) +
-				(bdx * bdx + bdy * bdy) * (adx * cdy - cdx * ady) <
-				(cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady); // re-swapped
-			#endif
+			return predicates::adaptive::incircle(
+				p.x, p.y, 
+				this->v[0]->x, this->v[0]->y, 
+				this->v[1]->x, this->v[1]->y, 
+				this->v[2]->x, this->v[2]->y) < 0;
 		}
 
-		// test
-		bool dotNP(const Vert& p)
+		bool dotNP(const Vert& p) const
 		{
-			#ifdef USE_PREDICATES
-			return predicates::adaptive::incircle(p.x,p.y, v[0]->x,v[0]->y, v[1]->x,v[1]->y, v[2]->x,v[2]->y) <= 0;
-			#else
-			Vect pv = 
-			{ 
-				(Signed15)p.x - (Signed15)v[0]->x,
-				(Signed15)p.y - (Signed15)v[0]->y,
-				(Signed29)(*(Vert*)(v[0])).z - (Signed29)p.z // z filp!
-			};
-			Signed62 approx_dot_xy = (Signed62)n.x * (Signed62)pv.x + (Signed62)n.y * (Signed62)pv.y;
-			Signed62 approx_dot_z = (Signed62)n.z * (Signed62)pv.z;
-
-			#ifndef DB_AUTO_TEST
-			if (approx_dot_xy < approx_dot_z)
-				return true;
-			if (approx_dot_xy > approx_dot_z)
-				return false;
-			#endif
-
-			XA_REF px = p.x;
-			XA_REF py = p.y;
-
-			XA_REF adx = (XA_REF)v[0]->x - px;
-			XA_REF ady = (XA_REF)v[0]->y - py;
-			XA_REF bdx = (XA_REF)v[1]->x - px;
-			XA_REF bdy = (XA_REF)v[1]->y - py;
-			XA_REF cdx = (XA_REF)v[2]->x - px;
-			XA_REF cdy = (XA_REF)v[2]->y - py;
-
-			bool ret = 
-				(adx * adx + ady * ady) * (cdx * bdy - bdx * cdy) +
-				(bdx * bdx + bdy * bdy) * (adx * cdy - cdx * ady) <=
-				(cdx * cdx + cdy * cdy) * (adx * bdy - bdx * ady); // re-swapped
-
-			#ifdef DB_AUTO_TEST
-			if (approx_dot_xy < approx_dot_z)
-				assert(ret);
-			else
-			if (approx_dot_xy > approx_dot_z)
-				assert(!ret);
-			#endif
-
-			return ret;
-			#endif
+			return predicates::adaptive::incircle(
+				p.x,p.y, 
+				this->v[0]->x, this->v[0]->y, 
+				this->v[1]->x, this->v[1]->y, 
+				this->v[2]->x, this->v[2]->y) <= 0;
 		}
-
-		#ifndef USE_PREDICATES
-		void cross() // cross of diffs
-		{
-			n = (*(Vert*)v[1] - *(Vert*)v[0]).cross(*(Vert*)v[2] - *(Vert*)v[0]);
-		}
-		#endif
 	};
 
 	Vert* vert_alloc;
@@ -406,20 +186,18 @@ struct CDelaBella : IDelaBella
 	int(*errlog_proc)(void* file, const char* fmt, ...);
 	void* errlog_file;
 
-	int Prepare(int* start, Face** hull, int* out_hull_faces, Face** cache)
+	int Prepare(int* start, Face** hull, int* out_hull_faces, Face** cache, uint64_t* sort_stamp)
 	{
+		uint64_t time0 = uSec();
+
 		if (errlog_proc)
-			errlog_proc(errlog_file, "[PRO] sorting vertices\n");
+			errlog_proc(errlog_file, "[...] sorting vertices");
 		int points = inp_verts;
 
 		std::sort(vert_alloc, vert_alloc + points);
 
 		// rmove dups
 		{
-			// it's fast!
-			//if (errlog_proc)
-			//	errlog_proc(errlog_file, "[PRO] looking for duplicates\n");
-
 			int w = 0, r = 1; // skip initial no-dups block
 			while (r < points && !Vert::overlap(vert_alloc + r, vert_alloc + w))
 			{
@@ -452,6 +230,14 @@ struct CDelaBella : IDelaBella
 				d = w - 1;
 			}
 
+			uint64_t time1 = uSec();
+			if (sort_stamp)
+				*sort_stamp = time1;
+
+			if (errlog_proc)
+				errlog_proc(errlog_file, "\r[100] sorting vertices (%lld ms)\n", (time1 - time0) / 1000);
+			time0 = time1;
+
 			if (points - w)
 			{
 				if (errlog_proc)
@@ -472,7 +258,7 @@ struct CDelaBella : IDelaBella
 					errlog_proc(errlog_file, "[WRN] all input points are colinear, returning single segment!\n");
 				first_boundary_vert = vert_alloc + 0;
 				first_internal_vert = 0;
-				vert_alloc[0].next = (DelaBella_Vertex*)vert_alloc + 1;
+				vert_alloc[0].next = (DelaBella_Vertex<T>*)vert_alloc + 1;
 				vert_alloc[1].next = 0;
 			}
 			else
@@ -488,16 +274,12 @@ struct CDelaBella : IDelaBella
 			return -points;
 		}
 
-		// now with progress
-		//if (errlog_proc)
-		//	errlog_proc(errlog_file, "[PRO] preparing initial hull\n");
-
 		int i;
 		Face f; // tmp
 		f.v[0] = vert_alloc + 0;
 
-		Signed14 lo_x = vert_alloc[0].x, hi_x = lo_x;
-		Signed14 lo_y = vert_alloc[0].y, hi_y = lo_y;
+		T lo_x = vert_alloc[0].x, hi_x = lo_x;
+		T lo_y = vert_alloc[0].y, hi_y = lo_y;
 		int lower_left = 0;
 		int upper_right = 0;
 		for (i = 1; i < 3; i++)
@@ -527,10 +309,6 @@ struct CDelaBella : IDelaBella
 			hi_y = v->y > hi_y ? v->y : hi_y;
 		}
 		
-		#ifndef USE_PREDICATES
-		f.cross();
-		#endif
-
 		int pro = 0;
 		// skip until points are coplanar
 		while (i < points && f.dot0(vert_alloc[i]))
@@ -542,9 +320,11 @@ struct CDelaBella : IDelaBella
 				if (pro >= points)
 					pro = points - 1;
 				if (i == points - 1)
+				{
 					p = 100;
+				}
 				if (errlog_proc)
-					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation%s", p, p >= 100 ? "" : "%", p >= 100 ? "\n" : "");
+					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation ", p, p >= 100 ? "" : "%");
 			}
 
 			Vert* v = vert_alloc + i;
@@ -594,11 +374,6 @@ struct CDelaBella : IDelaBella
 			// sort parts separately in opposite directions
 			// mark part with Vert::sew temporarily
 
-			#ifndef USE_PREDICATES
-			Signed15 part_x = (Signed15)vert_alloc[lower_left].y - (Signed15)vert_alloc[upper_right].y;
-			Signed15 part_y = (Signed15)vert_alloc[upper_right].x - (Signed15)vert_alloc[lower_left].x;
-			#endif
-
 			for (int j = 0; j < i; j++)
 			{
 				if (j == lower_left)
@@ -614,10 +389,9 @@ struct CDelaBella : IDelaBella
 				}
 				else
 				{
-					#ifdef USE_PREDICATES
 					Vert* ll = vert_alloc + lower_left;
 					Vert* ur = vert_alloc + upper_right;
-					double dot = predicates::adaptive::orient2d(ll->x, ll->y, ur->x, ur->y, vert_alloc[j].x, vert_alloc[j].y);
+					T dot = predicates::adaptive::orient2d(ll->x, ll->y, ur->x, ur->y, vert_alloc[j].x, vert_alloc[j].y);
 					if (dot < 0)
 					{
 						// lower
@@ -628,63 +402,8 @@ struct CDelaBella : IDelaBella
 						// upper
 						vert_alloc[j].sew = 0;
 					}
-					#else
-					Signed15 vx = (Signed15)vert_alloc[j].x - (Signed15)vert_alloc[lower_left].x;
-					Signed15 vy = (Signed15)vert_alloc[lower_left].y - (Signed15)vert_alloc[j].y; // flipped!
-
-					Signed31 dot_x = part_x * vx;
-					Signed31 dot_y = part_y * vy;
-
-					if (dot_x < dot_y)
-					{
-						// lower
-						vert_alloc[j].sew = &f;
-					}
-					else
-					if (dot_x > dot_y)
-					{
-						// upper
-						vert_alloc[j].sew = 0;
-					}
-					else
-					{
-						// requires XA 
-						// calc everything everytime from scatch?
-						XA_REF llx = vert_alloc[lower_left].x;
-						XA_REF lly = vert_alloc[lower_left].y;
-						XA_REF urx = vert_alloc[upper_right].x;
-						XA_REF ury = vert_alloc[upper_right].y;
-						XA_REF xa_part_x = lly - ury;
-						XA_REF xa_part_y = urx - llx;
-
-						XA_REF vx = (XA_REF)vert_alloc[j].x - llx;
-						XA_REF vy = lly - (XA_REF)vert_alloc[j].y; // flipped!
-
-						XA_REF dot_x = xa_part_x * vx;
-						XA_REF dot_y = xa_part_y * vy;
-
-						if (dot_x < dot_y)
-						{
-							// lower
-							vert_alloc[j].sew = &f;
-						}
-						else
-						{
-							#ifdef DB_AUTO_TEST
-							assert(dot_x > dot_y);
-							#endif
-							// upper
-							vert_alloc[j].sew = &f;
-						}
-					}
-					#endif
 				}
 			}
-
-			#ifndef USE_PREDICATES
-			part_x = (Signed15)vert_alloc[upper_right].x - (Signed15)vert_alloc[lower_left].x;
-			part_y = (Signed15)vert_alloc[upper_right].y - (Signed15)vert_alloc[lower_left].y;
-			#endif
 
 			struct
 			{
@@ -699,7 +418,6 @@ struct CDelaBella : IDelaBella
 					if (!a.sew && b.sew)
 						return true;
 
-					#ifdef USE_PREDICATES
 					// actually we can compare coords directly
 					if (a.sew)
 					{
@@ -719,50 +437,6 @@ struct CDelaBella : IDelaBella
 							return a.y < b.y;
 						return false;
 					}
-					#else
-					// calc a and b dot prods with (ur.x-ll.x,ur.y-ll.y)
-					Signed15 ax = (Signed15)a.x - (Signed15)ll->x;
-					Signed15 ay = (Signed15)a.y - (Signed15)ll->y;
-					Signed15 dot_a = part_x * ax + part_y * ay;
-
-					Signed15 bx = (Signed15)b.x - (Signed15)ll->x;
-					Signed15 by = (Signed15)b.y - (Signed15)ll->y;
-					Signed31 dot_b = part_x * bx + part_y * by;
-
-					if (dot_a < dot_b)
-						return a.sew == 0;
-					if (dot_a > dot_b)
-						return a.sew != 0;
-
-					// xa needed
-					{
-						// calc everything everytime from scatch?
-						XA_REF llx = ll->x;
-						XA_REF lly = ll->y;
-						XA_REF urx = ur->x;
-						XA_REF ury = ur->y;
-						XA_REF xa_part_x = urx - llx;
-						XA_REF xa_part_y = ury - lly;
-
-						XA_REF ax = (XA_REF)a.x - llx;
-						XA_REF ay = (XA_REF)a.y - lly;
-						XA_REF dot_a = xa_part_x * ax + xa_part_y * ay;
-
-						XA_REF bx = (XA_REF)b.x - llx;
-						XA_REF by = (XA_REF)b.y - lly;
-						XA_REF dot_b = xa_part_x * bx + xa_part_y * by;
-
-						if (dot_a < dot_b)
-							return a.sew == 0;
-						else
-						{
-							#ifdef DB_AUTO_TEST
-							assert(dot_a > dot_b);
-							#endif
-							return a.sew != 0;
-						}
-					}
-					#endif
 
 					// otherwise
 					#ifdef DB_AUTO_TEST
@@ -770,15 +444,8 @@ struct CDelaBella : IDelaBella
 					#endif
 					return false;
 				}
-			#ifdef USE_PREDICATES
 			} c;
-			#else
-				const Vert* ll;
-				const Vert* ur;
-				Signed15 part_x;
-				Signed15 part_y;
-			} c{ vert_alloc + lower_left, vert_alloc + upper_right, part_x, part_y };
-			#endif
+
 			std::sort(vert_alloc, vert_alloc + i, c);
 		}
 
@@ -802,7 +469,6 @@ struct CDelaBella : IDelaBella
 					delete[] face_alloc;
 				}
 				max_faces = 0;
-				//face_alloc = (Face*)malloc(sizeof(Face) * hull_faces);
 				face_alloc = new Face[hull_faces];
 				if (face_alloc)
 					max_faces = hull_faces;
@@ -839,7 +505,7 @@ struct CDelaBella : IDelaBella
 				out_boundary_verts = points;
 
 				for (int j = 1; j < points; j++)
-					vert_alloc[j - 1].next = (DelaBella_Vertex*)vert_alloc + j;
+					vert_alloc[j - 1].next = (DelaBella_Vertex<T>*)vert_alloc + j;
 				vert_alloc[points - 1].next = 0;
 
 				return -points;
@@ -859,19 +525,11 @@ struct CDelaBella : IDelaBella
 				p->v[1] = vert_alloc + j-1;
 				p->v[2] = vert_alloc + j;
 
-				#ifndef USE_PREDICATES
-				p->cross();
-				#endif
-
 				// mirrored
 				Face* q = next_q;
 				q->v[0] = vert_alloc + 0;
 				q->v[1] = vert_alloc + j;
 				q->v[2] = vert_alloc + j-1;
-
-				#ifndef USE_PREDICATES
-				q->cross();
-				#endif
 
 				if (j < i - 1)
 				{
@@ -907,10 +565,6 @@ struct CDelaBella : IDelaBella
 			f.v[1] = vert_alloc + 1;
 			f.v[2] = vert_alloc + 2;
 
-			#ifndef USE_PREDICATES
-			f.cross();
-			#endif
-
 			int one = 1, two = 2;
 			if (!f.dotNP(vert_alloc[i]))
 			{
@@ -933,10 +587,6 @@ struct CDelaBella : IDelaBella
 				p->v[one] = vert_alloc + j - 1;
 				p->v[two] = vert_alloc + j;
 
-				#ifndef USE_PREDICATES
-				p->cross();
-				#endif
-
 				Face* q;
 
 				if (j == 2)
@@ -946,10 +596,6 @@ struct CDelaBella : IDelaBella
 					q->v[0] = vert_alloc + i;
 					q->v[one] = vert_alloc + 1;
 					q->v[two] = vert_alloc + 0;
-
-					#ifndef USE_PREDICATES
-					q->cross();
-					#endif
 
 					q->f[0] = p;
 					q->f[one] = 0; // LAST_Q;
@@ -963,10 +609,6 @@ struct CDelaBella : IDelaBella
 				q->v[0] = vert_alloc + i;
 				q->v[one] = vert_alloc + j;
 				q->v[two] = vert_alloc + j-1;
-
-				#ifndef USE_PREDICATES
-				q->cross();
-				#endif
 
 				next_q = Face::Alloc(cache);
 
@@ -989,10 +631,6 @@ struct CDelaBella : IDelaBella
 					q->v[one] = vert_alloc + 0;
 					q->v[two] = vert_alloc + i-1;
 
-					#ifndef USE_PREDICATES
-					q->cross();
-					#endif
-
 					q->f[0] = p;
 					q->f[one] = prev_q;
 					q->f[two] = first_q;
@@ -1012,12 +650,6 @@ struct CDelaBella : IDelaBella
 			*hull = prev_q;
 
 			i++;
-
-			if (i == points)
-			{
-				if (errlog_proc)
-					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation%s", 100, "", "\n");
-			}
 		}
 
 		*start = i;
@@ -1031,10 +663,13 @@ struct CDelaBella : IDelaBella
 		int hull_faces = 0;
 		Face* cache = 0;
 
-		int points = Prepare(&i, &hull, &hull_faces, &cache);
+		uint64_t sort_stamp;
+		int points = Prepare(&i, &hull, &hull_faces, &cache, &sort_stamp);
 		unique_points = points < 0 ? -points : points;
 		if (points <= 0)
+		{
 			return points;
+		}
 
 		/////////////////////////////////////////////////////////////////////////
 		// ACTUAL ALGORITHM
@@ -1051,7 +686,7 @@ struct CDelaBella : IDelaBella
 				if (i == points - 1)
 					p = 100;
 				if (errlog_proc)
-					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation%s", p, p>=100 ? "":"%", p>=100?"\n":"");
+					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation ", p, p>=100 ? "":"%");
 			}
 
 			//ValidateHull(alloc, 2 * i - 4);
@@ -1137,10 +772,6 @@ struct CDelaBella : IDelaBella
 							s->v[1] = b;
 							s->v[2] = q;
 
-							#ifndef USE_PREDICATES
-							s->cross();
-							#endif
-
 							s->f[2] = n;
 
 							// change neighbour's adjacency from old visible face to cone side
@@ -1223,29 +854,13 @@ struct CDelaBella : IDelaBella
 			vert_alloc[j].sew = 0;
 		}
 
-		if (errlog_proc)
-			errlog_proc(errlog_file, "[PRO] postprocessing triangles\n");
-
 		int others = 0;
 
 		i = 0;
 		Face** prev_dela = &first_dela_face;
 		Face** prev_hull = &first_hull_face;
-		pro = 0;
 		for (int j = 0; j < hull_faces; j++)
 		{
-			if (j >= pro)
-			{
-				int p = (int)((uint64_t)100 * j / hull_faces);
-				pro = (int)((uint64_t)(p + 1) * hull_faces / 100);
-				if (pro >= hull_faces)
-					pro = hull_faces - 1;
-				if (j == hull_faces - 1)
-					p = 100;
-				if (errlog_proc)
-					errlog_proc(errlog_file, "\r[%2d%s] postprocessing triangles%s", p, p >= 100 ? "" : "%", p >= 100 ? "\n" : "");
-			}
-
 			Face* f = face_alloc + j;
 
 			// back-link all verts to some_face
@@ -1255,7 +870,6 @@ struct CDelaBella : IDelaBella
 			((Vert*)f->v[2])->sew = f;
 
 			bool nz_neg;
-			// recalc triangle normal as accurately as possible on ALL triangles
 			#if 0
 			{
 				XA_REF x0 = f->v[0]->x, y0 = f->v[0]->y, z0 = x0 * x0 + y0 * y0;
@@ -1287,27 +901,13 @@ struct CDelaBella : IDelaBella
 
 				f->n.z = (double)nz;
 
-				/*
-				// needed?
-				if (nz != 0 && f->n.z == 0)
-					f->n.z = nz->sign ? -FLT_MIN : FLT_MIN;
-
-				if (nx != 0 && f->n.x == 0)
-					f->n.x = nx->sign ? -FLT_MIN: FLT_MIN;
-
-				if (ny != 0 && f->n.y == 0)
-					f->n.y = ny->sign ? -FLT_MIN : FLT_MIN;
-				*/
-
 				nz_neg = nz < 0;
 			}
 			#else
 			{
-				// calc xa only where necessary
 				nz_neg = f->signN(); // hybrid
 			}
 			#endif
-
 
 			if (nz_neg)
 			{
@@ -1331,21 +931,15 @@ struct CDelaBella : IDelaBella
 		*prev_dela = 0;
 		*prev_hull = 0;
 
-		if (errlog_proc)
-			errlog_proc(errlog_file, "[PRO] postprocessing edges\n");
-
 		// let's trace boudary contour, at least one vertex of first_hull_face
 		// must be shared with dela face, find that dela face
-		DelaBella_Iterator it;
-		DelaBella_Vertex* v = first_hull_face->v[0];
-		const DelaBella_Triangle* t = v->StartIterator(&it);
-		const DelaBella_Triangle* e = t; // end
+		DelaBella_Iterator<T> it;
+		DelaBella_Vertex<T>* v = first_hull_face->v[0];
+		const DelaBella_Triangle<T>* t = v->StartIterator(&it);
+		const DelaBella_Triangle<T>* e = t; // end
 		
 		first_boundary_vert = (Vert*)v;
 		out_boundary_verts = 1;
-
-		Signed14 wrap_x = v->x;
-		Signed14 wrap_y = v->y;
 
 		while (1)
 		{
@@ -1356,35 +950,6 @@ struct CDelaBella : IDelaBella
 
 				if (t->f[pr]->index < 0)
 				{
-					bool wrap = t->v[nx] == first_boundary_vert;
-					// change x,y to the edge's normal as accurately as possible
-					/*
-					// THIS IS EVIL!
-					#if 0
-					{
-						// exact edge normal
-						XA_REF px = v->x, py = v->y;
-						XA_REF vx = wrap ? wrap_x : t->v[nx]->x, vy = wrap ? wrap_y : t->v[nx]->y;
-						XA_REF nx = py - vy;
-						XA_REF ny = vx - px;
-						int exponent = (nx->quot + ny->quot + 1) / 2;
-						nx->quot -= exponent;
-						ny->quot -= exponent;
-						v->x = (double)nx;
-						v->y = (double)ny;
-					}
-					#else
-					{
-						// approx edge normal
-						Signed14 vx = wrap ? wrap_x : t->v[nx]->x, vy = wrap ? wrap_y : t->v[nx]->y;
-						Signed14 nx = v->y - vy;
-						Signed14 ny = vx - v->x;
-						v->x = nx;
-						v->y = ny;
-					}
-					#endif
-					*/
-
 					// let's move from: v to t->v[nx]
 					v->next = t->v[nx];
 					v = v->next;
@@ -1403,9 +968,6 @@ struct CDelaBella : IDelaBella
 			#endif
 		}
 
-		if (errlog_proc)
-			errlog_proc(errlog_file, "[PRO] postprocessing vertices\n");
-
 		// link all other verts into internal list
 		first_internal_vert = 0;
 		Vert** prev_inter = &first_internal_vert;
@@ -1418,6 +980,9 @@ struct CDelaBella : IDelaBella
 				prev_inter = (Vert**)&next->next;
 			}
 		}
+
+		if (errlog_proc)
+			errlog_proc(errlog_file, "\r[100] convex hull triangulation (%lld ms)\n", (uSec() - sort_stamp) / 1000);
 
 		return 3*i;
 	}
@@ -1446,7 +1011,6 @@ struct CDelaBella : IDelaBella
 
 			vert_map = (int*)malloc(sizeof(int) * points);
 
-			//vert_alloc = (Vert*)malloc(sizeof(Vert)*points);
 			vert_alloc = new Vert[points];
 			if (vert_alloc)
 				max_verts = points;
@@ -1475,28 +1039,10 @@ struct CDelaBella : IDelaBella
 		Face* list = 0;
 		Face** tail = &list;
 
-		DelaBella_Iterator it;
+		DelaBella_Iterator<T> it;
 
-		#ifndef USE_PREDICATES
-		int xa_ready = 0; // 0:none, 1:xa_b only, 2:all
-		XA_REF xa_b[2];
-		#endif
-
-	//restart:
-
-		const DelaBella_Triangle* first = va->StartIterator(&it);
-		const DelaBella_Triangle* face = first;
-
-		#ifndef USE_PREDICATES
-		if (xa_ready == 2)
-			xa_ready = 1;
-
-		IA_VAL ia_a[2] = { (IA_VAL)va->x , (IA_VAL)va->y };
-		IA_VAL ab[2] = { (IA_VAL)vb->x - ia_a[0], (IA_VAL)vb->y - ia_a[1] };
-
-		XA_REF xa_a[2];
-		XA_REF xa_ab[2];
-		#endif
+		const DelaBella_Triangle<T>* first = va->StartIterator(&it);
+		const DelaBella_Triangle<T>* face = first;
 
 		// find first face around va, containing offending edge
 		Vert* v0;
@@ -1534,9 +1080,8 @@ struct CDelaBella : IDelaBella
 				return list; // ab is already there
 			}
 
-			#ifdef USE_PREDICATES
-			double a0b = predicates::adaptive::orient2d(va->x,va->y, v0->x,v0->y, vb->x,vb->y);
-			double a1b = predicates::adaptive::orient2d(va->x,va->y, v1->x,v1->y, vb->x,vb->y);
+			T a0b = predicates::adaptive::orient2d(va->x,va->y, v0->x,v0->y, vb->x,vb->y);
+			T a1b = predicates::adaptive::orient2d(va->x,va->y, v1->x,v1->y, vb->x,vb->y);
 			
 			if (a0b <= 0 && a1b >= 0)
 			{
@@ -1564,85 +1109,6 @@ struct CDelaBella : IDelaBella
 				N = (Face*)face;
 				break;
 			}
-			
-
-			#else
-			IA_VAL a0[2] = { (IA_VAL)v0->x - ia_a[0], (IA_VAL)v0->y - ia_a[1] };
-			IA_VAL a1[2] = { (IA_VAL)v1->x - ia_a[0], (IA_VAL)v1->y - ia_a[1] };
-
-			IA_VAL l_a0b = a0[0] * ab[1];
-			IA_VAL r_a0b = a0[1] * ab[0];
-			IA_VAL l_a1b = a1[0] * ab[1];
-			IA_VAL r_a1b = a1[1] * ab[0];
-
-			if (l_a0b < r_a0b && l_a1b > r_a1b)
-			{
-				assert(a0b < 0 && a1b>0);
-				// offending edge!
-				N = (Face*)face;
-				break;
-			}
-
-			if (!(l_a0b > r_a0b || l_a1b < r_a1b))
-			{
-				if (xa_ready < 2)
-				{
-					if (xa_ready < 1)
-					{
-						xa_b[0] = (XA_REF)vb->x;
-						xa_b[1] = (XA_REF)vb->y;
-					}
-					xa_a[0] = (XA_REF)va->x;
-					xa_a[1] = (XA_REF)va->y;
-					xa_ab[0] = xa_b[0] - xa_a[0];
-					xa_ab[1] = xa_b[1] - xa_a[1];
-					xa_ready = 2;
-				}
-
-				XA_REF xa_a0[2] = { (XA_REF)v0->x - xa_a[0], (XA_REF)v0->y - xa_a[1] };
-				XA_REF xa_a1[2] = { (XA_REF)v1->x - xa_a[0], (XA_REF)v1->y - xa_a[1] };
-
-				XA_REF xa_a0b = xa_a0[0] * xa_ab[1] - xa_a0[1] * xa_ab[0];
-				XA_REF xa_a1b = xa_a1[0] * xa_ab[1] - xa_a1[1] * xa_ab[0];
-
-				if (xa_a0b == 0)
-				{
-					assert(a0b == 0);
-					// v0 overlap
-					
-					//va = v0;
-					//goto restart;
-					
-					*restart = v0;
-					*tail = 0;
-					*ptail = list ? tail : 0;
-					return list;
-				}
-
-				if (xa_a1b == 0)
-				{
-					assert(a1b == 0);
-					// v1 overlap
-
-					//va = v1;
-					//goto restart;
-
-					*restart = v1;
-					*tail = 0;
-					*ptail = list ? tail : 0;
-					return list;
-				}
-
-				if (xa_a0b < 0 && xa_a1b > 0)
-				{
-					assert(a0b < 0 && a1b > 0);
-
-					// offending edge!
-					N = (Face*)face;
-					break;
-				}
-			}
-			#endif
 
 			face = it.Next();
 
@@ -1658,12 +1124,12 @@ struct CDelaBella : IDelaBella
 				// rotate N->v[] and N->f 'a' times 'backward' such offending edge appears opposite to v[0]
 				const int* r = rotate[a];
 
-				DelaBella_Vertex* v[3] = { N->v[0] ,N->v[1] ,N->v[2] };
+				DelaBella_Vertex<T>* v[3] = { N->v[0] ,N->v[1] ,N->v[2] };
 				N->v[0] = v[r[0]];
 				N->v[1] = v[r[1]];
 				N->v[2] = v[r[2]];
 
-				DelaBella_Triangle* f[3] = { N->f[0] ,N->f[1] ,N->f[2] };
+				DelaBella_Triangle<T>* f[3] = { N->f[0] ,N->f[1] ,N->f[2] };
 				N->f[0] = f[r[0]];
 				N->f[1] = f[r[1]];
 				N->f[2] = f[r[2]];
@@ -1708,9 +1174,7 @@ struct CDelaBella : IDelaBella
 			}
 
 			// is vr above or below ab ?
-			#ifdef USE_PREDICATES
-			double abr = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, vr->x, vr->y);
-			
+			T abr = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, vr->x, vr->y);
 			
 			if (abr == 0)
 			{
@@ -1736,88 +1200,6 @@ struct CDelaBella : IDelaBella
 				v1 = (Vert*)F->v[d];
 				N = F;
 			}
-			
-			#else
-			IA_VAL ar[2] = { (IA_VAL)vr->x - ia_a[0], (IA_VAL)vr->y - ia_a[1] };
-
-			IA_VAL l_abr = ab[0] * ar[1];
-			IA_VAL r_abr = ab[1] * ar[0];
-
-			if (l_abr > r_abr)
-			{
-				assert(abr > 0);
-				// above: de edge (a' = f vert)
-				a = f;
-				v0 = (Vert*)F->v[d];
-				v1 = (Vert*)F->v[e];
-				N = F;
-			}
-			else
-			if (l_abr < r_abr)
-			{
-				assert(abr < 0);
-
-				// below: fd edge (a' = e vert)
-				a = e;
-				v0 = (Vert*)F->v[f];
-				v1 = (Vert*)F->v[d];
-				N = F;
-			}
-			else
-			{
-				// XA NEEDED, could be above, below or overlap!
-				// if overlap: do restart on vr
-				if (xa_ready < 2)
-				{
-					if (xa_ready < 1)
-					{
-						xa_b[0] = (XA_REF)vb->x;
-						xa_b[1] = (XA_REF)vb->y;
-					}
-					xa_a[0] = (XA_REF)va->x;
-					xa_a[1] = (XA_REF)va->y;
-					xa_ab[0] = xa_b[0] - xa_a[0];
-					xa_ab[1] = xa_b[1] - xa_a[1];
-					xa_ready = 2;
-				}
-
-				XA_REF xa_ar[2] = { (XA_REF)vr->x - xa_a[0], (IA_VAL)vr->y - xa_a[1] };
-				XA_REF xa_abr = xa_ab[0] * xa_ar[1] - xa_ab[1] * xa_ar[0];
-
-				if (xa_abr == 0)
-				{
-					assert(abr == 0);
-					// if overlap
-					
-					//va = vr;
-					//goto restart;
-
-					*restart = vr;
-					*tail = 0;
-					*ptail = list ? tail : 0;
-					return list;
-				}
-
-				if (xa_abr > 0)
-				{
-					assert(abr > 0);
-					// above: de edge (a' = f vert)
-					a = f;
-					v0 = (Vert*)F->v[d];
-					v1 = (Vert*)F->v[e];
-					N = F;
-				}
-				else
-				{
-					assert(abr < 0);
-					// below: fd edge (a' = e vert)
-					a = e;
-					v0 = (Vert*)F->v[f];
-					v1 = (Vert*)F->v[d];
-					N = F;
-				}
-			}
-			#endif
 		}
 
 		#ifdef DB_AUTO_TEST
@@ -1830,12 +1212,10 @@ struct CDelaBella : IDelaBella
 
 	virtual int Constrain(int num, const int* pa, const int* pb, int advance_bytes)
 	{
-		#ifndef USE_PREDICATES
-		IA_FastRound round;
-		#endif
-
 		if (advance_bytes <= 0)
 			advance_bytes = 2*sizeof(int);
+
+		uint64_t time0 = uSec();
 
 		int flips = 0;
 
@@ -1851,7 +1231,7 @@ struct CDelaBella : IDelaBella
 				if (con == num - 1)
 					p = 100;
 				if (errlog_proc)
-					errlog_proc(errlog_file, "\r[%2d%s] constraining%s", p, p >= 100 ? "" : "%", p >= 100 ? "\n" : "");
+					errlog_proc(errlog_file, "\r[%2d%s] constraining ", p, p >= 100 ? "" : "%");
 			}
 
 			int a = *(const int*)((const char*)pa + con * advance_bytes);
@@ -1931,9 +1311,8 @@ struct CDelaBella : IDelaBella
 				Vert* vr = (Vert*)(F->v[d]);
 
 				// is v,v0,vr,v1 a convex quad?
-				#ifdef USE_PREDICATES
-				double v0r = predicates::adaptive::orient2d(v->x, v->y, v0->x, v0->y, vr->x, vr->y);
-				double v1r = predicates::adaptive::orient2d(v->x, v->y, v1->x, v1->y, vr->x, vr->y);
+				T v0r = predicates::adaptive::orient2d(v->x, v->y, v0->x, v0->y, vr->x, vr->y);
+				T v1r = predicates::adaptive::orient2d(v->x, v->y, v1->x, v1->y, vr->x, vr->y);
 				
 				if (v0r >= 0 || v1r <= 0)
 				{
@@ -1942,48 +1321,6 @@ struct CDelaBella : IDelaBella
 					tail = (Face**)&N->next;
 					continue;
 				}
-
-				#else
-				IA_VAL a0[2] = { (IA_VAL)v0->x - (IA_VAL)v->x, (IA_VAL)v0->y - (IA_VAL)v->y };
-				IA_VAL a1[2] = { (IA_VAL)v1->x - (IA_VAL)v->x, (IA_VAL)v1->y - (IA_VAL)v->y };
-				IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)v->x, (IA_VAL)vr->y - (IA_VAL)v->y };
-
-				IA_VAL l_a0r = a0[0] * ar[1];
-				IA_VAL r_a0r = a0[1] * ar[0];
-				IA_VAL l_a1r = a1[0] * ar[1];
-				IA_VAL r_a1r = a1[1] * ar[0];
-
-				if (l_a0r > r_a0r || l_a1r < r_a1r)
-				{
-					assert(v0r >= 0 || v1r <= 0);
-					// CONCAVE CUNT!
-					*tail = N;
-					tail = (Face**)&N->next;
-					continue;
-				}
-
-				if (!(l_a0r < r_a0r && l_a1r > r_a1r))
-				{
-					// XA NEEDED
-
-					XA_REF xa_a[2] = { (XA_REF)v->x , (XA_REF)v->y };
-					XA_REF xa_a0[2] = { (XA_REF)v0->x - xa_a[0], (XA_REF)v0->y - xa_a[1] };
-					XA_REF xa_a1[2] = { (XA_REF)v1->x - xa_a[0], (XA_REF)v1->y - xa_a[1] };
-					XA_REF xa_ar[2] = { (XA_REF)vr->x - xa_a[0], (XA_REF)vr->y - xa_a[1] };
-
-					XA_REF xa_a0r = xa_a0[0] * xa_ar[1] - xa_a0[1] * xa_ar[0];
-					XA_REF xa_a1r = xa_a1[0] * xa_ar[1] - xa_a1[1] * xa_ar[0];
-
-					if (xa_a0r >= 0 || xa_a1r <= 0)
-					{
-						assert(v0r >= 0 || v1r <= 0);
-						// CONCAVE CUNT!
-						*tail = N;
-						tail = (Face**)&N->next;
-						continue;
-					}
-				}
-				#endif
 
 				#ifdef DB_AUTO_TEST
 				assert(v0r < 0 && v1r > 0);
@@ -2092,10 +1429,9 @@ struct CDelaBella : IDelaBella
 					}
 					else
 					{
-						#ifdef USE_PREDICATES
 						// check if v and vr are on the same side of a--b
-						double abv = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, v->x, v->y);
-						double abr = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, vr->x, vr->y);
+						T abv = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, v->x, v->y);
+						T abr = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, vr->x, vr->y);
 						
 						if (abv >= 0 && abr >= 0 || abv <= 0 && abr <= 0)
 						{
@@ -2109,74 +1445,9 @@ struct CDelaBella : IDelaBella
 							*tail = N;
 							tail = (Face**)&N->next;
 						}
-						
-						#else
-						IA_VAL ab[2] = { (IA_VAL)vb->x - (IA_VAL)va->x, (IA_VAL)vb->y - (IA_VAL)va->y };
-						IA_VAL av[2] = { (IA_VAL)v->x - (IA_VAL)va->x, (IA_VAL)v->y - (IA_VAL)va->y };
-						IA_VAL ar[2] = { (IA_VAL)vr->x - (IA_VAL)va->x, (IA_VAL)vr->y - (IA_VAL)va->y };
-
-						IA_VAL l_ab_av = ab[0] * av[1];
-						IA_VAL r_ab_av = ab[1] * av[0];
-						IA_VAL l_ab_ar = ab[0] * ar[1];
-						IA_VAL r_ab_ar = ab[1] * ar[0];
-
-						if (l_ab_av < r_ab_av && l_ab_ar < r_ab_ar || l_ab_av > r_ab_av && l_ab_ar > r_ab_ar)
-						{
-							assert(abv >= 0 && abr >= 0 || abv <= 0 && abr <= 0);
-							// resolved
-							N->next = flipped;
-							flipped = N;
-						}
-						else
-						if (l_ab_av < r_ab_av && l_ab_ar > r_ab_ar || l_ab_av > r_ab_av && l_ab_ar < r_ab_ar)
-						{
-							assert(abv >= 0 && abr <= 0 || abv <= 0 && abr >= 0);
-							// unresolved
-							*tail = N;
-							tail = (Face**)&N->next;
-						}
-						else
-						{
-							// XA NEEDED
-							XA_REF xa_ab[2] = { (XA_REF)vb->x - (XA_REF)va->x, (XA_REF)vb->y - (XA_REF)va->y };
-							XA_REF xa_av[2] = { (XA_REF)v->x - (XA_REF)va->x, (XA_REF)v->y - (XA_REF)va->y };
-							XA_REF xa_ar[2] = { (XA_REF)vr->x - (XA_REF)va->x, (XA_REF)vr->y - (XA_REF)va->y };
-
-							XA_REF xa_ab_av = xa_ab[0] * xa_av[1] - xa_ab[1] * xa_av[0];
-							XA_REF xa_ab_ar = xa_ab[0] * xa_ar[1] - xa_ab[1] * xa_ar[0];
-
-							if (xa_ab_av < 0 && xa_ab_ar < 0 || xa_ab_av > 0 && xa_ab_ar > 0)
-							{
-								assert(abv >= 0 && abr >= 0 || abv <= 0 && abr <= 0);
-								// resolved
-								N->next = flipped;
-								flipped = N;
-							}
-							else
-							if (xa_ab_av < 0 && xa_ab_ar > 0 || xa_ab_av > 0 && xa_ab_ar < 0)
-							{
-								assert(abv >= 0 && abr <= 0 || abv <= 0 && abr >= 0);
-								// unresolved
-								*tail = N;
-								tail = (Face**)&N->next;
-							}
-						}
-						#endif
 					}
 				}
 			}
-
-			#ifndef USE_PREDICATES
-			// update cross prods
-			Face* N = flipped;
-			while (N)
-			{
-				N->cross();
-				Face* F = (Face*)N->f[0];
-				F->cross(); // fix!
-				N = (Face*)N->next;
-			}
-			#endif
 
 			// 3. Repeatedly until no flip occurs
 			// for every edge from new edges list,
@@ -2287,11 +1558,6 @@ struct CDelaBella : IDelaBella
 							v1->sew = N;
 						}
 
-						#ifndef USE_PREDICATES
-						N->cross();
-						F->cross();
-						#endif
-
 						// can we un-mark not flipped somehow?
 						// N->index &= 0x3fffffff;
 						// F->index &= 0x3fffffff;
@@ -2328,15 +1594,19 @@ struct CDelaBella : IDelaBella
 		}
 		*tail = 0;
 
+		if (errlog_proc)
+			errlog_proc(errlog_file, "\r[100] constraining (%lld ms)\n", (uSec() - time0) / 1000);
+
 		return flips;
 	}
 
-	virtual int Polygonize(const DelaBella_Triangle* poly[])
+	virtual int Polygonize(const DelaBella_Triangle<T>* poly[])
 	{
-		const DelaBella_Triangle** buf = 0;
+		uint64_t time0 = uSec();
+		const DelaBella_Triangle<T>** buf = 0;
 		if (!poly)
 		{
-			buf = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * out_verts / 3);
+			buf = (const DelaBella_Triangle<T>**)malloc(sizeof(const DelaBella_Triangle<T>*) * out_verts / 3);
 			poly = buf;
 			if (!poly)
 				return -1;
@@ -2352,8 +1622,22 @@ struct CDelaBella : IDelaBella
 
 		int num = 0;
 		f = first_dela_face;
+		int pro = 0, i=0, faces = out_verts / 3;
 		while (f)
 		{
+			if (i >= pro)
+			{
+				int p = (int)((uint64_t)100 * i / faces);
+				pro = (int)((uint64_t)(p + 1) * faces / 100);
+				if (pro >= faces)
+					pro = faces - 1;
+				if (i == faces - 1)
+					p = 100;
+				if (errlog_proc)
+					errlog_proc(errlog_file, "\r[%2d%s] polygonizing ", p, p >= 100 ? "" : "%");
+			}
+			i++;
+
 			bool new_poly = true;
 			Face* next = (Face*)f->next;
 			for (int i = 0; i < 3; i++)
@@ -2488,7 +1772,7 @@ struct CDelaBella : IDelaBella
 			
 			bool step_on = false; // is current vertex inserted
 
-			DelaBella_Iterator it;
+			DelaBella_Iterator<T> it;
 			f->StartIterator(&it, f->f[0]->index == p ? 2 : f->f[1]->index == p ? 0 : 1);
 
 			int dbg = 0;
@@ -2564,7 +1848,6 @@ struct CDelaBella : IDelaBella
 		#else
 		// merge polys into single list
 		// they are separated by indexes
-
 		for (int i = 0; i < num-1; i++)
 		{
 			f = (Face*)poly[i];
@@ -2579,47 +1862,13 @@ struct CDelaBella : IDelaBella
 		if (buf)
 			free(buf);
 
+		if (errlog_proc)
+			errlog_proc(errlog_file, "\r[100] polygonizing (%lld ms)\n", (uSec() - time0) / 1000);
+
 		return num;
 	}
 
-
-	virtual int Triangulate(int points, const float* x, const float* y = 0, int advance_bytes = 0)
-	{
-		if (!x)
-			return 0;
-
-		if (!y)
-			y = x + 1;
-
-		if (advance_bytes < static_cast<int>(sizeof(float) * 2))
-			advance_bytes = sizeof(float) * 2;
-
-		if (!ReallocVerts(points))
-			return 0;
-
-		#ifndef USE_PREDICATES
-		IA_FastRound round;
-		#endif
-
-		for (int i = 0; i < points; i++)
-		{
-			Vert* v = vert_alloc + i;
-			v->i = i;
-			v->x = (Signed14)*(const float*)((const char*)x + i*advance_bytes);
-			v->y = (Signed14)*(const float*)((const char*)y + i*advance_bytes);
-			#ifndef USE_PREDICATES
-			v->z = s14sqr(v->x) + s14sqr(v->y);
-			//v->e = fabs(v->x) + fabs(v->y) + v->z;
-			#endif
-		}
-		
-		out_hull_faces = 0;
-		unique_points = 0;
-		out_verts = Triangulate(&out_hull_faces);
-		return out_verts;
-	}
-
-	virtual int Triangulate(int points, const double* x, const double* y, int advance_bytes)
+	virtual int Triangulate(int points, const T* x, const T* y, int advance_bytes)
 	{
 		if (!x)
 			return 0;
@@ -2627,27 +1876,18 @@ struct CDelaBella : IDelaBella
 		if (!y)
 			y = x + 1;
 		
-		if (advance_bytes < static_cast<int>(sizeof(double) * 2))
-			advance_bytes = sizeof(double) * 2;
+		if (advance_bytes < static_cast<int>(sizeof(T) * 2))
+			advance_bytes = sizeof(T) * 2;
 
 		if (!ReallocVerts(points))
 			return 0;
-
-		#ifndef USE_PREDICATES
-		IA_FastRound round;
-		#endif
 
 		for (int i = 0; i < points; i++)
 		{
 			Vert* v = vert_alloc + i;
 			v->i = i;
-			v->x = (Signed14)*(const double*)((const char*)x + i*advance_bytes);
-			v->y = (Signed14)*(const double*)((const char*)y + i*advance_bytes);
-			#ifndef USE_PREDICATES
-			v->z = s14sqr(v->x) + s14sqr(v->y);
-			//v->e = fabs(v->x) + fabs(v->y) + v->z;
-			#endif
-
+			v->x = *(const T*)((const char*)x + i*advance_bytes);
+			v->y = *(const T*)((const char*)y + i*advance_bytes);
 		}
 
 		out_hull_faces = 0;
@@ -2655,42 +1895,6 @@ struct CDelaBella : IDelaBella
 		out_verts = Triangulate(&out_hull_faces);
 		return out_verts;
 	}
-
-	virtual int Triangulate(int points, const long double* x, const long double* y, int advance_bytes)
-	{
-		if (!x)
-			return 0;
-		
-		if (!y)
-			y = x + 1;
-		
-		if (advance_bytes < static_cast<int>(sizeof(double) * 2))
-			advance_bytes = sizeof(long double) * 2;
-
-		if (!ReallocVerts(points))
-			return 0;
-
-		#ifndef USE_PREDICATES
-		IA_FastRound round;
-		#endif
-
-		for (int i = 0; i < points; i++)
-		{
-			Vert* v = vert_alloc + i;
-			v->i = i;
-			v->x = (Signed14)*(const long double*)((const char*)x + i*advance_bytes);
-			v->y = (Signed14)*(const long double*)((const char*)y + i*advance_bytes);
-			#ifndef USE_PREDICATES
-			v->z = s14sqr(v->x) + s14sqr(v->y);
-			//v->e = fabs(v->x) + fabs(v->y) + v->z;
-			#endif
-		}
-
-		out_hull_faces = 0;
-		unique_points = 0;
-		out_verts = Triangulate(&out_hull_faces);
-		return out_verts;
-	}	
 
 	virtual void Destroy()
 	{
@@ -2699,14 +1903,14 @@ struct CDelaBella : IDelaBella
 
 		if (face_alloc)
 		{
-			//free(face_alloc);
 			delete [] face_alloc;
 		}
+
 		if (vert_alloc)
 		{
-			//free(vert_alloc);
 			delete [] vert_alloc;
 		}
+
 		delete this;
 	}
 
@@ -2737,27 +1941,27 @@ struct CDelaBella : IDelaBella
 		return out_verts < 0 ? 0 : unique_points - out_boundary_verts;
 	}
 
-	virtual const DelaBella_Triangle* GetFirstDelaunayTriangle() const
+	virtual const DelaBella_Triangle<T>* GetFirstDelaunayTriangle() const
 	{
 		return first_dela_face;
 	}
 
-	virtual const DelaBella_Triangle* GetFirstHullTriangle() const
+	virtual const DelaBella_Triangle<T>* GetFirstHullTriangle() const
 	{
 		return first_hull_face;
 	}
 
-	virtual const DelaBella_Vertex* GetFirstBoundaryVertex() const
+	virtual const DelaBella_Vertex<T>* GetFirstBoundaryVertex() const
 	{
 		return first_boundary_vert;
 	}
 
-	virtual const DelaBella_Vertex* GetFirstInternalVertex() const
+	virtual const DelaBella_Vertex<T>* GetFirstInternalVertex() const
 	{
 		return first_internal_vert;
 	}
 
-	virtual const DelaBella_Vertex* GetVertexByIndex(int i) const
+	virtual const DelaBella_Vertex<T>* GetVertexByIndex(int i) const
 	{
 		if (i < 0 || i >= inp_verts)
 			return 0;
@@ -2771,30 +1975,12 @@ struct CDelaBella : IDelaBella
 	}
 };
 
-IDelaBella* IDelaBella::Create()
+template <typename T>
+IDelaBella<T>* IDelaBella<T>::Create()
 {
-	CDelaBella* db = new CDelaBella;
-	if (!db)
-		return 0;
-
-	db->vert_map = 0;
-	db->vert_alloc = 0;
-	db->face_alloc = 0;
-	db->max_verts = 0;
-	db->max_faces = 0;
-
-	db->first_dela_face = 0;
-	db->first_hull_face = 0;
-	db->first_boundary_vert = 0;
-
-	db->inp_verts = 0;
-	db->out_verts = 0;
-	db->out_hull_faces = 0;
-	db->unique_points = 0;
-
-	db->errlog_proc = 0;
-	db->errlog_file = 0;
-
-	return db;
+	return new CDelaBella<T>;
 }
 
+template IDelaBella<float>* IDelaBella<float>::Create();
+template IDelaBella<double>* IDelaBella<double>::Create();
+template IDelaBella<long double>* IDelaBella<long double>::Create();

@@ -45,7 +45,7 @@ namespace CDT
 {
 typedef std::vector<TriInd> Poly;
 template <typename T, typename L = LocatorKDTree<T> >
-std::vector<Poly> Polygonize(/*const*/ Triangulation<T, L>& cdt)
+std::vector<Poly> Polygonize(Triangulation<T, L>& cdt)
 {
     typedef TriInd PolyInd;
     // for every tri, here we store index of the poly the tri belongs to
@@ -53,7 +53,7 @@ std::vector<Poly> Polygonize(/*const*/ Triangulation<T, L>& cdt)
     // vector of Polys, each as a vector of tri indices belonging to the Poly
     auto polys = std::vector<Poly>();
 
-    for (TriInd iT = 0; iT < cdt.triangles.size(); iT++)
+    for (TriInd iT = 0; iT < (TriInd)cdt.triangles.size(); iT++)
     {
         const auto& tri = cdt.triangles[iT];
         auto merged = false;
@@ -96,7 +96,7 @@ std::vector<Poly> Polygonize(/*const*/ Triangulation<T, L>& cdt)
                         map[i] = merge_to;            // remap
                         polys[merge_to].push_back(i); // merge
                     }
-                    if (merge_from != polys.size() - 1)
+                    if (merge_from != (PolyInd)polys.size() - 1)
                     {
                         // replace merge_from poly with last poly in polys
                         polys[merge_from] = polys.back();
@@ -114,7 +114,7 @@ std::vector<Poly> Polygonize(/*const*/ Triangulation<T, L>& cdt)
         {
             // at the moment, just alone tri
             // make a new poly for it
-            map[iT] = polys.size();
+            map[iT] = (PolyInd)polys.size();
             polys.push_back({ iT });
         }
     }
@@ -297,6 +297,7 @@ int errlog(void* stream, const char* fmt, ...)
 	va_start(arg,fmt);
 	int ret = vfprintf((FILE*)stream, fmt, arg);
 	va_end(arg);
+    fflush((FILE*)stream);
 	return ret;
 }
 
@@ -545,13 +546,13 @@ int main(int argc, char* argv[])
             for (int i = 0; i < m; i++)
                 xxx.push_back(cloud[sub[i]]);
 
-            IDelaBella* helper = IDelaBella::Create();
+            IDelaBella<double>* helper = IDelaBella<double>::Create();
             helper->Triangulate(m, &xxx.data()->x, &xxx.data()->y, sizeof(MyPoint));
 
             // to avoid repeatitions,
             // traverse all faces but use edges with ascending y or in case of flat y use only if ascending x
 
-            const DelaBella_Triangle* dela = helper->GetFirstDelaunayTriangle();
+            const DelaBella_Triangle<double>* dela = helper->GetFirstDelaunayTriangle();
             while (dela)
             {
                 if (dela->v[1]->y > dela->v[0]->y || dela->v[1]->y == dela->v[0]->y && dela->v[1]->x > dela->v[0]->x)
@@ -707,20 +708,10 @@ int main(int argc, char* argv[])
         uint64_t t1 = uSec();
         printf("elapsed %d ms\n", (int)((t1-t0)/1000));
         printf("delaunator triangles: %d\n", tris_delaunator);
-        /*
-        for(std::size_t i = 0; i < d.triangles.size(); i+=3) 
-        {
-            printf("%d %d %d\n", (int)d.triangles[i], (int)d.triangles[i+1], (int)d.triangles[i+2]);
-        }
-        */
     }
     #endif
 
-	#ifdef CRUDE_XA
-	xa_pool_alloc(1000);
-	#endif
-
-	IDelaBella* idb = IDelaBella::Create();
+	IDelaBella<double>* idb = IDelaBella<double>::Create();
 	idb->SetErrLog(errlog, stdout);
 	
     printf("running delabella...\n");
@@ -731,48 +722,15 @@ int main(int argc, char* argv[])
     int non_contour = idb->GetNumInternalVerts();
 	int vert_num = contour + non_contour;
 
-    /*
-    {
-        printf("VERTICES DUMP:\n");
-        for (int i = 0; i < cloud.size(); i++)
-        {
-            printf("%d: %f %f\n", i, cloud[i].x, cloud[i].y);
-        }
+    if (force.size()>0)
+        int flips = idb->Constrain((int)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge));
 
-        printf("TRIANGLES DUMP:\n");
-        const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
-        for (int i = 0; i < tris_delabella; i++)
-        {
-            printf("%d: %d %d %d\n",
-                dela->index,
-                dela->v[0]->i,
-                dela->v[1]->i,
-                dela->v[2]->i);
-            dela = dela->next;
-        }
-    }
-    */
+    const DelaBella_Triangle<double>** dela_polys = (const DelaBella_Triangle<double>**)malloc(sizeof(const DelaBella_Triangle<double>*) * tris_delabella);
+    int polys_delabella = idb->Polygonize(dela_polys);
 
-    uint64_t t7 = uSec();
-    printf("elapsed %d ms\n", (int)((t7-t6)/1000));
     printf("delabella triangles: %d\n", tris_delabella);
     printf("delabella contour: %d\n", contour);
-
-    if (force.size()>0)
-    {
-        uint64_t c0 = uSec();
-        int flips = idb->Constrain((int)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge));
-        uint64_t c1 = uSec();
-        printf("%d flips in %d ms\n", flips, (int)((c1 - c0) / 1000));
-    }
-
-    uint64_t t8 = uSec();
-    printf("Delabella TOTAL: %d\n", (int)((t8 - t6) / 1000));
-
-    const DelaBella_Triangle** dela_polys = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * tris_delabella);
-    int polys_delabella = idb->Polygonize(dela_polys);
-    uint64_t t9 = uSec();
-    printf("Polygons: %d in %d ms\n", polys_delabella, (int)((t9 - t8) / 1000));
+    printf("delabella polygons: %d\n", polys_delabella);
 
     //return 0;
 
@@ -872,12 +830,12 @@ int main(int argc, char* argv[])
         {
             int s = 0;
 
-            const DelaBella_Triangle* f = dela_polys[p];
+            const DelaBella_Triangle<double>* f = dela_polys[p];
 
             for (int i = 0; i < 3; i++)
             {
                 int j = n + s;
-                const DelaBella_Vertex* k = f->v[i];
+                const DelaBella_Vertex<double>* k = f->v[i];
                 idb_v[j].x = k->x;
                 idb_v[j].y = k->y;
                 s++;
@@ -888,7 +846,7 @@ int main(int argc, char* argv[])
             while (f && f->index == p)
             {
                 int j = n + s;
-                const DelaBella_Vertex* k = f->v[0];
+                const DelaBella_Vertex<double>* k = f->v[0];
                 idb_v[j].x = k->x;
                 idb_v[j].y = k->y;
                 s++;
@@ -936,7 +894,7 @@ int main(int argc, char* argv[])
         {
             for (int i=0; i<tris_delabella; i++)
             {
-                const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
+                const DelaBella_Triangle<double>* dela = idb->GetFirstDelaunayTriangle();
                 fprintf(f,"%d %d %d\n", 
                     dela->v[0]->i,
                     dela->v[1]->i,
@@ -1073,7 +1031,7 @@ int main(int argc, char* argv[])
 
     ibo_delabella.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delabella + sizeof(GLuint) * contour);	
     GLuint* ibo_ptr = (GLuint*)ibo_delabella.Map();
-    const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
+    const DelaBella_Triangle<double>* dela = idb->GetFirstDelaunayTriangle();
 	for (int i = 0; i<tris_delabella; i++)
 	{
         int v0 = dela->v[0]->i;
@@ -1107,8 +1065,8 @@ int main(int argc, char* argv[])
 		dela = dela->next;
 	}
 
-	const DelaBella_Vertex* prev = idb->GetFirstBoundaryVertex();
-    const DelaBella_Vertex* vert = prev->next;
+	const DelaBella_Vertex<double>* prev = idb->GetFirstBoundaryVertex();
+    const DelaBella_Vertex<double>* vert = prev->next;
     int contour_min = points-1;
     int contour_max = 0;
     for (int i = 0; i<contour; i++)    
@@ -1137,8 +1095,8 @@ int main(int argc, char* argv[])
 
         // iterate all dela faces around prev
         // add their voro-vert index == dela face index
-        DelaBella_Iterator it;
-        const DelaBella_Triangle* t = prev->StartIterator(&it); 
+        DelaBella_Iterator<double> it;
+        const DelaBella_Triangle<double>* t = prev->StartIterator(&it);
 
         // it starts at random face, so lookup the prev->vert edge
         while (1)
@@ -1178,9 +1136,9 @@ int main(int argc, char* argv[])
     for (int i = 0; i<non_contour; i++)
     {
         // create regular-fan / line_loop in ibo_voronoi around this internal vertex
-        DelaBella_Iterator it;
-        const DelaBella_Triangle* t = vert->StartIterator(&it);
-        const DelaBella_Triangle* e = t;
+        DelaBella_Iterator<double> it;
+        const DelaBella_Triangle<double>* t = vert->StartIterator(&it);
+        const DelaBella_Triangle<double>* e = t;
         do
         {
             assert(t->index>=0);
@@ -1203,24 +1161,6 @@ int main(int argc, char* argv[])
     ibo_delabella.Unmap();
     vbo_voronoi.Unmap();
     ibo_voronoi.Unmap();
-
-    /*
-    #ifdef DELAUNATOR
-    Buf ibo_delaunator;
-    ibo_delaunator.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delaunator);
-    if (d)
-    {
-        ibo_ptr = (GLuint*)ibo_delaunator.Map();
-        for (int i = 0; i < tris_delaunator; i++)
-        {
-            ibo_ptr[3 * i + 0] = (GLuint)d->triangles[3 * i + 0];
-            ibo_ptr[3 * i + 1] = (GLuint)d->triangles[3 * i + 1];
-            ibo_ptr[3 * i + 2] = (GLuint)d->triangles[3 * i + 2];
-        }
-        ibo_delaunator.Unmap();
-    }
-    #endif
-    */
 
     #ifdef Cdt
     int tris_cdt = (int)cdt.triangles.size();
@@ -1266,15 +1206,6 @@ int main(int argc, char* argv[])
         ibo_delaunator.Unmap();
     }
     #endif
-
-    // now, everything is copied to gl, free delabella
-	#ifdef CRUDE_XA
-	// close pool before destroy so we won't move 
-	// everything unneccessarily to the pool
-	xa_pool_free(); 
-	#endif
-
-    //idb->Destroy();
 
     int vpw, vph;
     SDL_GL_GetDrawableSize(window, &vpw, &vph);
