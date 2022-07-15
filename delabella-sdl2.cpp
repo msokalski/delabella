@@ -427,13 +427,6 @@ int main(int argc, char* argv[])
 	SetProcessDPIAware();
 	#endif
 
-    /*
-    typedef IDelaBella3<double>  IDelaBella;
-    typedef IDelaBella::Simplex  DelaBella_Triangle;
-    typedef IDelaBella::Vertex   DelaBella_Vertex;
-    typedef IDelaBella::Iterator DelaBella_Iterator;
-    */
-
 	if (argc<2)
 	{
         printf("usage: %s <input.xy> [output.abc]\n", argc > 0 ? argv[0] : "<executable>");
@@ -535,13 +528,14 @@ int main(int argc, char* argv[])
 
         {
             int m = n / 10;
-            // pick random m points from input of n
-            // triangulate them, use result for constraining
 
+            // init sub[] with all n point indices
             int* sub = (int*)malloc(sizeof(int) * n);
             for (int i = 0; i < n; i++)
                 sub[i] = i;
 
+            // pick m random ones from n
+            // place them as first m items of sub[]
             for (int i = 0; i < m; i++)
             {
                 int j = i + gen() % ((size_t)n - i);
@@ -550,7 +544,6 @@ int main(int argc, char* argv[])
                 sub[i] = r;
             }
 
-            // use last m items as random non-repeating input
             std::vector<MyPoint> xxx;
             for (int i = 0; i < m; i++)
                 xxx.push_back(cloud[sub[i]]);
@@ -558,8 +551,9 @@ int main(int argc, char* argv[])
             IDelaBella* helper = IDelaBella::Create();
             helper->Triangulate(m, &xxx.data()->x, &xxx.data()->y, sizeof(MyPoint));
 
-            // to avoid repeatitions,
-            // traverse all faces but use edges with ascending y or in case of flat y use only if ascending x
+            // to avoid forth-and-back edges repeatitions,
+            // traverse all faces but use edges with 
+            // ascending y or in case of flat y use only if ascending x
 
             const IDelaBella3<double>::Simplex* dela = helper->GetFirstDelaunaySimplex();
             while (dela)
@@ -633,7 +627,7 @@ int main(int argc, char* argv[])
     #ifdef Cdt
 
         std::vector<CDT::V2d<double>> nodups;
-        for (int i = 0; i < cloud.size(); i++)
+        for (size_t i = 0; i < cloud.size(); i++)
         {
             CDT::V2d<double> v;
             v.x = cloud[i].x;
@@ -642,7 +636,7 @@ int main(int argc, char* argv[])
         }
 
         std::vector<CDT::Edge> edges;
-        for (int c = 0; c < force.size(); c++)
+        for (size_t c = 0; c < force.size(); c++)
         {
             CDT::Edge e
             { 
@@ -779,7 +773,7 @@ int main(int argc, char* argv[])
                     return true;
                 if (p.size == q.size)
                 {
-                    for (size_t i = 0; i < p.size; i++)
+                    for (size_t i = 0; i < (size_t)p.size; i++)
                     {
                         if (v[i + p.offs] == v[i + q.offs])
                             continue;
@@ -794,7 +788,7 @@ int main(int argc, char* argv[])
         printf("preping cdt for cmp ...\n");
         std::vector<MyPoint> cdt_v(poly_indices);
         std::vector<MyPoly> cdt_p(cdt_polys.size());
-        for (int p = 0, n = 0; p < cdt_polys.size(); p++)
+        for (int p = 0, n = 0; p < (int)cdt_polys.size(); p++)
         {
             int s = 0;
 
@@ -807,7 +801,7 @@ int main(int argc, char* argv[])
                 s++;
             }
 
-            for (int i = 1; i < cdt_polys[p].size(); i++)
+            for (int i = 1; i < (int)cdt_polys[p].size(); i++)
             {
                 int j = n + s;
                 int k = cdt.triangles[cdt_polys[p][i]].vertices[0];
@@ -1184,7 +1178,7 @@ int main(int argc, char* argv[])
             int* invmap = 0;
             int invmap_size = (int)dups.mapping.size() - (int)dups.duplicates.size();
             invmap = (int*)malloc(sizeof(int) * invmap_size);
-            for (int i = 0; i < dups.mapping.size(); i++)
+            for (int i = 0; i < (int)dups.mapping.size(); i++)
                 invmap[dups.mapping[i]] = i;
 
             for (int i = 0; i < tris_cdt; i++)
