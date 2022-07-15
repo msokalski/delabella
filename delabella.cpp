@@ -38,14 +38,14 @@ static uint64_t uSec()
 
 
 template <typename T>
-IDelaBella<T>::~IDelaBella()
+IDelaBella3<T>::~IDelaBella3()
 {
 }
 
 template <typename T>
-struct CDelaBella : IDelaBella<T>
+struct CDelaBella3 : IDelaBella3<T>
 {
-	CDelaBella() : 
+	CDelaBella3() : 
 		vert_map(0),
 		vert_alloc(0),
 		face_alloc(0),
@@ -65,7 +65,9 @@ struct CDelaBella : IDelaBella<T>
 
 	struct Face;
 
-	struct Vert : DelaBella_Vertex<T>
+	struct Iter : IDelaBella3<T>::Iterator {};
+
+	struct Vert : IDelaBella3<T>::Vertex
 	{
 		static bool overlap(const Vert* v1, const Vert* v2)
 		{
@@ -86,7 +88,7 @@ struct CDelaBella : IDelaBella<T>
 		}
 	};
 
-	struct Face : DelaBella_Triangle<T>
+	struct Face : IDelaBella3<T>::Simplex
 	{
 		static Face* Alloc(Face** from)
 		{
@@ -258,7 +260,7 @@ struct CDelaBella : IDelaBella<T>
 					errlog_proc(errlog_file, "[WRN] all input points are colinear, returning single segment!\n");
 				first_boundary_vert = vert_alloc + 0;
 				first_internal_vert = 0;
-				vert_alloc[0].next = (DelaBella_Vertex<T>*)vert_alloc + 1;
+				vert_alloc[0].next = vert_alloc + 1;
 				vert_alloc[1].next = 0;
 			}
 			else
@@ -505,7 +507,7 @@ struct CDelaBella : IDelaBella<T>
 				out_boundary_verts = points;
 
 				for (int j = 1; j < points; j++)
-					vert_alloc[j - 1].next = (DelaBella_Vertex<T>*)vert_alloc + j;
+					vert_alloc[j - 1].next = vert_alloc + j;
 				vert_alloc[points - 1].next = 0;
 
 				return -points;
@@ -933,10 +935,10 @@ struct CDelaBella : IDelaBella<T>
 
 		// let's trace boudary contour, at least one vertex of first_hull_face
 		// must be shared with dela face, find that dela face
-		DelaBella_Iterator<T> it;
-		DelaBella_Vertex<T>* v = first_hull_face->v[0];
-		const DelaBella_Triangle<T>* t = v->StartIterator(&it);
-		const DelaBella_Triangle<T>* e = t; // end
+		Iter it;
+		Vert* v = (Vert*)first_hull_face->v[0];
+		Face* t = (Face*)v->StartIterator(&it);
+		Face* e = t; // end
 		
 		first_boundary_vert = (Vert*)v;
 		out_boundary_verts = 1;
@@ -952,16 +954,16 @@ struct CDelaBella : IDelaBella<T>
 				{
 					// let's move from: v to t->v[nx]
 					v->next = t->v[nx];
-					v = v->next;
+					v = (Vert*)v->next;
 					if (v == first_boundary_vert)
 						break; // lap finished
 					out_boundary_verts++;
-					t = t->StartIterator(&it,nx);
+					t = (Face*)t->StartIterator(&it,nx);
 					e = t;
 					continue;
 				}
 			}
-			t = it.Next();
+			t = (Face*)it.Next();
 
 			#ifdef DB_AUTO_TEST
 			assert(t!=e);
@@ -1039,10 +1041,10 @@ struct CDelaBella : IDelaBella<T>
 		Face* list = 0;
 		Face** tail = &list;
 
-		DelaBella_Iterator<T> it;
+		Iter it;
 
-		const DelaBella_Triangle<T>* first = va->StartIterator(&it);
-		const DelaBella_Triangle<T>* face = first;
+		Face* first = (Face*)va->StartIterator(&it);
+		Face* face = first;
 
 		// find first face around va, containing offending edge
 		Vert* v0;
@@ -1054,7 +1056,7 @@ struct CDelaBella : IDelaBella<T>
 		{
 			if (face->index < 0)
 			{
-				face = it.Next();
+				face = (Face*)it.Next();
 				#ifdef DB_AUTO_TEST
 				assert(face != first);
 				#endif
@@ -1110,7 +1112,7 @@ struct CDelaBella : IDelaBella<T>
 				break;
 			}
 
-			face = it.Next();
+			face = (Face*)it.Next();
 
 			#ifdef DB_AUTO_TEST
 			assert(face != first);
@@ -1124,12 +1126,12 @@ struct CDelaBella : IDelaBella<T>
 				// rotate N->v[] and N->f 'a' times 'backward' such offending edge appears opposite to v[0]
 				const int* r = rotate[a];
 
-				DelaBella_Vertex<T>* v[3] = { N->v[0] ,N->v[1] ,N->v[2] };
+				Vert* v[3] = { (Vert*)N->v[0], (Vert*)N->v[1], (Vert*)N->v[2] };
 				N->v[0] = v[r[0]];
 				N->v[1] = v[r[1]];
 				N->v[2] = v[r[2]];
 
-				DelaBella_Triangle<T>* f[3] = { N->f[0] ,N->f[1] ,N->f[2] };
+				Face* f[3] = { (Face*)N->f[0], (Face*)N->f[1], (Face*)N->f[2] };
 				N->f[0] = f[r[0]];
 				N->f[1] = f[r[1]];
 				N->f[2] = f[r[2]];
@@ -1600,14 +1602,14 @@ struct CDelaBella : IDelaBella<T>
 		return flips;
 	}
 
-	virtual int Polygonize(const DelaBella_Triangle<T>* poly[])
+	virtual int Polygonize(const IDelaBella3<T>::Simplex* poly[])
 	{
 		uint64_t time0 = uSec();
-		const DelaBella_Triangle<T>** buf = 0;
+		Face** buf = 0;
 		if (!poly)
 		{
-			buf = (const DelaBella_Triangle<T>**)malloc(sizeof(const DelaBella_Triangle<T>*) * out_verts / 3);
-			poly = buf;
+			buf = (Face**)malloc(sizeof(Face*) * out_verts / 3);
+			poly = (const IDelaBella3<T>::Simplex**)buf;
 			if (!poly)
 				return -1;
 		}
@@ -1772,7 +1774,7 @@ struct CDelaBella : IDelaBella<T>
 			
 			bool step_on = false; // is current vertex inserted
 
-			DelaBella_Iterator<T> it;
+			Iter it;
 			f->StartIterator(&it, f->f[0]->index == p ? 2 : f->f[1]->index == p ? 0 : 1);
 
 			int dbg = 0;
@@ -1941,27 +1943,27 @@ struct CDelaBella : IDelaBella<T>
 		return out_verts < 0 ? 0 : unique_points - out_boundary_verts;
 	}
 
-	virtual const DelaBella_Triangle<T>* GetFirstDelaunayTriangle() const
+	virtual const IDelaBella3<T>::Simplex* GetFirstDelaunaySimplex() const
 	{
 		return first_dela_face;
 	}
 
-	virtual const DelaBella_Triangle<T>* GetFirstHullTriangle() const
+	virtual const IDelaBella3<T>::Simplex* GetFirstHullSimplex() const
 	{
 		return first_hull_face;
 	}
 
-	virtual const DelaBella_Vertex<T>* GetFirstBoundaryVertex() const
+	virtual const IDelaBella3<T>::Vertex* GetFirstBoundaryVertex() const
 	{
 		return first_boundary_vert;
 	}
 
-	virtual const DelaBella_Vertex<T>* GetFirstInternalVertex() const
+	virtual const IDelaBella3<T>::Vertex* GetFirstInternalVertex() const
 	{
 		return first_internal_vert;
 	}
 
-	virtual const DelaBella_Vertex<T>* GetVertexByIndex(int i) const
+	virtual const IDelaBella3<T>::Vertex* GetVertexByIndex(int i) const
 	{
 		if (i < 0 || i >= inp_verts)
 			return 0;
@@ -1976,11 +1978,11 @@ struct CDelaBella : IDelaBella<T>
 };
 
 template <typename T>
-IDelaBella<T>* IDelaBella<T>::Create()
+IDelaBella3<T>* IDelaBella3<T>::Create()
 {
-	return new CDelaBella<T>;
+	return new CDelaBella3<T>;
 }
 
-template IDelaBella<float>* IDelaBella<float>::Create();
-template IDelaBella<double>* IDelaBella<double>::Create();
-template IDelaBella<long double>* IDelaBella<long double>::Create();
+template IDelaBella3<float>* IDelaBella3<float>::Create();
+template IDelaBella3<double>* IDelaBella3<double>::Create();
+template IDelaBella3<long double>* IDelaBella3<long double>::Create();

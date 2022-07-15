@@ -5,6 +5,8 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #define _CRT_SECURE_NO_WARNINGS
 
+#define DELABELLA_LEGACY double
+
 #define DELAUNATOR
 #define Cdt
 
@@ -425,6 +427,13 @@ int main(int argc, char* argv[])
 	SetProcessDPIAware();
 	#endif
 
+    /*
+    typedef IDelaBella3<double>  IDelaBella;
+    typedef IDelaBella::Simplex  DelaBella_Triangle;
+    typedef IDelaBella::Vertex   DelaBella_Vertex;
+    typedef IDelaBella::Iterator DelaBella_Iterator;
+    */
+
 	if (argc<2)
 	{
         printf("usage: %s <input.xy> [output.abc]\n", argc > 0 ? argv[0] : "<executable>");
@@ -546,13 +555,13 @@ int main(int argc, char* argv[])
             for (int i = 0; i < m; i++)
                 xxx.push_back(cloud[sub[i]]);
 
-            IDelaBella<double>* helper = IDelaBella<double>::Create();
+            IDelaBella* helper = IDelaBella::Create();
             helper->Triangulate(m, &xxx.data()->x, &xxx.data()->y, sizeof(MyPoint));
 
             // to avoid repeatitions,
             // traverse all faces but use edges with ascending y or in case of flat y use only if ascending x
 
-            const DelaBella_Triangle<double>* dela = helper->GetFirstDelaunayTriangle();
+            const IDelaBella3<double>::Simplex* dela = helper->GetFirstDelaunaySimplex();
             while (dela)
             {
                 if (dela->v[1]->y > dela->v[0]->y || dela->v[1]->y == dela->v[0]->y && dela->v[1]->x > dela->v[0]->x)
@@ -711,7 +720,7 @@ int main(int argc, char* argv[])
     }
     #endif
 
-	IDelaBella<double>* idb = IDelaBella<double>::Create();
+	IDelaBella* idb = IDelaBella::Create();
 	idb->SetErrLog(errlog, stdout);
 	
     printf("running delabella...\n");
@@ -725,7 +734,7 @@ int main(int argc, char* argv[])
     if (force.size()>0)
         int flips = idb->Constrain((int)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge));
 
-    const DelaBella_Triangle<double>** dela_polys = (const DelaBella_Triangle<double>**)malloc(sizeof(const DelaBella_Triangle<double>*) * tris_delabella);
+    const DelaBella_Triangle** dela_polys = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * tris_delabella);
     int polys_delabella = idb->Polygonize(dela_polys);
 
     printf("delabella triangles: %d\n", tris_delabella);
@@ -830,12 +839,12 @@ int main(int argc, char* argv[])
         {
             int s = 0;
 
-            const DelaBella_Triangle<double>* f = dela_polys[p];
+            const DelaBella_Triangle* f = dela_polys[p];
 
             for (int i = 0; i < 3; i++)
             {
                 int j = n + s;
-                const DelaBella_Vertex<double>* k = f->v[i];
+                const DelaBella_Vertex* k = f->v[i];
                 idb_v[j].x = k->x;
                 idb_v[j].y = k->y;
                 s++;
@@ -846,7 +855,7 @@ int main(int argc, char* argv[])
             while (f && f->index == p)
             {
                 int j = n + s;
-                const DelaBella_Vertex<double>* k = f->v[0];
+                const DelaBella_Vertex* k = f->v[0];
                 idb_v[j].x = k->x;
                 idb_v[j].y = k->y;
                 s++;
@@ -894,7 +903,7 @@ int main(int argc, char* argv[])
         {
             for (int i=0; i<tris_delabella; i++)
             {
-                const DelaBella_Triangle<double>* dela = idb->GetFirstDelaunayTriangle();
+                const DelaBella_Triangle* dela = idb->GetFirstDelaunaySimplex();
                 fprintf(f,"%d %d %d\n", 
                     dela->v[0]->i,
                     dela->v[1]->i,
@@ -1031,7 +1040,7 @@ int main(int argc, char* argv[])
 
     ibo_delabella.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delabella + sizeof(GLuint) * contour);	
     GLuint* ibo_ptr = (GLuint*)ibo_delabella.Map();
-    const DelaBella_Triangle<double>* dela = idb->GetFirstDelaunayTriangle();
+    const DelaBella_Triangle* dela = idb->GetFirstDelaunaySimplex();
 	for (int i = 0; i<tris_delabella; i++)
 	{
         int v0 = dela->v[0]->i;
@@ -1065,8 +1074,8 @@ int main(int argc, char* argv[])
 		dela = dela->next;
 	}
 
-	const DelaBella_Vertex<double>* prev = idb->GetFirstBoundaryVertex();
-    const DelaBella_Vertex<double>* vert = prev->next;
+	const DelaBella_Vertex* prev = idb->GetFirstBoundaryVertex();
+    const DelaBella_Vertex* vert = prev->next;
     int contour_min = points-1;
     int contour_max = 0;
     for (int i = 0; i<contour; i++)    
@@ -1095,8 +1104,8 @@ int main(int argc, char* argv[])
 
         // iterate all dela faces around prev
         // add their voro-vert index == dela face index
-        DelaBella_Iterator<double> it;
-        const DelaBella_Triangle<double>* t = prev->StartIterator(&it);
+        DelaBella_Iterator it;
+        const DelaBella_Triangle* t = prev->StartIterator(&it);
 
         // it starts at random face, so lookup the prev->vert edge
         while (1)
@@ -1136,9 +1145,9 @@ int main(int argc, char* argv[])
     for (int i = 0; i<non_contour; i++)
     {
         // create regular-fan / line_loop in ibo_voronoi around this internal vertex
-        DelaBella_Iterator<double> it;
-        const DelaBella_Triangle<double>* t = vert->StartIterator(&it);
-        const DelaBella_Triangle<double>* e = t;
+        DelaBella_Iterator it;
+        const DelaBella_Triangle* t = vert->StartIterator(&it);
+        const DelaBella_Triangle* e = t;
         do
         {
             assert(t->index>=0);
