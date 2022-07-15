@@ -9,10 +9,8 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #include <algorithm>
 #include "delabella.h"
 
-#if 0
-//#ifdef USE_PREDICATES
+#ifdef USE_PREDICATES
 #include "CDT/include/predicates.h"
-struct IA_FastRound { IA_FastRound() {} };
 #else
 #include "CDT/include/predicates.h"
 
@@ -77,9 +75,8 @@ struct CDelaBella : IDelaBella
 
 	struct Vert : DelaBella_Vertex
 	{
-		Unsigned28 z;
-
 		#ifndef USE_PREDICATES
+		Unsigned28 z;
 		Vect operator - (const Vert& v) const // diff
 		{
 			Vect d;
@@ -97,10 +94,27 @@ struct CDelaBella : IDelaBella
 
 		bool operator < (const Vert& v) const
 		{
-			if (z < v.z)
+			#ifdef USE_PREDICATES
+			double dif = predicates::adaptive::sqrlendif2d(x, y, v.x, v.y);
+
+			if (dif < 0)
 				return true;
-			if (z > v.z || x == v.x && y == v.y)
+			if (dif > 0)
 				return false;
+			if (x < v.x || x == v.x && y < v.y)
+				return true;
+			return false;
+
+			#else
+
+			if (z < v.z)
+			{
+				return true;
+			}
+			if (z > v.z || x == v.x && y == v.y)
+			{
+				return false;
+			}
 
 			XA_REF ax = x;
 			XA_REF ay = y;
@@ -110,9 +124,12 @@ struct CDelaBella : IDelaBella
 			XA_REF bz = bx * bx + by * by;
 
 			if (az < bz || az == bz && (x < v.x || x == v.x && y < v.y))
+			{
 				return true;
+			}
 
 			return false;
+			#endif
 		}
 
 		static int u28cmp(const void* a, const void* b)
@@ -209,32 +226,6 @@ struct CDelaBella : IDelaBella
 			return (v1x * v2y).cmp(v1y * v2x) == 0;
 			#endif
 		}
-
-		/*
-		int sign() const
-		{
-			#ifdef USE_PREDICATES
-			return predicates::adaptive::orient2d(v[0]->x, v[0]->y, v[1]->x, v[1]->y, v[2]->x, v[2]->y);
-			#else
-			// try aprox
-			if (n.z < 0)
-				return -1;
-			if (n.z > 0)
-				return +1;
-
-			// calc exact
-			XA_REF x0 = v[0]->x, y0 = v[0]->y;
-			XA_REF x1 = v[1]->x, y1 = v[1]->y;
-			XA_REF x2 = v[2]->x, y2 = v[2]->y;
-
-			XA_REF v1x = x1 - x0, v1y = y1 - y0;
-			XA_REF v2x = x2 - x0, v2y = y2 - y0;
-
-			return (v1x * v2y).cmp(v1y * v2x);
-			#endif
-		}
-		*/
-
 
 		bool dot0(const Vert& p)
 		{
@@ -603,8 +594,10 @@ struct CDelaBella : IDelaBella
 			// sort parts separately in opposite directions
 			// mark part with Vert::sew temporarily
 
+			#ifndef USE_PREDICATES
 			Signed15 part_x = (Signed15)vert_alloc[lower_left].y - (Signed15)vert_alloc[upper_right].y;
 			Signed15 part_y = (Signed15)vert_alloc[upper_right].x - (Signed15)vert_alloc[lower_left].x;
+			#endif
 
 			for (int j = 0; j < i; j++)
 			{
@@ -621,6 +614,21 @@ struct CDelaBella : IDelaBella
 				}
 				else
 				{
+					#ifdef USE_PREDICATES
+					Vert* ll = vert_alloc + lower_left;
+					Vert* ur = vert_alloc + upper_right;
+					double dot = predicates::adaptive::orient2d(ll->x, ll->y, ur->x, ur->y, vert_alloc[j].x, vert_alloc[j].y);
+					if (dot < 0)
+					{
+						// lower
+						vert_alloc[j].sew = &f;
+					}
+					else
+					{
+						// upper
+						vert_alloc[j].sew = 0;
+					}
+					#else
 					Signed15 vx = (Signed15)vert_alloc[j].x - (Signed15)vert_alloc[lower_left].x;
 					Signed15 vy = (Signed15)vert_alloc[lower_left].y - (Signed15)vert_alloc[j].y; // flipped!
 
@@ -669,11 +677,14 @@ struct CDelaBella : IDelaBella
 							vert_alloc[j].sew = &f;
 						}
 					}
+					#endif
 				}
 			}
 
+			#ifndef USE_PREDICATES
 			part_x = (Signed15)vert_alloc[upper_right].x - (Signed15)vert_alloc[lower_left].x;
 			part_y = (Signed15)vert_alloc[upper_right].y - (Signed15)vert_alloc[lower_left].y;
+			#endif
 
 			struct
 			{
@@ -688,6 +699,27 @@ struct CDelaBella : IDelaBella
 					if (!a.sew && b.sew)
 						return true;
 
+					#ifdef USE_PREDICATES
+					// actually we can compare coords directly
+					if (a.sew)
+					{
+						// lower
+						if (a.x > b.x)
+							return true;
+						if (a.x == b.x)
+							return a.y > b.y;
+						return false;
+					}
+					else
+					{
+						// upper
+						if (a.x < b.x)
+							return true;
+						if (a.x == b.x)
+							return a.y < b.y;
+						return false;
+					}
+					#else
 					// calc a and b dot prods with (ur.x-ll.x,ur.y-ll.y)
 					Signed15 ax = (Signed15)a.x - (Signed15)ll->x;
 					Signed15 ay = (Signed15)a.y - (Signed15)ll->y;
@@ -730,6 +762,7 @@ struct CDelaBella : IDelaBella
 							return a.sew != 0;
 						}
 					}
+					#endif
 
 					// otherwise
 					#ifdef DB_AUTO_TEST
@@ -737,11 +770,15 @@ struct CDelaBella : IDelaBella
 					#endif
 					return false;
 				}
+			#ifdef USE_PREDICATES
+			} c;
+			#else
 				const Vert* ll;
 				const Vert* ur;
 				Signed15 part_x;
 				Signed15 part_y;
 			} c{ vert_alloc + lower_left, vert_alloc + upper_right, part_x, part_y };
+			#endif
 			std::sort(vert_alloc, vert_alloc + i, c);
 		}
 
@@ -1040,7 +1077,9 @@ struct CDelaBella : IDelaBella
 					while (f->dotNP(*q))
 					//while (f->dotN(*q)) // we want to consume coplanar faces
 					{
+						#ifdef DB_AUTO_TEST
 						assert(f != face_alloc); // no face is visible? you must be kidding!
+						#endif
 						f--;
 					}
 				}
@@ -1113,8 +1152,10 @@ struct CDelaBella : IDelaBella
 							else
 							if (n->f[2] == f)
 								n->f[2] = s;
+							#ifdef DB_AUTO_TEST
 							else
 								assert(0);
+							#endif
 
 							// build silhouette needed for sewing sides in the second pass
 							a->sew = s;
@@ -1128,13 +1169,15 @@ struct CDelaBella : IDelaBella
 							if (n->f[0] == f)
 								n->f[0] = 0;
 							else
-								if (n->f[1] == f)
-									n->f[1] = 0;
-								else
-									if (n->f[2] == f)
-										n->f[2] = 0;
-									else
-										assert(0);
+							if (n->f[1] == f)
+								n->f[1] = 0;
+							else
+							if (n->f[2] == f)
+								n->f[2] = 0;
+							#ifdef DB_AUTO_TEST
+							else
+								assert(0);
+							#endif
 
 							// push neighbor face, it's visible and requires processing
 							n->next = stack ? stack : n;
@@ -1144,10 +1187,12 @@ struct CDelaBella : IDelaBella
 				}
 			}
 
+			#ifdef DB_AUTO_TEST
 			// if add<del+2 hungry hull has consumed some point
 			// that means we can't do delaunay for some under precission reasons
 			// althought convex hull would be fine with it
 			assert(add == del + 2);
+			#endif
 
 			// 3. SEW SIDES OF CONE BUILT ON SLIHOUTTE SEGMENTS
 
@@ -1168,8 +1213,9 @@ struct CDelaBella : IDelaBella
 			} while (pr != entry);
 		}
 
+		#ifdef DB_AUTO_TEST
 		assert(2 * i - 4 == hull_faces);
-		//ValidateHull(alloc, hull_faces);
+		#endif
 
 		for (int j = 0; j < points; j++)
 		{
@@ -1351,7 +1397,10 @@ struct CDelaBella : IDelaBella
 				}
 			}
 			t = it.Next();
+
+			#ifdef DB_AUTO_TEST
 			assert(t!=e);
+			#endif
 		}
 
 		if (errlog_proc)
@@ -1460,7 +1509,9 @@ struct CDelaBella : IDelaBella
 			if (face->index < 0)
 			{
 				face = it.Next();
+				#ifdef DB_AUTO_TEST
 				assert(face != first);
+				#endif
 				continue;
 			}
 
@@ -1594,7 +1645,10 @@ struct CDelaBella : IDelaBella
 			#endif
 
 			face = it.Next();
+
+			#ifdef DB_AUTO_TEST
 			assert(face != first);
+			#endif
 		}
 
 		while (1)
@@ -1766,7 +1820,9 @@ struct CDelaBella : IDelaBella
 			#endif
 		}
 
+		#ifdef DB_AUTO_TEST
 		assert(0);
+		#endif
 		*restart = 0;
 		*ptail = 0;
 		return 0;
@@ -1774,7 +1830,9 @@ struct CDelaBella : IDelaBella
 
 	virtual int Constrain(int num, const int* pa, const int* pb, int advance_bytes)
 	{
+		#ifndef USE_PREDICATES
 		IA_FastRound round;
+		#endif
 
 		if (advance_bytes <= 0)
 			advance_bytes = 2*sizeof(int);
@@ -1817,11 +1875,11 @@ struct CDelaBella : IDelaBella
 			Face** tail = 0;
 			Vert* restart = 0;
 			Face* list = FindConstraintOffenders(va, vc, &tail, &restart);
-			//if (!list && restart)
-			//{
-			//	va = restart;
-			//	continue;
-			//}
+			if (!list && restart)
+			{
+				va = restart;
+				continue;
+			}
 
 			Face* flipped = 0;
 
@@ -1927,8 +1985,9 @@ struct CDelaBella : IDelaBella
 				}
 				#endif
 
+				#ifdef DB_AUTO_TEST
 				assert(v0r < 0 && v1r > 0);
-
+				#endif
 
 				// it's convex, xa already checked
 				// if (l_a0r < r_a0r && l_a1r > r_a1r)
@@ -2171,6 +2230,9 @@ struct CDelaBella : IDelaBella
 					// bool np = N->dotP(*vr);
 					// bool fp = F->dotP(*v);
 					// assert(np && fp || !np && !fp);
+
+					// can we check if it was flipped last time?
+					// if ((N->index & 0x40000000) == 0)
 					if (N->dotP(*vr) /* || F->dotP(*v)*/) 
 					{
 						no_flips = false;
@@ -2229,6 +2291,15 @@ struct CDelaBella : IDelaBella
 						N->cross();
 						F->cross();
 						#endif
+
+						// can we un-mark not flipped somehow?
+						// N->index &= 0x3fffffff;
+						// F->index &= 0x3fffffff;
+					}
+					else
+					{
+						// can we mark it as not flipped somehow?
+						// N->index |= 0x40000000;
 					}
 
 					N = (Face*)N->next;
@@ -2383,7 +2454,6 @@ struct CDelaBella : IDelaBella
 			// break list appart
 			// so we can unmark all poly faces
 
-			int dbg_num = 0;
 			while (f)
 			{
 				Face* n = (Face*)f->next;
@@ -2404,11 +2474,11 @@ struct CDelaBella : IDelaBella
 
 				f->next = 0; // unmark
 				f = n;
-
-				dbg_num++;
 			}
 
+			#ifdef DB_AUTO_TEST
 			assert(first);
+			#endif
 
 			Face* list = first; // here list is empty, first is used as sentinel
 
@@ -2489,8 +2559,6 @@ struct CDelaBella : IDelaBella
 
 			// store ordered list in poly
 			poly[p] = list;
-
-			assert(dbg == dbg_num);
 		}
 
 		#else
@@ -2529,7 +2597,9 @@ struct CDelaBella : IDelaBella
 		if (!ReallocVerts(points))
 			return 0;
 
+		#ifndef USE_PREDICATES
 		IA_FastRound round;
+		#endif
 
 		for (int i = 0; i < points; i++)
 		{
@@ -2537,8 +2607,10 @@ struct CDelaBella : IDelaBella
 			v->i = i;
 			v->x = (Signed14)*(const float*)((const char*)x + i*advance_bytes);
 			v->y = (Signed14)*(const float*)((const char*)y + i*advance_bytes);
+			#ifndef USE_PREDICATES
 			v->z = s14sqr(v->x) + s14sqr(v->y);
 			//v->e = fabs(v->x) + fabs(v->y) + v->z;
+			#endif
 		}
 		
 		out_hull_faces = 0;
@@ -2561,7 +2633,9 @@ struct CDelaBella : IDelaBella
 		if (!ReallocVerts(points))
 			return 0;
 
+		#ifndef USE_PREDICATES
 		IA_FastRound round;
+		#endif
 
 		for (int i = 0; i < points; i++)
 		{
@@ -2569,8 +2643,11 @@ struct CDelaBella : IDelaBella
 			v->i = i;
 			v->x = (Signed14)*(const double*)((const char*)x + i*advance_bytes);
 			v->y = (Signed14)*(const double*)((const char*)y + i*advance_bytes);
+			#ifndef USE_PREDICATES
 			v->z = s14sqr(v->x) + s14sqr(v->y);
 			//v->e = fabs(v->x) + fabs(v->y) + v->z;
+			#endif
+
 		}
 
 		out_hull_faces = 0;
@@ -2593,7 +2670,9 @@ struct CDelaBella : IDelaBella
 		if (!ReallocVerts(points))
 			return 0;
 
+		#ifndef USE_PREDICATES
 		IA_FastRound round;
+		#endif
 
 		for (int i = 0; i < points; i++)
 		{
@@ -2601,8 +2680,10 @@ struct CDelaBella : IDelaBella
 			v->i = i;
 			v->x = (Signed14)*(const long double*)((const char*)x + i*advance_bytes);
 			v->y = (Signed14)*(const long double*)((const char*)y + i*advance_bytes);
+			#ifndef USE_PREDICATES
 			v->z = s14sqr(v->x) + s14sqr(v->y);
 			//v->e = fabs(v->x) + fabs(v->y) + v->z;
+			#endif
 		}
 
 		out_hull_faces = 0;

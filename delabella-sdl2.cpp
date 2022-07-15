@@ -420,57 +420,6 @@ struct Buf
 
 int main(int argc, char* argv[])
 {
-    /*
-    uint64_t rmin = 1;
-    uint64_t rmax = 0xffffffff;
-
-    uint64_t pro = 0;
-
-    double err = 1000;
-    uint64_t rad = 0;
-    int dx, dy;
-
-    for (uint64_t r = rmin; r <= rmax; r++)
-    {
-        if (r >= pro)
-        {
-            int p = (int)((uint64_t)100 * r / rmax);
-            pro = (uint64_t)(p + 1) * rmax / 100;
-            if (pro >= rmax)
-                pro = rmax - 1;
-            if (r == rmax - 1)
-                p = 100;
-            printf("\r[%2d%s]%s", p, p >= 100 ? "" : "%", p >= 100 ? "\n" : "");
-        }
-
-        uint64_t x0 = (uint64_t)round(r * cos(30 * M_PI / 180))-1;
-
-        for (uint64_t x = x0; x < x0+2; x++)
-        {
-            int64_t yy = (int64_t)r * r - (int64_t)x * x;
-            int64_t y = (int64_t)round(sqrt(yy));
-            if (y * y == yy)
-            {
-                double a = atan2((double)y, (double)x)/M_PI*180;
-                //printf("%d,%d  %f\n", x, y, a);
-
-                double e = fabs(30 - a);
-                if (e < err)
-                {
-                    dx = x;
-                    dy = y;
-                    err = e;
-                    rad = r;
-                }
-                break;
-            }
-        }
-    }
-    printf("\n");
-    printf("minerr = %e rad = %lld, dx=%d, dy=%d)\n", err, rad, dx, dy);
-    exit(0);
-    */
-
 	#ifdef _WIN32
 	SetProcessDPIAware();
 	#endif
@@ -504,6 +453,7 @@ int main(int argc, char* argv[])
 
     struct MyEdge
     {
+        MyEdge(int a, int b) : a(a), b(b) {}
         int a, b;
     };
 	
@@ -521,22 +471,27 @@ int main(int argc, char* argv[])
         }
         printf("generating random %d points\n", n);
         std::random_device rd{};
-        std::mt19937_64 gen{ 0x12345678 /*rd()*/};
+        std::mt19937_64 gen{ /*0x12345678*/ rd()};
 
-        //std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
+        std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
         //std::normal_distribution<double> d{0.0,2.0};
-        std::gamma_distribution<double> d(0.1,2.0);
+        //std::gamma_distribution<double> d(0.1,2.0);
 
         /*
         for (int i = 0; i < n; i++)
         {
-            MyPoint p = { (d(gen) - 5.0), (d(gen) - 5.0) };
-            //MyPoint p = { d(gen), d(gen) };
-            assert(isfinite(p.x) && isfinite(p.y));
+            //MyPoint p = { (d(gen) - 5.0), (d(gen) - 5.0) };
+            MyPoint p = { d(gen), d(gen) };
+            
+            //p.x *= 0x1.p250;
+            //p.y *= 0x1.p250;
+
+            assert(std::abs(p.x) <= 0x1.p255 && std::abs(p.y) <= 0x1.p255);
             cloud.push_back(p);
         }
         */
-
+        
+        
         {
             const double x = 0x5af2efc1.p-30;
             const double y = 0x348268e0.p-30;
@@ -568,13 +523,62 @@ int main(int argc, char* argv[])
             }
         }
 
+        {
+            int m = n / 10;
+            // pick random m points from input of n
+            // triangulate them, use result for constraining
+
+            int* sub = (int*)malloc(sizeof(int) * n);
+            for (int i = 0; i < n; i++)
+                sub[i] = i;
+
+            for (int i = 0; i < m; i++)
+            {
+                int j = i + gen() % ((size_t)n - i);
+                int r = sub[j];
+                sub[j] = sub[i];
+                sub[i] = r;
+            }
+
+            // use last m items as random non-repeating input
+            std::vector<MyPoint> xxx;
+            for (int i = 0; i < m; i++)
+                xxx.push_back(cloud[sub[i]]);
+
+            IDelaBella* helper = IDelaBella::Create();
+            helper->Triangulate(m, &xxx.data()->x, &xxx.data()->y, sizeof(MyPoint));
+
+            // to avoid repeatitions,
+            // traverse all faces but use edges with ascending y or in case of flat y use only if ascending x
+
+            const DelaBella_Triangle* dela = helper->GetFirstDelaunayTriangle();
+            while (dela)
+            {
+                if (dela->v[1]->y > dela->v[0]->y || dela->v[1]->y == dela->v[0]->y && dela->v[1]->x > dela->v[0]->x)
+                    force.push_back(MyEdge(sub[dela->v[0]->i], sub[dela->v[1]->i]));
+
+                if (dela->v[2]->y > dela->v[1]->y || dela->v[2]->y == dela->v[1]->y && dela->v[2]->x > dela->v[1]->x)
+                    force.push_back(MyEdge(sub[dela->v[1]->i], sub[dela->v[2]->i]));
+
+                if (dela->v[0]->y > dela->v[2]->y || dela->v[0]->y == dela->v[2]->y && dela->v[0]->x > dela->v[2]->x)
+                    force.push_back(MyEdge(sub[dela->v[2]->i], sub[dela->v[0]->i]));
+
+                dela = dela->next;
+            }
+
+            helper->Destroy();
+            free(sub);
+        }
+
+
+        /*
         int a = gen() % n;
         for (int i = 0; i < 1000; i++)
         {
             int b = (a + gen() % (n-1)) % n;
-            MyEdge e = { a, b };
-            force.push_back(e);
+            force.push_back(MyEdge(a, b));
         }
+        */
      
         /*
         for (int i = 0; i < n; i++)
@@ -655,7 +659,7 @@ int main(int argc, char* argv[])
 
         if (force.size()>0)
         {
-            printf("cdt constraining... ");
+            printf("cdt constraining...  ");
             cdt.insertEdges(edges);
             uint64_t t3 = uSec();
             printf("%d ms\n", (int)((t3 - t2) / 1000));
@@ -858,8 +862,8 @@ int main(int argc, char* argv[])
 
             n += s;
         }
+        printf("sorting cdt ...\n");
         std::sort(cdt_p.begin(), cdt_p.end(), PolyPred(cdt_v));
-
 
         printf("preping idb for cmp ...\n");
         std::vector<MyPoint> idb_v(poly_indices);
@@ -900,9 +904,11 @@ int main(int argc, char* argv[])
 
             n += s;
         }
+        printf("sorting idb ...\n");
         std::sort(idb_p.begin(), idb_p.end(), PolyPred(idb_v));
 
-        printf("COMPARING...\n");
+        printf("COMPARING... ");
+        bool compare_ok = true;
         for (int p = 0; p < polys_delabella; p++)
         {
             MyPoly p_idb = idb_p[p];
@@ -911,9 +917,14 @@ int main(int argc, char* argv[])
             MyPoint* data_idb = idb_v.data() + p_idb.offs;
             MyPoint* data_cdt = cdt_v.data() + p_cdt.offs;
 
-            assert(p_idb.size == p_cdt.size);
-            assert(memcmp(data_idb, data_cdt, sizeof(MyPoint)* p_idb.size) == 0);
+            if (p_idb.size != p_cdt.size ||
+                memcmp(data_idb, data_cdt, sizeof(MyPoint) * p_idb.size))
+            {
+                compare_ok = false;
+                break;
+            }
         }
+        printf(compare_ok ? "OK\n" : "DIFFERENT!\n");
 
         #endif
     }

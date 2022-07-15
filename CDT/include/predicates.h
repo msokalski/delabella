@@ -30,6 +30,10 @@
  *                                                                                 *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+ * Adding sqrlendif2d() predicate - (C) 2022 M.Sokalski                            *
+ * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
 #ifndef PREDICATES_H_INCLUDED
 #define PREDICATES_H_INCLUDED
 
@@ -39,6 +43,9 @@ namespace  predicates {
 	//@brief: geometric predicates using arbitrary precision arithmetic 
 	//@note : these are provided primarily for illustrative purposes and adaptive routines should be preferred
 	namespace exact {
+		//@brief   : determine if the 2d vector a is longer than 2d vector b
+		template <typename T> T sqrlendif2d(T const ax, T const ay, T const bx, T const by);
+		
 		//@brief   : determine if the 2d point c is above, on, or below the line defined by a and b
 		//@param ax: X-coordinate of a
 		//@param ay: Y-coordinate of a
@@ -103,6 +110,9 @@ namespace  predicates {
 	//@brief: geometric predicates using normal floating point arithmetic but falling back to arbitrary precision when needed
 	//@note : these should have the same accuracy but are significantly faster when determinants are large
 	namespace adaptive {
+		//@brief   : determine if the 2d vector a is longer than 2d vector b
+		template <typename T> T sqrlendif2d(T const ax, T const ay, T const bx, T const by);
+
 		//@brief   : determine if the 2d point c is above, on, or below the line defined by a and b
 		//@param ax: X-coordinate of a
 		//@param ay: Y-coordinate of a
@@ -480,6 +490,14 @@ namespace detail {
 }
 
 	namespace exact {
+		template <typename T> T sqrlendif2d(T const ax, T const ay, T const bx, T const by)
+		{
+			const detail::Expansion<T, 4> x = detail::ExpansionBase<T>::TwoTwoDiff(ax, ax, bx, bx);
+			const detail::Expansion<T, 4> y = detail::ExpansionBase<T>::TwoTwoDiff(ay, ay, by, by);
+			const detail::Expansion<T, 8> z = x + y;
+			return z.mostSignificant();
+		}
+
 		template <typename T> T orient2d(T const ax, T const ay, T const bx, T const by, T const cx, T const cy)
 		{
 			const detail::Expansion<T, 4> aterms = detail::ExpansionBase<T>::TwoTwoDiff(ax, by, ax, cy);
@@ -634,6 +652,19 @@ namespace detail {
 	template <typename T> const T Constants<T>::isperrboundC   = (T(71) + T(1408) * Epsilon<T>()) * Epsilon<T>() * Epsilon<T>();
 
 	namespace adaptive {
+		template <typename T> T sqrlendif2d(T const ax, T const ay, T const bx, T const by) {
+			const T a = ax * ax + ay * ay;
+			const T b = bx * bx + by * by;
+			const T c = a - b;
+			if (std::abs(c) > (a + b) * Constants<T>::resulterrbound)
+				return c;
+
+			const detail::Expansion<T, 4> x = detail::ExpansionBase<T>::TwoTwoDiff(ax, ax, bx, bx);
+			const detail::Expansion<T, 4> y = detail::ExpansionBase<T>::TwoTwoDiff(ay, ay, by, by);
+			const detail::Expansion<T, 8> z = x + y;
+			return z.mostSignificant();
+		}
+
 		template <typename T> T orient2d(T const ax, T const ay, T const bx, T const by, T const cx, T const cy) {
 			const T acx = ax - cx;
 			const T bcx = bx - cx;
