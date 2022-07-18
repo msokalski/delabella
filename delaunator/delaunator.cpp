@@ -11,6 +11,8 @@
 #include <tuple>
 #include <vector>
 
+#include "../predicates.h"
+
 namespace delaunator {
 
 //@see https://stackoverflow.com/questions/33333363/built-in-mod-vs-custom-mod-function-improve-the-performance-of-modulus-op/33333636#33333636
@@ -170,6 +172,9 @@ inline bool in_circle(
     const double cy,
     const double px,
     const double py) {
+
+    // return predicates::adaptive::incircle(px, py, ax, ay, bx, by, cx, cy) < 0;
+
     const double dx = ax - px;
     const double dy = ay - py;
     const double ex = bx - px;

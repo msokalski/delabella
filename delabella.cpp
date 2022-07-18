@@ -14,6 +14,9 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #include "delabella.h"
 #include "predicates.h"
 
+extern int inside, outside, exacton;
+
+
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -137,38 +140,52 @@ struct CDelaBella3 : IDelaBella2<T>
 
 		bool dot0(const Vert& p) const
 		{
-			return predicates::adaptive::incircle(
-				p.x, p.y, 
-				this->v[0]->x, this->v[0]->y, 
-				this->v[1]->x, this->v[1]->y, 
-				this->v[2]->x, this->v[2]->y) == 0;
+			return
+				predicates::adaptive::incircle(
+					p.x, p.y,
+					this->v[0]->x, this->v[0]->y,
+					this->v[1]->x, this->v[1]->y,
+					this->v[2]->x, this->v[2]->y) == 0;
 		}
 
 		bool dotP(const Vert& p) const
 		{
-			return predicates::adaptive::incircle(
-				p.x, p.y, 
-				this->v[0]->x, this->v[0]->y, 
-				this->v[1]->x, this->v[1]->y, 
-				this->v[2]->x, this->v[2]->y) > 0;
+			return
+				predicates::adaptive::incircle(
+					p.x, p.y,
+					this->v[0]->x, this->v[0]->y,
+					this->v[1]->x, this->v[1]->y,
+					this->v[2]->x, this->v[2]->y) > 0;
 		}
 
 		bool dotN(const Vert& p) const
 		{
-			return predicates::adaptive::incircle(
-				p.x, p.y, 
-				this->v[0]->x, this->v[0]->y, 
-				this->v[1]->x, this->v[1]->y, 
-				this->v[2]->x, this->v[2]->y) < 0;
+			return
+				predicates::adaptive::incircle(
+					p.x, p.y,
+					this->v[0]->x, this->v[0]->y,
+					this->v[1]->x, this->v[1]->y,
+					this->v[2]->x, this->v[2]->y) < 0;
 		}
 
 		bool dotNP(const Vert& p) const
 		{
-			return predicates::adaptive::incircle(
-				p.x,p.y, 
-				this->v[0]->x, this->v[0]->y, 
-				this->v[1]->x, this->v[1]->y, 
-				this->v[2]->x, this->v[2]->y) <= 0;
+			T dbg =
+				predicates::adaptive::incircle(
+					p.x,p.y, 
+					this->v[0]->x, this->v[0]->y, 
+					this->v[1]->x, this->v[1]->y, 
+					this->v[2]->x, this->v[2]->y);
+
+			if (dbg < 0)
+				inside++;
+			else
+			if (dbg > 0)
+				outside++;
+			else
+				exacton++;
+
+			return dbg <= 0;
 		}
 	};
 
@@ -1842,7 +1859,7 @@ struct CDelaBella3 : IDelaBella2<T>
 		if (!y)
 			y = x + 1;
 		
-		if (advance_bytes < static_cast<int>(sizeof(T) * 2))
+		if (advance_bytes < (int)(sizeof(T) * 2))
 			advance_bytes = sizeof(T) * 2;
 
 		if (!ReallocVerts(points))
@@ -1938,6 +1955,182 @@ struct CDelaBella3 : IDelaBella2<T>
 	{
 		errlog_proc = proc;
 		errlog_file = stream;
+	}
+
+	virtual int GenVoronoiDiagramVerts(T* x, T* y, int advance_bytes) const
+	{
+		if (!x || !y)
+			return -1;
+		if (advance_bytes < (int)(sizeof(T) * 2))
+			advance_bytes = sizeof(T) * 2;
+
+		const int tris = out_verts / 3;
+		const int contour = out_boundary_verts;
+
+		const Face* f = first_dela_face;
+		for (int i = 0; i < tris; i++)
+		{
+			const T v1x = f->v[1]->x - f->v[0]->x;
+			const T v1y = f->v[1]->y - f->v[0]->y;
+			const T v2x = f->v[2]->x - f->v[0]->x;
+			const T v2y = f->v[2]->x - f->v[0]->x;
+
+			const T v11 = v1x * v1x + v1y * v1y;
+			const T v22 = v2x * v2x + v2y * v2y;
+			const T v12 = (v1x * v2y - v1y * v2x) * 2;
+
+			int offs = advance_bytes * i;
+			*(T*)((char*)x + offs) = f->v[0]->x + (v2y * v11 - v1y * v22) / v12;
+			*(T*)((char*)y + offs) = f->v[0]->y + (v1x * v22 - v2x * v11) / v12;
+
+			f = (Face*)f->next;
+		}
+
+		{
+			int offs = advance_bytes * tris;
+			x = (T*)((char*)x + offs);
+			y = (T*)((char*)x + offs);
+		}
+
+		Vert* prev = first_boundary_vert;
+		Vert* vert = (Vert*)prev->next;
+		for (int i = 0; i < contour; i++)
+		{
+			int offs = advance_bytes * i;
+			*(T*)((char*)x + offs) = prev->y - vert->y;
+			*(T*)((char*)y + offs) = vert->x - prev->x;
+			prev = vert;
+			vert = (Vert*)vert->next;
+		}
+
+		return tris + contour;
+	}
+
+	virtual int GenVoronoiDiagramEdges(int* indices, int advance_bytes) const
+	{
+		if (!indices)
+			return -1;
+
+		if (advance_bytes < sizeof(int))
+			advance_bytes = sizeof(int);
+
+		const int tris = out_verts / 3;
+		const int contour = out_boundary_verts;
+		const int verts = unique_points;
+		const int inter = verts - contour;
+
+		int* idx = indices;
+
+		Vert* prev = first_boundary_vert;
+		Vert* vert = (Vert*)prev->next;
+		for (int i = 0; i < contour; i++)
+		{
+			int a = i + tris; // begin
+
+			// iterate all dela faces around prev
+			// add their voro-vert index == dela face index
+			Iter it;
+			Face* t = (Face*)prev->StartIterator(&it);
+
+			// it starts at random face, so lookup the prev->vert edge
+			while (1)
+			{
+				if (t->index >= 0)
+				{
+					if (t->v[0] == prev && t->v[1] == vert ||
+						t->v[1] == prev && t->v[2] == vert ||
+						t->v[2] == prev && t->v[0] == vert)
+						break;
+				}
+				t = (Face*)it.Next();
+			}
+
+			// now iterate around, till we're inside the boundary
+			while (t->index >= 0)
+			{
+				int b = t->index;
+
+				if (a<b)
+				{
+					*idx = a;
+					idx = (int*)((char*)idx + advance_bytes);
+					*idx = b;
+					idx = (int*)((char*)idx + advance_bytes);
+				}
+				a = b;
+
+				t = (Face*)it.Next();
+			}
+
+			int b = (i == 0 ? contour - 1 : i - 1) + tris; // loop-wrapping!
+			if (a < b)
+			{
+				*idx = a;
+				idx = (int*)((char*)idx + advance_bytes);
+				*idx = b;
+				idx = (int*)((char*)idx + advance_bytes);
+			}
+			a = b;
+
+			prev = vert;
+			vert = (Vert*)vert->next;
+		}
+
+		vert = first_internal_vert;
+		for (int i = 0; i < inter; i++)
+		{
+			Iter it;
+			Face* t = (Face*)vert->StartIterator(&it);
+			Face* e = t;
+
+			int a = t->index; // begin
+			do
+			{
+				int b = t->index;
+				if (a < b)
+				{
+					*idx = a;
+					idx = (int*)((char*)idx + advance_bytes);
+					*idx = b;
+					idx = (int*)((char*)idx + advance_bytes);
+				}
+				a = b;
+				t = (Face*)it.Next();
+			} while (t != e);
+
+			vert = (Vert*)vert->next;
+		}
+
+		int ret = 2 * (verts + tris - 1);
+		
+		#ifdef DELABELLA_AUTOTEST
+		assert(((char*)idx-(char*)indices) / advance_bytes == ret);
+		#endif
+
+		return ret;
+	}
+
+	virtual int GenVoronoiDiagramPolys(int* indices, int advance_bytes, int poly_ending) const
+	{
+		if (!indices)
+			return -1;
+
+		if (advance_bytes < sizeof(int))
+			advance_bytes = sizeof(int);
+
+		const int tris = out_verts / 3;
+		const int contour = out_boundary_verts;
+		const int verts = unique_points;
+
+		int* idx = indices;
+
+		int ret = 3 * verts + 2 * (tris - 1) + contour;
+
+		#ifdef DELABELLA_AUTOTEST
+		assert(((char*)idx - (char*)indices) / advance_bytes == ret);
+		#endif
+
+		return verts;
 	}
 };
 

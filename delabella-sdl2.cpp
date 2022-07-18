@@ -7,10 +7,11 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #define DELABELLA_LEGACY double
 
+int inside=0, outside=0, exacton=0;
 
 // override build define
-//#undef DELAUNATOR 
-//#define DELAUNATOR
+#undef DELAUNATOR 
+#define DELAUNATOR
 
 // override build define
 //#undef Cdt
@@ -31,9 +32,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #include "delabella.h"
 
-// silence MAC vs SDL2 fight
-#undef GL_GLEXT_VERSION
-
+#undef GL_GLEXT_VERSION // silence MAC vs SDL2 fight
 #include <GL/gl.h>
 
 #ifndef _WIN32
@@ -443,10 +442,12 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
+    typedef DELABELLA_LEGACY MyCoord;
+
 	struct MyPoint
 	{
-		double x;
-		double y;
+        MyCoord x;
+        MyCoord y;
 
         bool operator == (const MyPoint& p) const
         {
@@ -508,10 +509,16 @@ int main(int argc, char* argv[])
             const double x = 0x5af2efc1.p-30;
             const double y = 0x348268e0.p-30;
             const double r = 0x6904d1c1.p-30;
-            const MyPoint p[4] = { {0,0}, {0,2*y}, {x,r+y}, {x,r+3*y} };
+            const MyPoint p[4] = 
+            { 
+                {0,0}, 
+                {0,(MyCoord)(2*y)}, 
+                {(MyCoord)x,(MyCoord)(r+y)}, 
+                {(MyCoord)x,(MyCoord)(r+3*y)} 
+            };
 
-            const double dx = 2*x;
-            const double dy = 2*(r+y);
+            const MyCoord dx = (MyCoord)(2*x);
+            const MyCoord dy = (MyCoord)(2*(r+y));
 
             int rows = (int)ceil(sqrt(n / 7.0));
             int cols = (n + 2 * rows) / (4*rows);
@@ -534,7 +541,8 @@ int main(int argc, char* argv[])
                 }
             }
         }
-
+        
+        if (0)
         {
             int m = n / 10;
 
@@ -564,7 +572,7 @@ int main(int argc, char* argv[])
             // traverse all faces but use edges with 
             // ascending y or in case of flat y use only if ascending x
 
-            const IDelaBella2<double>::Simplex* dela = helper->GetFirstDelaunaySimplex();
+            const IDelaBella2<MyCoord>::Simplex* dela = helper->GetFirstDelaunaySimplex();
             while (dela)
             {
                 if (dela->v[1]->y > dela->v[0]->y || dela->v[1]->y == dela->v[0]->y && dela->v[1]->x > dela->v[0]->x)
@@ -612,9 +620,12 @@ int main(int argc, char* argv[])
 
         for (int i=0; i<n; i++)
         {
-            double x,y;
+            double dbl_x, dbl_y;
             // allow variety of separators and extra fields till end of the line
-            int n = fscanf(f,"%lf%*[,; \v\t]%lf%*[^\n]", &x, &y);
+            int n = fscanf(f,"%lf%*[,; \v\t]%lf%*[^\n]", &dbl_x, &dbl_y);
+
+            MyCoord x = (MyCoord)dbl_x;
+            MyCoord y = (MyCoord)dbl_y;
 
             MyPoint p = {x,y};
             cloud.push_back(p);
@@ -733,6 +744,11 @@ int main(int argc, char* argv[])
     int contour = idb->GetNumBoundaryVerts();
     int non_contour = idb->GetNumInternalVerts();
 	int vert_num = contour + non_contour;
+
+    #ifdef VORONOI
+    {
+    }
+    #endif
 
     if (force.size()>0)
         int flips = idb->Constrain((int)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge));
@@ -1496,7 +1512,7 @@ int main(int argc, char* argv[])
     vbo.Del();
     ibo_delabella.Del();
 
-    #ifdef DELAUNATOR
+    #ifdef Cdt
     ibo_delaunator.Del();
     #endif
 
@@ -1512,6 +1528,8 @@ int main(int argc, char* argv[])
     #endif
 
 	printf("exiting!\n");
+
+    printf("inside=%d, outside=%d, exacton=%d\n", inside, outside, exacton);
 
 	return 0;
 }
