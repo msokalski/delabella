@@ -2,7 +2,8 @@
 CPP=g++
 
 # adding -I for clang
-OPT="-std=c++17 -g -O1 -I/usr/include/SDL2 -ffast-math"
+# fp-math must conform to strict IEEE behaviour!
+OPT="-std=c++17 -g -O3 -I/usr/include/SDL2"
 
 if [ -d "delaunator" ]; then
     OPT="$OPT -DDELAUNATOR"

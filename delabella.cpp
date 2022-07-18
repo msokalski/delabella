@@ -42,12 +42,12 @@ static uint64_t uSec()
 
 
 template <typename T>
-IDelaBella3<T>::~IDelaBella3()
+IDelaBella2<T>::~IDelaBella2()
 {
 }
 
 template <typename T>
-struct CDelaBella3 : IDelaBella3<T>
+struct CDelaBella3 : IDelaBella2<T>
 {
 	CDelaBella3() : 
 		vert_map(0),
@@ -69,9 +69,9 @@ struct CDelaBella3 : IDelaBella3<T>
 
 	struct Face;
 
-	struct Iter : IDelaBella3<T>::Iterator {};
+	struct Iter : IDelaBella2<T>::Iterator {};
 
-	struct Vert : IDelaBella3<T>::Vertex
+	struct Vert : IDelaBella2<T>::Vertex
 	{
 		static bool overlap(const Vert* v1, const Vert* v2)
 		{
@@ -92,7 +92,7 @@ struct CDelaBella3 : IDelaBella3<T>
 		}
 	};
 
-	struct Face : IDelaBella3<T>::Simplex
+	struct Face : IDelaBella2<T>::Simplex
 	{
 		static Face* Alloc(Face** from)
 		{
@@ -1566,14 +1566,14 @@ struct CDelaBella3 : IDelaBella3<T>
 		return flips;
 	}
 
-	virtual int Polygonize(const typename IDelaBella3<T>::Simplex* poly[])
+	virtual int Polygonize(const typename IDelaBella2<T>::Simplex* poly[])
 	{
 		uint64_t time0 = uSec();
 		Face** buf = 0;
 		if (!poly)
 		{
 			buf = (Face**)malloc(sizeof(Face*) * out_verts / 3);
-			poly = (const typename IDelaBella3<T>::Simplex**)buf;
+			poly = (const typename IDelaBella2<T>::Simplex**)buf;
 			if (!poly)
 				return -1;
 		}
@@ -1907,27 +1907,27 @@ struct CDelaBella3 : IDelaBella3<T>
 		return out_verts < 0 ? 0 : unique_points - out_boundary_verts;
 	}
 
-	virtual const typename IDelaBella3<T>::Simplex* GetFirstDelaunaySimplex() const
+	virtual const typename IDelaBella2<T>::Simplex* GetFirstDelaunaySimplex() const
 	{
 		return first_dela_face;
 	}
 
-	virtual const typename IDelaBella3<T>::Simplex* GetFirstHullSimplex() const
+	virtual const typename IDelaBella2<T>::Simplex* GetFirstHullSimplex() const
 	{
 		return first_hull_face;
 	}
 
-	virtual const typename IDelaBella3<T>::Vertex* GetFirstBoundaryVertex() const
+	virtual const typename IDelaBella2<T>::Vertex* GetFirstBoundaryVertex() const
 	{
 		return first_boundary_vert;
 	}
 
-	virtual const typename IDelaBella3<T>::Vertex* GetFirstInternalVertex() const
+	virtual const typename IDelaBella2<T>::Vertex* GetFirstInternalVertex() const
 	{
 		return first_internal_vert;
 	}
 
-	virtual const typename IDelaBella3<T>::Vertex* GetVertexByIndex(int i) const
+	virtual const typename IDelaBella2<T>::Vertex* GetVertexByIndex(int i) const
 	{
 		if (i < 0 || i >= inp_verts)
 			return 0;
@@ -1942,11 +1942,11 @@ struct CDelaBella3 : IDelaBella3<T>
 };
 
 template <typename T>
-IDelaBella3<T>* IDelaBella3<T>::Create()
+IDelaBella2<T>* IDelaBella2<T>::Create()
 {
 	return new CDelaBella3<T>;
 }
 
-template IDelaBella3<float>* IDelaBella3<float>::Create();
-template IDelaBella3<double>* IDelaBella3<double>::Create();
-template IDelaBella3<long double>* IDelaBella3<long double>::Create();
+template IDelaBella2<float>* IDelaBella2<float>::Create();
+template IDelaBella2<double>* IDelaBella2<double>::Create();
+template IDelaBella2<long double>* IDelaBella2<long double>::Create();

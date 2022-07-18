@@ -480,7 +480,7 @@ int main(int argc, char* argv[])
         }
         printf("generating random %d points\n", n);
         std::random_device rd{};
-        std::mt19937_64 gen{ /*0x12345678*/ rd()};
+        std::mt19937_64 gen{ 0x12345678 /*rd()*/};
 
         std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
         //std::normal_distribution<double> d{0.0,2.0};
@@ -561,7 +561,7 @@ int main(int argc, char* argv[])
             // traverse all faces but use edges with 
             // ascending y or in case of flat y use only if ascending x
 
-            const IDelaBella3<double>::Simplex* dela = helper->GetFirstDelaunaySimplex();
+            const IDelaBella2<double>::Simplex* dela = helper->GetFirstDelaunaySimplex();
             while (dela)
             {
                 if (dela->v[1]->y > dela->v[0]->y || dela->v[1]->y == dela->v[0]->y && dela->v[1]->x > dela->v[0]->x)

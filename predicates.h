@@ -31,7 +31,7 @@
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
- * Adding sqrlendif2d() predicate - (C) 2022 M.Sokalski                            *
+ * Adding sqrlendif2d() predicate - (C) 2022 GUMIX - Marcin Sokalski               *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #ifndef PREDICATES_H_INCLUDED
