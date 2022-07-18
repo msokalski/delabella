@@ -14,9 +14,6 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #include "delabella.h"
 #include "predicates.h"
 
-extern int inside, outside, exacton;
-
-
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -63,6 +60,7 @@ struct CDelaBella3 : IDelaBella2<T>
 		first_boundary_vert(0),
 		inp_verts(0),
 		out_verts(0),
+		polygons(0),
 		out_hull_faces(0),
 		unique_points(0),
 		errlog_proc(0),
@@ -170,22 +168,12 @@ struct CDelaBella3 : IDelaBella2<T>
 
 		bool dotNP(const Vert& p) const
 		{
-			T dbg =
+			return
 				predicates::adaptive::incircle(
 					p.x,p.y, 
 					this->v[0]->x, this->v[0]->y, 
 					this->v[1]->x, this->v[1]->y, 
-					this->v[2]->x, this->v[2]->y);
-
-			if (dbg < 0)
-				inside++;
-			else
-			if (dbg > 0)
-				outside++;
-			else
-				exacton++;
-
-			return dbg <= 0;
+					this->v[2]->x, this->v[2]->y) <= 0;
 		}
 	};
 
@@ -202,6 +190,7 @@ struct CDelaBella3 : IDelaBella2<T>
 
 	int inp_verts;
 	int out_verts;
+	int polygons;
 	int out_hull_faces;
 	int out_boundary_verts;
 	int unique_points;
@@ -974,6 +963,7 @@ struct CDelaBella3 : IDelaBella2<T>
 	{
 		inp_verts = points;
 		out_verts = 0;
+		polygons = 0;
 
 		first_dela_face = 0;
 		first_hull_face = 0;
@@ -1577,6 +1567,8 @@ struct CDelaBella3 : IDelaBella2<T>
 		}
 		*tail = 0;
 
+		polygons = index;
+
 		if (errlog_proc)
 			errlog_proc(errlog_file, "\r[100] constraining (%lld ms)\n", (uSec() - time0) / 1000);
 
@@ -1696,6 +1688,8 @@ struct CDelaBella3 : IDelaBella2<T>
 
 			f = next;
 		}
+
+		polygons = num;
 
 		#if 1
 		// ALTER POST PROC:
@@ -1876,6 +1870,7 @@ struct CDelaBella3 : IDelaBella2<T>
 		out_hull_faces = 0;
 		unique_points = 0;
 		out_verts = Triangulate(&out_hull_faces);
+		polygons = out_verts / 3;
 		return out_verts;
 	}
 
@@ -1924,6 +1919,12 @@ struct CDelaBella3 : IDelaBella2<T>
 		return out_verts < 0 ? 0 : unique_points - out_boundary_verts;
 	}
 
+	// num of polygons
+	virtual int GetNumPolygons() const
+	{
+		return polygons;
+	}
+
 	virtual const typename IDelaBella2<T>::Simplex* GetFirstDelaunaySimplex() const
 	{
 		return first_dela_face;
@@ -1959,37 +1960,45 @@ struct CDelaBella3 : IDelaBella2<T>
 
 	virtual int GenVoronoiDiagramVerts(T* x, T* y, int advance_bytes) const
 	{
+		const int polys = polygons;
+		const int contour = out_boundary_verts;
+		int ret = polys + contour;
+
 		if (!x || !y)
-			return -1;
+			return -ret;
+
 		if (advance_bytes < (int)(sizeof(T) * 2))
 			advance_bytes = sizeof(T) * 2;
 
-		const int tris = out_verts / 3;
-		const int contour = out_boundary_verts;
-
 		const Face* f = first_dela_face;
-		for (int i = 0; i < tris; i++)
+		while (f)
 		{
 			const T v1x = f->v[1]->x - f->v[0]->x;
 			const T v1y = f->v[1]->y - f->v[0]->y;
 			const T v2x = f->v[2]->x - f->v[0]->x;
-			const T v2y = f->v[2]->x - f->v[0]->x;
+			const T v2y = f->v[2]->y - f->v[0]->y;
 
 			const T v11 = v1x * v1x + v1y * v1y;
 			const T v22 = v2x * v2x + v2y * v2y;
 			const T v12 = (v1x * v2y - v1y * v2x) * 2;
 
-			int offs = advance_bytes * i;
-			*(T*)((char*)x + offs) = f->v[0]->x + (v2y * v11 - v1y * v22) / v12;
-			*(T*)((char*)y + offs) = f->v[0]->y + (v1x * v22 - v2x * v11) / v12;
+			T cx = f->v[0]->x + (v2y * v11 - v1y * v22) / v12;
+			T cy = f->v[0]->y + (v1x * v22 - v2x * v11) / v12;
+
+			// yes, for polys < tris
+			// we possibly calc it multiple times
+			// and overwrite already calculated centers
+			int offs = advance_bytes * f->index; 
+			*(T*)((char*)x + offs) = cx;
+			*(T*)((char*)y + offs) = cy;
 
 			f = (Face*)f->next;
 		}
 
 		{
-			int offs = advance_bytes * tris;
+			int offs = advance_bytes * polys;
 			x = (T*)((char*)x + offs);
-			y = (T*)((char*)x + offs);
+			y = (T*)((char*)y + offs);
 		}
 
 		Vert* prev = first_boundary_vert;
@@ -2003,29 +2012,67 @@ struct CDelaBella3 : IDelaBella2<T>
 			vert = (Vert*)vert->next;
 		}
 
-		return tris + contour;
+		return ret;
 	}
 
 	virtual int GenVoronoiDiagramEdges(int* indices, int advance_bytes) const
 	{
+		const int polys = polygons;
+		const int verts = unique_points;
+		int ret = 2 * (verts + polys - 1);
+
 		if (!indices)
-			return -1;
+			return -ret;
 
 		if (advance_bytes < sizeof(int))
 			advance_bytes = sizeof(int);
 
-		const int tris = out_verts / 3;
 		const int contour = out_boundary_verts;
-		const int verts = unique_points;
 		const int inter = verts - contour;
 
 		int* idx = indices;
 
+		Vert* vert = first_internal_vert;
+		for (int i = 0; i < inter; i++)
+		{
+			Iter it;
+			Face* t = (Face*)vert->StartIterator(&it);
+			Face* e = t;
+
+			int a = t->index; // begin
+			do
+			{
+				int b = t->index;
+				if (a < b)
+				{
+					*idx = a;
+					idx = (int*)((char*)idx + advance_bytes);
+					*idx = b;
+					idx = (int*)((char*)idx + advance_bytes);
+				}
+				a = b;
+				t = (Face*)it.Next();
+			} while (t != e);
+
+			// loop closing seg
+			int b = t->index;
+			if (a < b)
+			{
+				*idx = a;
+				idx = (int*)((char*)idx + advance_bytes);
+				*idx = b;
+				idx = (int*)((char*)idx + advance_bytes);
+			}
+			a = b;
+
+			vert = (Vert*)vert->next;
+		}
+
 		Vert* prev = first_boundary_vert;
-		Vert* vert = (Vert*)prev->next;
+		vert = (Vert*)prev->next;
 		for (int i = 0; i < contour; i++)
 		{
-			int a = i + tris; // begin
+			int a = i + polys; // begin
 
 			// iterate all dela faces around prev
 			// add their voro-vert index == dela face index
@@ -2062,7 +2109,7 @@ struct CDelaBella3 : IDelaBella2<T>
 				t = (Face*)it.Next();
 			}
 
-			int b = (i == 0 ? contour - 1 : i - 1) + tris; // loop-wrapping!
+			int b = (i == 0 ? contour - 1 : i - 1) + polys; // loop-wrapping!
 			if (a < b)
 			{
 				*idx = a;
@@ -2076,33 +2123,6 @@ struct CDelaBella3 : IDelaBella2<T>
 			vert = (Vert*)vert->next;
 		}
 
-		vert = first_internal_vert;
-		for (int i = 0; i < inter; i++)
-		{
-			Iter it;
-			Face* t = (Face*)vert->StartIterator(&it);
-			Face* e = t;
-
-			int a = t->index; // begin
-			do
-			{
-				int b = t->index;
-				if (a < b)
-				{
-					*idx = a;
-					idx = (int*)((char*)idx + advance_bytes);
-					*idx = b;
-					idx = (int*)((char*)idx + advance_bytes);
-				}
-				a = b;
-				t = (Face*)it.Next();
-			} while (t != e);
-
-			vert = (Vert*)vert->next;
-		}
-
-		int ret = 2 * (verts + tris - 1);
-		
 		#ifdef DELABELLA_AUTOTEST
 		assert(((char*)idx-(char*)indices) / advance_bytes == ret);
 		#endif
@@ -2112,19 +2132,18 @@ struct CDelaBella3 : IDelaBella2<T>
 
 	virtual int GenVoronoiDiagramPolys(int* indices, int advance_bytes, int poly_ending) const
 	{
+		const int polys = polygons;
+		const int contour = out_boundary_verts;
+		const int verts = unique_points;
+		int ret = 3 * verts + 2 * (polys - 1) + contour;
+
 		if (!indices)
-			return -1;
+			return -ret;
 
 		if (advance_bytes < sizeof(int))
 			advance_bytes = sizeof(int);
 
-		const int tris = out_verts / 3;
-		const int contour = out_boundary_verts;
-		const int verts = unique_points;
-
 		int* idx = indices;
-
-		int ret = 3 * verts + 2 * (tris - 1) + contour;
 
 		#ifdef DELABELLA_AUTOTEST
 		assert(((char*)idx - (char*)indices) / advance_bytes == ret);

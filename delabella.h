@@ -68,6 +68,10 @@ struct IDelaBella2
 	// num of internal vertices
 	virtual int GetNumInternalVerts() const = 0;
 
+	// called right after Triangulate() and/or Constrain() it returns number of triangles,
+	// but if called after Polygonize() it returns number of polygons
+	virtual int GetNumPolygons() const = 0;
+
 	virtual const Simplex* GetFirstDelaunaySimplex() const = 0; // valid only if Triangulate() > 0
 	virtual const Simplex* GetFirstHullSimplex() const = 0; // valid only if Triangulate() > 0
 	virtual const Vertex*  GetFirstBoundaryVertex() const = 0; // if Triangulate() < 0 it is list, otherwise closed contour! 
@@ -84,10 +88,10 @@ struct IDelaBella2
 	// assuming:
 	//   N = GetNumBoundaryVerts()
 	//   M = GetNumInternalVerts()
-	//   F = GetNumOutputIndices()/3
-	//   V = F + N
+	//   P = GetNumPolygons()
+	//   V = P + N
 	// <x>,<y> array must be (at least) V elements long
-	// first F <x>,<y> elements will contain internal points (divisor W=1)
+	// first P <x>,<y> elements will contain internal points (divisor W=1)
 	// next N <x>,<y> elements will contain edge normals (divisor W=0)
 	// function returns number vertices filled (V) on success otherwise -1
 	virtual int GenVoronoiDiagramVerts(T* x, T* y, int advance_bytes = 0) const = 0;
@@ -98,8 +102,8 @@ struct IDelaBella2
 	// assuming:
 	//   N = GetNumBoundaryVerts()
 	//   M = GetNumInternalVerts()
-	//   F = GetNumOutputIndices()/3
-	//   I = 2 * (N + M + F - 1)
+	//   P = GetNumPolygons()
+	//   I = 2 * (N + M + P - 1)
 	// <indices> must be (at least) I elements long
 	// every pair of consecutive values in <indices> represent VD edge
 	// there is no guaranteed correspondence between edges order and other data
@@ -109,17 +113,17 @@ struct IDelaBella2
 	// GenVoronoiDiagramPolys() valid only if Triangulate() > 0
 	// generates VD polygons
 	// assuming:
-	//   N = GetNumBoundaryVerts()
-	//   M = GetNumInternalVerts()
-	//   F = GetNumOutputIndices()/3
-	//   I = 3 * (N + M) + 2 * (F - 1) + N
+	//   M = GetNumBoundaryVerts()
+	//   N = GetNumInternalVerts()
+	//   P = GetNumPolygons()
+	//   I = 3 * (N + M) + 2 * (P - 1) + M
 	// <indices> must be (at least) I elements long
-	// if <poly_ending> value < 0 it will be inserted into <indices> after every poly
+	// if <poly_ending> value != 0 it will be inserted into <indices> after every poly
 	//    otherwise every poly will be prefixed by number of its indices
-	// first N polys in <indices> represent open VD cells, thay are in order
-	// and corresponding to vertices from GetFirstBoundaryVertex() -> Vertex::next list
-	// next M polys in <indices> represent closed VD cells, thay are in order
+	// first N polys in <indices> represent closed VD cells, thay are in order
 	// and corresponding to vertices from GetFirstInternalVertex() -> Vertex::next list
+	// next M polys in <indices> represent open VD cells, thay are in order
+	// and corresponding to vertices from GetFirstBoundaryVertex() -> Vertex::next list
 	// function returns number of indices filled (I) on success otherwise -1
 	virtual int GenVoronoiDiagramPolys(int* indices, int advance_bytes=0, int poly_ending=~0) const = 0;
 

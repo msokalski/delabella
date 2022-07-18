@@ -7,7 +7,7 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #define DELABELLA_LEGACY double
 
-int inside=0, outside=0, exacton=0;
+#define VORONOI
 
 // override build define
 #undef DELAUNATOR 
@@ -490,7 +490,7 @@ int main(int argc, char* argv[])
         //std::normal_distribution<double> d{0.0,2.0};
         //std::gamma_distribution<double> d(0.1,2.0);
 
-        /*
+        
         for (int i = 0; i < n; i++)
         {
             //MyPoint p = { (d(gen) - 5.0), (d(gen) - 5.0) };
@@ -502,9 +502,9 @@ int main(int argc, char* argv[])
             assert(std::abs(p.x) <= 0x1.p255 && std::abs(p.y) <= 0x1.p255);
             cloud.push_back(p);
         }
-        */
         
         
+        /*
         {
             const double x = 0x5af2efc1.p-30;
             const double y = 0x348268e0.p-30;
@@ -541,8 +541,9 @@ int main(int argc, char* argv[])
                 }
             }
         }
+        */
         
-        if (0)
+        if (1)
         {
             int m = n / 10;
 
@@ -746,8 +747,15 @@ int main(int argc, char* argv[])
 	int vert_num = contour + non_contour;
 
     #ifdef VORONOI
-    {
-    }
+    //idb->Polygonize(); // optional
+    int voronoi_vertices = -idb->GenVoronoiDiagramVerts(0,0,0);
+    int voronoi_indices = -idb->GenVoronoiDiagramEdges(0, 0);
+    DELABELLA_LEGACY* voronoi_vtx_buf = (DELABELLA_LEGACY*)malloc(voronoi_vertices * sizeof(DELABELLA_LEGACY[2]));
+    int* voronoi_idx_buf = (int*)malloc(voronoi_indices * sizeof(int));
+
+    idb->GenVoronoiDiagramVerts(voronoi_vtx_buf, voronoi_vtx_buf+1, sizeof(DELABELLA_LEGACY[2]));
+    idb->GenVoronoiDiagramEdges(voronoi_idx_buf, sizeof(int));
+
     #endif
 
     if (force.size()>0)
@@ -1039,24 +1047,6 @@ int main(int argc, char* argv[])
     }
     vbo.Unmap();
 
-
-    // pure indices, without: center points, restarts, loop closing
-    // points may be a bit too much (cuza duplicates)
-    int voronoi_indices = 2 * (vert_num + tris_delabella - 1) + contour;
-    int voronoi_vertices = tris_delabella + contour;
-
-    if (prim_restart)
-        voronoi_indices += vert_num; // add primitive restarts
-    else
-        voronoi_indices = 4 * (vert_num + tris_delabella - 1); // almost 2x bigger ehh
-
-    int ibo_voronoi_idx = 0;
-    Buf vbo_voronoi, ibo_voronoi;
-	vbo_voronoi.Gen(GL_ARRAY_BUFFER, sizeof(gl_t[3]) * voronoi_vertices);
-	ibo_voronoi.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * voronoi_indices);
-    gl_t* vbo_voronoi_ptr = (gl_t*)vbo_voronoi.Map();
-    GLuint* ibo_voronoi_ptr = (GLuint*)ibo_voronoi.Map();
-
     ibo_delabella.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delabella + sizeof(GLuint) * contour);	
     GLuint* ibo_ptr = (GLuint*)ibo_delabella.Map();
     const DelaBella_Triangle* dela = idb->GetFirstDelaunaySimplex();
@@ -1070,48 +1060,15 @@ int main(int argc, char* argv[])
         ibo_ptr[3*i+1] = (GLuint)v1;
         ibo_ptr[3*i+2] = (GLuint)v2;
 
-        // put it into vbo_voronoi at 'i'
-
-        // TODO:
-        // WE"RE REMOVING dela->n completely!
-        // (transition to predicates)
-
-		// almost exact in hybrid
-		/*
-		vbo_voronoi_ptr[3 * i + 0] = (gl_t)dela->n.x;
-		vbo_voronoi_ptr[3 * i + 1] = (gl_t)dela->n.y;
-		vbo_voronoi_ptr[3 * i + 2] = (gl_t)(-2.0*dela->n.z);
-		*/
-
-        // less jumping on extreme zooming
-        /*
-        vbo_voronoi_ptr[3*i+0] = (gl_t)(-0.5 * (double)dela->n.x / (double)dela->n.z - vbo_x);
-        vbo_voronoi_ptr[3*i+1] = (gl_t)(-0.5 * (double)dela->n.y / (double)dela->n.z - vbo_y);
-        vbo_voronoi_ptr[3*i+2] = (gl_t)(1.0);
-        */
-
 		dela = dela->next;
 	}
 
-	const DelaBella_Vertex* prev = idb->GetFirstBoundaryVertex();
-    const DelaBella_Vertex* vert = prev->next;
-    int contour_min = points-1;
-    int contour_max = 0;
+    const DelaBella_Vertex* vert = idb->GetFirstBoundaryVertex();
     for (int i = 0; i<contour; i++)    
     {
         ibo_ptr[i + 3*tris_delabella] = (GLuint)vert->i;
-        contour_min = vert->i < contour_min ? vert->i : contour_min;
-        contour_max = vert->i > contour_max ? vert->i : contour_max;
 
-        // put infinite edge normal to vbo_voronoi at tris_delabella + 'i'
-
-		// coords are overwritten with edge normals in edge postproc!
         /*
-        vbo_voronoi_ptr[3*(tris_delabella+i)+0] = (gl_t)(prev->x);
-        vbo_voronoi_ptr[3*(tris_delabella+i)+1] = (gl_t)(prev->y);
-        vbo_voronoi_ptr[3*(tris_delabella+i)+2] = (gl_t)(0.0);
-        */
-
         double nx = prev->y - vert->y;
         double ny = vert->x - prev->x;
         vbo_voronoi_ptr[3 * (tris_delabella + i) + 0] = (gl_t)(nx);
@@ -1152,13 +1109,12 @@ int main(int argc, char* argv[])
         
         if (prim_restart)
             ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)~0; // primitive restart
+        */
 
-        prev = vert;
         vert = vert->next;
     }
 
-    int voronoi_strip_indices = ibo_voronoi_idx;
-
+    /*
     // finally, for all internal vertices
     vert = idb->GetFirstInternalVertex();
     for (int i = 0; i<non_contour; i++)
@@ -1181,14 +1137,40 @@ int main(int argc, char* argv[])
 
         vert = vert->next;
     }
+    */
 
-    int voronoi_loop_indices = ibo_voronoi_idx - voronoi_strip_indices;
-
-    assert(ibo_voronoi_idx == voronoi_indices);
 
     ibo_delabella.Unmap();
+
+    #ifdef VORONOI
+    Buf vbo_voronoi, ibo_voronoi;
+    vbo_voronoi.Gen(GL_ARRAY_BUFFER, sizeof(gl_t[3])* voronoi_vertices);
+    ibo_voronoi.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)* voronoi_indices);
+    gl_t* vbo_voronoi_ptr = (gl_t*)vbo_voronoi.Map();
+    GLuint* ibo_voronoi_ptr = (GLuint*)ibo_voronoi.Map();
+
+    for (int i = 0; i < voronoi_vertices; i++)
+    {
+        if (i < voronoi_vertices - contour)
+        {
+            vbo_voronoi_ptr[3 * i + 0] = (gl_t)(voronoi_vtx_buf[2 * i + 0] - vbo_x);
+            vbo_voronoi_ptr[3 * i + 1] = (gl_t)(voronoi_vtx_buf[2 * i + 1] - vbo_y);
+            vbo_voronoi_ptr[3 * i + 2] = (gl_t)1;
+        }
+        else
+        {
+            vbo_voronoi_ptr[3 * i + 0] = (gl_t)voronoi_vtx_buf[2 * i + 0];
+            vbo_voronoi_ptr[3 * i + 1] = (gl_t)voronoi_vtx_buf[2 * i + 1];
+            vbo_voronoi_ptr[3 * i + 2] = (gl_t)0;
+        }
+    }
+
+    for (int i = 0; i < voronoi_indices; i++)
+        ibo_voronoi_ptr[i] = (GLuint)(voronoi_idx_buf[i]);
+
     vbo_voronoi.Unmap();
     ibo_voronoi.Unmap();
+    #endif
 
     #ifdef Cdt
     int tris_cdt = (int)cdt.triangles.size();
@@ -1438,12 +1420,12 @@ int main(int argc, char* argv[])
         //glColor4f(0.5f,0.5f,0.5f,1.0f);
         glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
         glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_delabella * 3, GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, tris_delabella * 3, GL_UNSIGNED_INT, 0);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
         glColor4f(0.0f,0.0f,1.0f,1.0f);
         glLineWidth(3.0f);
-        glDrawElements(GL_LINE_LOOP, /*contour_min, contour_max,*/ contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella*3);
+        glDrawElements(GL_LINE_LOOP, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella*3);
         glLineWidth(1.0f);
 
         // compare with CDT
@@ -1461,8 +1443,7 @@ int main(int argc, char* argv[])
 		#endif
 
         // voronoi!
-        if (0)
-        {
+        #ifdef VORONOI
         vbo_voronoi.Bind();
         //glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
 		glVertexPointer(3, gl_e, 0, 0);
@@ -1481,29 +1462,16 @@ int main(int argc, char* argv[])
 		// voro-verts in back
 		glColor4f(1.0f, 1.0f, 0.0f, 1.0f);
 		glPointSize(3.0f);
-		glDrawArrays(GL_POINTS, 0, tris_delabella);
+		glDrawArrays(GL_POINTS, 0, voronoi_vertices - contour);
 		glPointSize(1.0f);
         ibo_voronoi.Bind();
 
         glColor4f(0.0f,0.75f,0.0f,1.0f);
 
-        if (prim_restart)
-        {
-            // first, draw open cells, maybe split infinite lines to separate call? (so we could color them differently)
-            glDrawElements(GL_LINE_STRIP, voronoi_strip_indices, GL_UNSIGNED_INT, (GLuint*)0);
+		// draw edge soup
+		glDrawElements(GL_LINES, voronoi_indices, GL_UNSIGNED_INT, (GLuint*)0);
 
-            // then closed cells
-            glDrawElements(GL_LINE_LOOP, voronoi_loop_indices, GL_UNSIGNED_INT, (GLuint*)0 + voronoi_strip_indices);
-        }
-        else
-        {
-			// first, draw open cells, maybe split infinite lines to separate call? (so we could color them differently)
-			glDrawElements(GL_LINES, voronoi_strip_indices, GL_UNSIGNED_INT, (GLuint*)0);
-
-            // then closed cells
-            glDrawElements(GL_LINES, voronoi_loop_indices, GL_UNSIGNED_INT, (GLuint*)0 + voronoi_strip_indices);
-        }
-        }
+        #endif
 
         SDL_GL_SwapWindow(window);
         SDL_Delay(15);
@@ -1516,8 +1484,10 @@ int main(int argc, char* argv[])
     ibo_delaunator.Del();
     #endif
 
+    #ifdef VORONOI
     vbo_voronoi.Del();
     ibo_voronoi.Del();
+    #endif
 
     SDL_GL_DeleteContext( context );
     SDL_DestroyWindow( window );
@@ -1528,8 +1498,6 @@ int main(int argc, char* argv[])
     #endif
 
 	printf("exiting!\n");
-
-    printf("inside=%d, outside=%d, exacton=%d\n", inside, outside, exacton);
 
 	return 0;
 }
