@@ -31,6 +31,9 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #include "delabella.h"
 
+// silence MAC vs SDL2 fight
+#undef GL_GLEXT_VERSION
+
 #include <GL/gl.h>
 
 #ifndef _WIN32
