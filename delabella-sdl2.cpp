@@ -7,8 +7,14 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 
 #define DELABELLA_LEGACY double
 
-#define DELAUNATOR
-#define Cdt
+
+// override build define
+//#undef DELAUNATOR 
+//#define DELAUNATOR
+
+// override build define
+//#undef Cdt
+//#define Cdt
 
 #include <math.h>
 #include <stdlib.h>
@@ -504,7 +510,7 @@ int main(int argc, char* argv[])
             const double dx = 2*x;
             const double dy = 2*(r+y);
 
-            int rows = (int)ceil(sqrt(n / 7));
+            int rows = (int)ceil(sqrt(n / 7.0));
             int cols = (n + 2 * rows) / (4*rows);
 
             n = rows * cols * 4;

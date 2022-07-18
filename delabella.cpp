@@ -3,6 +3,10 @@ DELABELLA - Delaunay triangulation library
 Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 */
 
+#define DELABELLA_AUTOTEST
+// in case of troubles, allows to see if any assert pops up.
+// define it globally (like with -DDELABELLA_AUTOTEST)
+
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -441,7 +445,7 @@ struct CDelaBella3 : IDelaBella3<T>
 					}
 
 					// otherwise
-					#ifdef DB_AUTO_TEST
+					#ifdef DELABELLA_AUTOTEST
 					assert(0);
 					#endif
 					return false;
@@ -714,7 +718,7 @@ struct CDelaBella3 : IDelaBella3<T>
 					while (f->dotNP(*q))
 					//while (f->dotN(*q)) // we want to consume coplanar faces
 					{
-						#ifdef DB_AUTO_TEST
+						#ifdef DELABELLA_AUTOTEST
 						assert(f != face_alloc); // no face is visible? you must be kidding!
 						#endif
 						f--;
@@ -785,7 +789,7 @@ struct CDelaBella3 : IDelaBella3<T>
 							else
 							if (n->f[2] == f)
 								n->f[2] = s;
-							#ifdef DB_AUTO_TEST
+							#ifdef DELABELLA_AUTOTEST
 							else
 								assert(0);
 							#endif
@@ -807,7 +811,7 @@ struct CDelaBella3 : IDelaBella3<T>
 							else
 							if (n->f[2] == f)
 								n->f[2] = 0;
-							#ifdef DB_AUTO_TEST
+							#ifdef DELABELLA_AUTOTEST
 							else
 								assert(0);
 							#endif
@@ -820,7 +824,7 @@ struct CDelaBella3 : IDelaBella3<T>
 				}
 			}
 
-			#ifdef DB_AUTO_TEST
+			#ifdef DELABELLA_AUTOTEST
 			// if add<del+2 hungry hull has consumed some point
 			// that means we can't do delaunay for some under precission reasons
 			// althought convex hull would be fine with it
@@ -846,7 +850,7 @@ struct CDelaBella3 : IDelaBella3<T>
 			} while (pr != entry);
 		}
 
-		#ifdef DB_AUTO_TEST
+		#ifdef DELABELLA_AUTOTEST
 		assert(2 * i - 4 == hull_faces);
 		#endif
 
@@ -871,47 +875,7 @@ struct CDelaBella3 : IDelaBella3<T>
 			((Vert*)f->v[1])->sew = f;
 			((Vert*)f->v[2])->sew = f;
 
-			bool nz_neg;
-			#if 0
-			{
-				XA_REF x0 = f->v[0]->x, y0 = f->v[0]->y, z0 = x0 * x0 + y0 * y0;
-				XA_REF x1 = f->v[1]->x, y1 = f->v[1]->y/*, z1 = x1 * x1 + y1 * y1*/;
-				XA_REF x2 = f->v[2]->x, y2 = f->v[2]->y/*, z2 = x2 * x2 + y2 * y2*/;
-
-				XA_REF v1x = x1 - x0, v1y = y1 - y0, v1z = /*z1*/x1 * x1 + y1 * y1 - z0;
-				XA_REF v2x = x2 - x0, v2y = y2 - y0, v2z = /*z2*/x2 * x2 + y2 * y2 - z0;
-
-				// maybe attach these values temporarily to f
-				// so we could sort triangles and build polygons?
-				XA_REF nx = v1y * v2z - v1z * v2y;
-				XA_REF ny = v1z * v2x - v1x * v2z;
-				XA_REF nz = v1x * v2y - v1y * v2x;
-
-				int exponent = (nx->quot + ny->quot + 2 * nz->quot + 2) / 4;
-				nx->quot -= exponent;
-				ny->quot -= exponent;
-				nz->quot -= exponent;
-
-				f->n.x = (double)nx;
-				f->n.y = (double)ny;
-
-				/*
-				// needed?
-				if (f->n.z < 0 && nz >= 0 || f->n.z >= 0 && nz < 0)
-					printf("fixed!\n");
-				*/
-
-				f->n.z = (double)nz;
-
-				nz_neg = nz < 0;
-			}
-			#else
-			{
-				nz_neg = f->signN(); // hybrid
-			}
-			#endif
-
-			if (nz_neg)
+			if (f->signN())
 			{
 				f->index = i;  // store index in dela list
 				*prev_dela = f;
@@ -965,7 +929,7 @@ struct CDelaBella3 : IDelaBella3<T>
 			}
 			t = (Face*)it.Next();
 
-			#ifdef DB_AUTO_TEST
+			#ifdef DELABELLA_AUTOTEST
 			assert(t!=e);
 			#endif
 		}
@@ -1057,7 +1021,7 @@ struct CDelaBella3 : IDelaBella3<T>
 			if (face->index < 0)
 			{
 				face = (Face*)it.Next();
-				#ifdef DB_AUTO_TEST
+				#ifdef DELABELLA_AUTOTEST
 				assert(face != first);
 				#endif
 				continue;
@@ -1114,7 +1078,7 @@ struct CDelaBella3 : IDelaBella3<T>
 
 			face = (Face*)it.Next();
 
-			#ifdef DB_AUTO_TEST
+			#ifdef DELABELLA_AUTOTEST
 			assert(face != first);
 			#endif
 		}
@@ -1204,7 +1168,7 @@ struct CDelaBella3 : IDelaBella3<T>
 			}
 		}
 
-		#ifdef DB_AUTO_TEST
+		#ifdef DELABELLA_AUTOTEST
 		assert(0);
 		#endif
 		*restart = 0;
@@ -1324,7 +1288,7 @@ struct CDelaBella3 : IDelaBella3<T>
 					continue;
 				}
 
-				#ifdef DB_AUTO_TEST
+				#ifdef DELABELLA_AUTOTEST
 				assert(v0r < 0 && v1r > 0);
 				#endif
 
@@ -1602,14 +1566,14 @@ struct CDelaBella3 : IDelaBella3<T>
 		return flips;
 	}
 
-	virtual int Polygonize(const IDelaBella3<T>::Simplex* poly[])
+	virtual int Polygonize(const typename IDelaBella3<T>::Simplex* poly[])
 	{
 		uint64_t time0 = uSec();
 		Face** buf = 0;
 		if (!poly)
 		{
 			buf = (Face**)malloc(sizeof(Face*) * out_verts / 3);
-			poly = (const IDelaBella3<T>::Simplex**)buf;
+			poly = (const typename IDelaBella3<T>::Simplex**)buf;
 			if (!poly)
 				return -1;
 		}
@@ -1762,7 +1726,7 @@ struct CDelaBella3 : IDelaBella3<T>
 				f = n;
 			}
 
-			#ifdef DB_AUTO_TEST
+			#ifdef DELABELLA_AUTOTEST
 			assert(first);
 			#endif
 
@@ -1943,27 +1907,27 @@ struct CDelaBella3 : IDelaBella3<T>
 		return out_verts < 0 ? 0 : unique_points - out_boundary_verts;
 	}
 
-	virtual const IDelaBella3<T>::Simplex* GetFirstDelaunaySimplex() const
+	virtual const typename IDelaBella3<T>::Simplex* GetFirstDelaunaySimplex() const
 	{
 		return first_dela_face;
 	}
 
-	virtual const IDelaBella3<T>::Simplex* GetFirstHullSimplex() const
+	virtual const typename IDelaBella3<T>::Simplex* GetFirstHullSimplex() const
 	{
 		return first_hull_face;
 	}
 
-	virtual const IDelaBella3<T>::Vertex* GetFirstBoundaryVertex() const
+	virtual const typename IDelaBella3<T>::Vertex* GetFirstBoundaryVertex() const
 	{
 		return first_boundary_vert;
 	}
 
-	virtual const IDelaBella3<T>::Vertex* GetFirstInternalVertex() const
+	virtual const typename IDelaBella3<T>::Vertex* GetFirstInternalVertex() const
 	{
 		return first_internal_vert;
 	}
 
-	virtual const IDelaBella3<T>::Vertex* GetVertexByIndex(int i) const
+	virtual const typename IDelaBella3<T>::Vertex* GetVertexByIndex(int i) const
 	{
 		if (i < 0 || i >= inp_verts)
 			return 0;

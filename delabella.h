@@ -6,10 +6,6 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #ifndef DELABELLA_H
 #define DELABELLA_H
 
-//#define DELABELLA_AUTOTEST
-// in case of troubles, allows to see if any assert pops up.
-// define it globally (like with -DDELABELLA_AUTOTEST)
-
 //#define DELABELLA_LEGACY double
 // define it to enable compatibility with older api
 // you can use: float, double or long double
