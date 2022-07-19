@@ -494,8 +494,8 @@ int main(int argc, char* argv[])
         
         for (int i = 0; i < n; i++)
         {
-            MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
-            //MyPoint p = { d(gen), d(gen) };
+            //MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
+            MyPoint p = { d(gen), d(gen) };
             
             //p.x *= 0x1.p250;
             //p.y *= 0x1.p250;
@@ -546,7 +546,7 @@ int main(int argc, char* argv[])
         
         if (1)
         {
-            int m = n / 100;
+            int m = n / 10;
 
             // init sub[] with all n point indices
             int* sub = (int*)malloc(sizeof(int) * n);
@@ -555,8 +555,6 @@ int main(int argc, char* argv[])
 
             // pick m random ones from n
             // place them as first m items of sub[]
-            gen(); gen(); gen(); gen();
-            gen(); gen(); gen(); gen();
             for (int i = 0; i < m; i++)
             {
                 int j = i + gen() % ((size_t)n - i);

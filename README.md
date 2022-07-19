@@ -66,7 +66,7 @@
 	if (verts>0)
 	{
 		int tris = idb->GetNumPolygons();
-		const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
+		const IDelaBella2::Simplex* dela = idb->GetFirstDelaunayTriangle();
 		for (int i = 0; i<tris; i++)
 		{
 			// do something with dela triangle 
