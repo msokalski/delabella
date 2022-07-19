@@ -1,20 +1,22 @@
 /*
 DELABELLA - Delaunay triangulation library
-Copyright (C) 2018 GUMIX - Marcin Sokalski
+Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 */
 
 #define _CRT_SECURE_NO_WARNINGS
 
 #define DELABELLA_LEGACY double
+
 #define VORONOI
+#define VORONOI_POLYS // otherwise EDGES
 
 // override build define
-//#undef WITH_DELAUNATOR 
-//#define WITH_DELAUNATOR
+#undef WITH_DELAUNATOR 
+#define WITH_DELAUNATOR
 
 // override build define
-//#undef WITH_CDT
-//#define WITH_CDT
+#undef WITH_CDT
+#define WITH_CDT
 
 #include <math.h>
 #include <stdlib.h>
@@ -544,7 +546,7 @@ int main(int argc, char* argv[])
         
         if (1)
         {
-            int m = n / 10;
+            int m = n / 100;
 
             // init sub[] with all n point indices
             int* sub = (int*)malloc(sizeof(int) * n);
@@ -553,6 +555,8 @@ int main(int argc, char* argv[])
 
             // pick m random ones from n
             // place them as first m items of sub[]
+            gen(); gen(); gen(); gen();
+            gen(); gen(); gen(); gen();
             for (int i = 0; i < m; i++)
             {
                 int j = i + gen() % ((size_t)n - i);
@@ -575,14 +579,12 @@ int main(int argc, char* argv[])
             const IDelaBella2<MyCoord>::Simplex* dela = helper->GetFirstDelaunaySimplex();
             while (dela)
             {
-                if (dela->v[1]->y > dela->v[0]->y || dela->v[1]->y == dela->v[0]->y && dela->v[1]->x > dela->v[0]->x)
-                    force.push_back(MyEdge(sub[dela->v[0]->i], sub[dela->v[1]->i]));
-
-                if (dela->v[2]->y > dela->v[1]->y || dela->v[2]->y == dela->v[1]->y && dela->v[2]->x > dela->v[1]->x)
-                    force.push_back(MyEdge(sub[dela->v[1]->i], sub[dela->v[2]->i]));
-
-                if (dela->v[0]->y > dela->v[2]->y || dela->v[0]->y == dela->v[2]->y && dela->v[0]->x > dela->v[2]->x)
-                    force.push_back(MyEdge(sub[dela->v[2]->i], sub[dela->v[0]->i]));
+                for (int a = 0, b = 1, c = 2; a < 3; b = c, c = a, a++)
+                {
+                    //if (dela->f[c]->index < 0 || dela->v[a]->i < dela->v[b]->i)
+                    if (dela->f[c]->index >= 0 && dela->v[a]->i < dela->v[b]->i)
+                        force.push_back(MyEdge(sub[dela->v[a]->i], sub[dela->v[b]->i]));
+                }
 
                 dela = dela->next;
             }
@@ -748,15 +750,25 @@ int main(int argc, char* argv[])
     #ifdef VORONOI
     printf("Polygonizing for VD\n");
     //idb->Polygonize(); // optional
-    int voronoi_vertices = -idb->GenVoronoiDiagramVerts(0,0,0);
-    int voronoi_indices = -idb->GenVoronoiDiagramEdges(0, 0);
-    DELABELLA_LEGACY* voronoi_vtx_buf = (DELABELLA_LEGACY*)malloc(voronoi_vertices * sizeof(DELABELLA_LEGACY[2]));
-    int* voronoi_idx_buf = (int*)malloc(voronoi_indices * sizeof(int));
 
     printf("Generating VD vertices\n");
+    int voronoi_vertices = idb->GenVoronoiDiagramVerts(0, 0, 0);
+    DELABELLA_LEGACY* voronoi_vtx_buf = (DELABELLA_LEGACY*)malloc(voronoi_vertices * sizeof(DELABELLA_LEGACY[2]));
     idb->GenVoronoiDiagramVerts(voronoi_vtx_buf, voronoi_vtx_buf+1, sizeof(DELABELLA_LEGACY[2]));
+
     printf("Generating VD indices\n");
+    #ifdef VORONOI_POLYS
+    // testing... will remove
+    int voronoi_closed_indices, voronoi_open_indices;
+    int voronoi_indices = idb->GenVoronoiDiagramPolys(0, 0, 0);
+    int* voronoi_idx_buf = (int*)malloc(voronoi_indices * sizeof(int));
+    idb->GenVoronoiDiagramPolys(voronoi_idx_buf, sizeof(int), &voronoi_closed_indices);
+    voronoi_open_indices = voronoi_indices - voronoi_closed_indices;
+    #else
+    int voronoi_indices = idb->GenVoronoiDiagramEdges(0, 0);
+    int* voronoi_idx_buf = (int*)malloc(voronoi_indices * sizeof(int));
     idb->GenVoronoiDiagramEdges(voronoi_idx_buf, sizeof(int));
+    #endif
 
     printf("VD vertices = %d, indices = %d\n", voronoi_vertices, voronoi_indices);
     #endif
@@ -958,7 +970,7 @@ int main(int argc, char* argv[])
     //SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
 	// create viewer wnd
-    int width = 800, height = 600;
+    int width = 1000, height = 1000;
     const char* title = "delablella-sdl2";
     SDL_Window * window = SDL_CreateWindow( title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     if (!window)
@@ -1238,7 +1250,7 @@ int main(int argc, char* argv[])
 
     double cx = 0.5 * (box[0]+box[2]);
     double cy = 0.5 * (box[1]+box[3]);
-    double scale = 2.0 * fmin((double)vpw/(box[2]-box[0]),(double)vph/(box[3]-box[1]));
+    double scale = 0.8* 2.0 * fmin((double)vpw/(box[2]-box[0]),(double)vph/(box[3]-box[1]));
     int zoom = -3+(int)round(log(scale) / log(1.01));
 
     int drag_x, drag_y, drag_zoom;
@@ -1269,6 +1281,8 @@ int main(int argc, char* argv[])
     printf(
         "Mouse controls:\n"
         "[LMB]pan, [RMB/wheel]zoom\n");
+
+    printf("\n");
 
     for( ;; )
     {
@@ -1449,8 +1463,8 @@ int main(int argc, char* argv[])
         if (constrain_indices && show_c)
         {
             ibo_constrain.Bind();
-            glLineWidth(5.0f);
-            glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
+            glLineWidth(3.0f);
+            glColor4f(.9f, .9f, .9f, 1.0f);
             glDrawElements(GL_LINES, constrain_indices, GL_UNSIGNED_INT, (GLuint*)0);
             glLineWidth(1.0f);
 
@@ -1518,8 +1532,16 @@ int main(int argc, char* argv[])
 
             glColor4f(0.0f, 0.75f, 0.0f, 1.0f);
 
+            #ifdef VORONOI_POLYS
+            // draw structured polys, note: open polys are silently closed (at infinity)
+            // glDrawElements(GL_LINE_LOOP, voronoi_indices, GL_UNSIGNED_INT, (GLuint*)0);
+            // if you wanna be a ganan: after first M closed polys switch from line_loops to line_strips :)
+            glDrawElements(GL_LINE_LOOP, voronoi_closed_indices, GL_UNSIGNED_INT, (GLuint*)0);
+            glDrawElements(GL_LINE_STRIP, voronoi_open_indices, GL_UNSIGNED_INT, (GLuint*)0+voronoi_closed_indices);
+            #else
             // draw edge soup
             glDrawElements(GL_LINES, voronoi_indices, GL_UNSIGNED_INT, (GLuint*)0);
+            #endif
         }
         #endif
 

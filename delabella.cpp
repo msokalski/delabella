@@ -1960,12 +1960,15 @@ struct CDelaBella3 : IDelaBella2<T>
 
 	virtual int GenVoronoiDiagramVerts(T* x, T* y, int advance_bytes) const
 	{
+		if (!first_dela_face)
+			return 0;
+
 		const int polys = polygons;
 		const int contour = out_boundary_verts;
 		int ret = polys + contour;
 
 		if (!x || !y)
-			return -ret;
+			return ret;
 
 		if (advance_bytes < (int)(sizeof(T) * 2))
 			advance_bytes = sizeof(T) * 2;
@@ -2025,12 +2028,15 @@ struct CDelaBella3 : IDelaBella2<T>
 
 	virtual int GenVoronoiDiagramEdges(int* indices, int advance_bytes) const
 	{
+		if (!first_dela_face)
+			return 0;
+
 		const int polys = polygons;
 		const int verts = unique_points;
 		int ret = 2 * (verts + polys - 1);
 
 		if (!indices)
-			return -ret;
+			return ret;
 
 		if (advance_bytes < sizeof(int))
 			advance_bytes = sizeof(int);
@@ -2138,20 +2144,104 @@ struct CDelaBella3 : IDelaBella2<T>
 		return ret;
 	}
 
-	virtual int GenVoronoiDiagramPolys(int* indices, int advance_bytes, int poly_ending) const
+	virtual int GenVoronoiDiagramPolys(int* indices, int advance_bytes, int* closed_indices) const
 	{
+		if (!first_dela_face)
+			return 0;
+
 		const int polys = polygons;
 		const int contour = out_boundary_verts;
 		const int verts = unique_points;
 		int ret = 3 * verts + 2 * (polys - 1) + contour;
 
 		if (!indices)
-			return -ret;
+			return ret;
 
 		if (advance_bytes < sizeof(int))
 			advance_bytes = sizeof(int);
 
+		const int inter = verts - contour;
+		const int poly_ending = ~0;
+
 		int* idx = indices;
+		
+		int closed = 0;
+		Vert* vert = first_internal_vert;
+		for (int i = 0; i < inter; i++)
+		{
+			Iter it;
+			Face* t = (Face*)vert->StartIterator(&it);
+			Face* e = t;
+
+			do
+			{
+				int a = t->index;
+				*idx = a;
+				idx = (int*)((char*)idx + advance_bytes);
+				closed++;
+
+				t = (Face*)it.Next();
+			} while (t != e);
+
+			// loop closing seg
+			int a = poly_ending;
+			*idx = a;
+			idx = (int*)((char*)idx + advance_bytes);
+			closed++;
+
+			vert = (Vert*)vert->next;
+		}
+
+		if (closed_indices)
+			*closed_indices = closed;
+
+		Vert* prev = first_boundary_vert;
+		vert = (Vert*)prev->next;
+		for (int i = 0; i < contour; i++)
+		{
+			int a = i + polys; // begin
+			*idx = a;
+			idx = (int*)((char*)idx + advance_bytes);
+
+			// iterate all dela faces around prev
+			// add their voro-vert index == dela face index
+			Iter it;
+			Face* t = (Face*)prev->StartIterator(&it);
+
+			// it starts at random face, so lookup the prev->vert edge
+			while (1)
+			{
+				if (t->index >= 0)
+				{
+					if (t->v[0] == prev && t->v[1] == vert ||
+						t->v[1] == prev && t->v[2] == vert ||
+						t->v[2] == prev && t->v[0] == vert)
+						break;
+				}
+				t = (Face*)it.Next();
+			}
+
+			// now iterate around, till we're inside the boundary
+			while (t->index >= 0)
+			{
+				int a = t->index;
+				*idx = a;
+				idx = (int*)((char*)idx + advance_bytes);
+
+				t = (Face*)it.Next();
+			}
+
+			a = (i == 0 ? contour - 1 : i - 1) + polys; // loop-wrapping!
+			*idx = a;
+			idx = (int*)((char*)idx + advance_bytes);
+
+			a = poly_ending;
+			*idx = a;
+			idx = (int*)((char*)idx + advance_bytes);
+
+			prev = vert;
+			vert = (Vert*)vert->next;
+		}
 
 		#ifdef DELABELLA_AUTOTEST
 		assert(((char*)idx - (char*)indices) / advance_bytes == ret);

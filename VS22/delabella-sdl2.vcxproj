@@ -168,6 +168,9 @@
     <ClCompile Include="..\delabella-sdl2.cpp" />
     <ClCompile Include="..\delabella.cpp" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\README.md" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

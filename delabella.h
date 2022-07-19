@@ -83,6 +83,7 @@ struct IDelaBella2
 	virtual int Polygonize(const Simplex* poly[/*GetNumOutputIndices()/3*/] = 0) = 0; // valid only if Triangulate() > 0
 
 	// GenVoronoiDiagramVerts(), valid only if Triangulate() > 0
+	// it makes sense to call it prior to constraining only
 	// generates VD vertices (for use with VD edges or VD polys indices)
 	// <x>,<y> and/or <indices> can be null if their values are not needed
 	// assuming:
@@ -93,11 +94,12 @@ struct IDelaBella2
 	// <x>,<y> array must be (at least) V elements long
 	// first P <x>,<y> elements will contain internal points (divisor W=1)
 	// next N <x>,<y> elements will contain edge normals (divisor W=0)
-	// function returns number vertices filled (V) on success otherwise -1
+	// function returns number vertices filled (V) on success, otherwise 0
 	virtual int GenVoronoiDiagramVerts(T* x, T* y, int advance_bytes = 0) const = 0;
 
 
 	// GenVoronoiDiagramEdges(), valid only if Triangulate() > 0
+	// it makes sense to call it prior to constraining only
 	// generates unidirected VD edges (without ones in opposite direction)
 	// assuming:
 	//   N = GetNumBoundaryVerts()
@@ -107,25 +109,27 @@ struct IDelaBella2
 	// <indices> must be (at least) I elements long
 	// every pair of consecutive values in <indices> represent VD edge
 	// there is no guaranteed correspondence between edges order and other data
-	// function returns number of indices filled (I) on success otherwise -1
+	// function returns number of indices filled (I) on success, otherwise 0
 	virtual int GenVoronoiDiagramEdges(int* indices, int advance_bytes = 0) const = 0;
 
 	// GenVoronoiDiagramPolys() valid only if Triangulate() > 0
+	// it makes sense to call it prior to constraining only
 	// generates VD polygons
 	// assuming:
-	//   M = GetNumBoundaryVerts()
-	//   N = GetNumInternalVerts()
+	//   N = GetNumBoundaryVerts()
+	//   M = GetNumInternalVerts()
 	//   P = GetNumPolygons()
-	//   I = 3 * (N + M) + 2 * (P - 1) + M
+	//   I = 3 * (N + M) + 2 * (P - 1) + N
 	// <indices> must be (at least) I elements long
-	// if <poly_ending> value != 0 it will be inserted into <indices> after every poly
-	//    otherwise every poly will be prefixed by number of its indices
-	// first N polys in <indices> represent closed VD cells, thay are in order
+	// first M polys in <indices> represent closed VD cells, thay are in order
 	// and corresponding to vertices from GetFirstInternalVertex() -> Vertex::next list
-	// next M polys in <indices> represent open VD cells, thay are in order
+	// next N polys in <indices> represent open VD cells, thay are in order
 	// and corresponding to vertices from GetFirstBoundaryVertex() -> Vertex::next list
-	// function returns number of indices filled (I) on success otherwise -1
-	virtual int GenVoronoiDiagramPolys(int* indices, int advance_bytes=0, int poly_ending=~0) const = 0;
+	// every poly written to <indices> is terminated with ~0 value
+	// if both <indices> and <closed_indices> are not null, 
+	// number of closed VD cells indices is written to <closed_indices>
+	// function returns number of indices filled (I) on success, otherwise 0
+	virtual int GenVoronoiDiagramPolys(int* indices, int advance_bytes=0, int* closed_indices=0) const = 0;
 
 	#ifdef DELABELLA_LEGACY
 	inline const Simplex* GetFirstDelaunayTriangle() const
