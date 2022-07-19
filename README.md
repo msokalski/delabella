@@ -1,6 +1,5 @@
-# delabella
-## 2D Delaunay triangulation Exact 
-   
+# DelaBella
+## 2D Exact Delaunay triangulation
 
 - Bunch of credits must go to David for inventing such beautiful algorithm (Newton Apple Wrapper):
 
@@ -10,25 +9,25 @@
 
   https://arxiv.org/ftp/arxiv/papers/1602/1602.04707.pdf
 
-- Currently Delabella makes use of adaptive-exact predicates by William C. Lenthe
+- Currently DelaBella makes use of adaptive-exact predicates by William C. Lenthe
 
   https://github.com/wlenthe/GeometricPredicates
 
-## What you can do with Delabella?
+## What you can do with DelaBella?
 
 - Delaunay triangulations
 
-![delaunay](images/delaunay.png)
+  ![delaunay](images/delaunay.png)
 
 - Voronoi diagrams
 
-![voronoi](images/voronoi.png)
+  ![voronoi](images/voronoi.png)
 
 - Constrained Delaunay triangulations
 
-![voronoi](images/voronoi.png)
+  ![constraints](images/constraints.png)
 
-## Minimalistic Delabella usage:
+## Minimalistic DelaBella usage:
 
 ```cpp
 
@@ -59,7 +58,7 @@
 		cloud[i].y = rand();
 	}
 
-	IDelaBella<MyCoord>* idb = IDelaBella<MyCoord>::Create();
+	IDelaBella2<MyCoord>* idb = IDelaBella2<MyCoord>::Create();
 
 	int verts = idb->Triangulate(POINTS, &cloud->x, &cloud->y, sizeof(MyPoint));
 
@@ -100,7 +99,7 @@
 
 ```
 
-## On the go progress information on all lengthy functions
+## On the go progress information for all lengthy functions
 
 ![terminal](images/terminal.gif)
 
