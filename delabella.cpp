@@ -2005,9 +2005,17 @@ struct CDelaBella3 : IDelaBella2<T>
 		Vert* vert = (Vert*)prev->next;
 		for (int i = 0; i < contour; i++)
 		{
+			T nx = prev->y - vert->y;
+			T ny = vert->x - prev->x;
+
+			T nn = 1/sqrt(nx * nx + ny * ny);
+			nx *= nn;
+			ny *= nn;
+
 			int offs = advance_bytes * i;
-			*(T*)((char*)x + offs) = prev->y - vert->y;
-			*(T*)((char*)y + offs) = vert->x - prev->x;
+			*(T*)((char*)x + offs) = nx;
+			*(T*)((char*)y + offs) = ny;
+
 			prev = vert;
 			vert = (Vert*)vert->next;
 		}

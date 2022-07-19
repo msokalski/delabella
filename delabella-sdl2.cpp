@@ -6,16 +6,15 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #define _CRT_SECURE_NO_WARNINGS
 
 #define DELABELLA_LEGACY double
-
 #define VORONOI
 
 // override build define
-#undef DELAUNATOR 
-#define DELAUNATOR
+//#undef WITH_DELAUNATOR 
+//#define WITH_DELAUNATOR
 
 // override build define
-//#undef Cdt
-//#define Cdt
+//#undef WITH_CDT
+//#define WITH_CDT
 
 #include <math.h>
 #include <stdlib.h>
@@ -44,11 +43,11 @@ Copyright (C) 2018 GUMIX - Marcin Sokalski
 #endif
 
 // competitors
-#ifdef DELAUNATOR
+#ifdef WITH_DELAUNATOR
 #include "delaunator/delaunator-header-only.hpp"
 #endif
 
-#ifdef Cdt
+#ifdef WITH_CDT
 #include "CDT/include/CDT.h"
 
 namespace CDT
@@ -486,15 +485,15 @@ int main(int argc, char* argv[])
         std::random_device rd{};
         std::mt19937_64 gen{ 0x12345678 /*rd()*/};
 
-        std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
-        //std::normal_distribution<double> d{0.0,2.0};
+        //std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
+        std::normal_distribution<double> d{0.0,2.0};
         //std::gamma_distribution<double> d(0.1,2.0);
 
         
         for (int i = 0; i < n; i++)
         {
-            //MyPoint p = { (d(gen) - 5.0), (d(gen) - 5.0) };
-            MyPoint p = { d(gen), d(gen) };
+            MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
+            //MyPoint p = { d(gen), d(gen) };
             
             //p.x *= 0x1.p250;
             //p.y *= 0x1.p250;
@@ -645,7 +644,7 @@ int main(int argc, char* argv[])
 
     int points = (int)cloud.size();
 
-    #ifdef Cdt
+    #ifdef WITH_CDT
 
         std::vector<CDT::V2d<double>> nodups;
         for (size_t i = 0; i < cloud.size(); i++)
@@ -684,7 +683,7 @@ int main(int argc, char* argv[])
 
         if (force.size()>0)
         {
-            printf("cdt constraining...  ");
+            printf("cdt forcing edges... ");
             cdt.insertEdges(edges);
             uint64_t t3 = uSec();
             printf("%d ms\n", (int)((t3 - t2) / 1000));
@@ -708,7 +707,7 @@ int main(int argc, char* argv[])
     #endif
 
 
-    #ifdef DELAUNATOR
+    #ifdef WITH_DELAUNATOR
     {
         std::vector<double> coords;
         for (int i=0; i<points; i++)
@@ -747,15 +746,19 @@ int main(int argc, char* argv[])
 	int vert_num = contour + non_contour;
 
     #ifdef VORONOI
+    printf("Polygonizing for VD\n");
     //idb->Polygonize(); // optional
     int voronoi_vertices = -idb->GenVoronoiDiagramVerts(0,0,0);
     int voronoi_indices = -idb->GenVoronoiDiagramEdges(0, 0);
     DELABELLA_LEGACY* voronoi_vtx_buf = (DELABELLA_LEGACY*)malloc(voronoi_vertices * sizeof(DELABELLA_LEGACY[2]));
     int* voronoi_idx_buf = (int*)malloc(voronoi_indices * sizeof(int));
 
+    printf("Generating VD vertices\n");
     idb->GenVoronoiDiagramVerts(voronoi_vtx_buf, voronoi_vtx_buf+1, sizeof(DELABELLA_LEGACY[2]));
+    printf("Generating VD indices\n");
     idb->GenVoronoiDiagramEdges(voronoi_idx_buf, sizeof(int));
 
+    printf("VD vertices = %d, indices = %d\n", voronoi_vertices, voronoi_indices);
     #endif
 
     if (force.size()>0)
@@ -783,7 +786,7 @@ int main(int argc, char* argv[])
     // COMPARE CDT with Dela
     // if (0)
     {
-        #ifdef Cdt
+        #ifdef WITH_CDT
 
         int tris_cdt = (int)cdt.triangles.size();
         assert(tris_delabella == tris_cdt);
@@ -941,6 +944,7 @@ int main(int argc, char* argv[])
         }
     }
 
+    SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
     SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
@@ -955,11 +959,7 @@ int main(int argc, char* argv[])
 
 	// create viewer wnd
     int width = 800, height = 600;
-    #ifdef CRUDE_XA
-    const char* title = "delablella-xa";
-    #else
-    const char* title = "delablella";
-    #endif
+    const char* title = "delablella-sdl2";
     SDL_Window * window = SDL_CreateWindow( title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     if (!window)
     {
@@ -1014,7 +1014,20 @@ int main(int argc, char* argv[])
 
 
     // create vbo and ibo
-    Buf vbo, ibo_delabella;
+    Buf vbo, ibo_delabella, ibo_constrain;
+
+    int constrain_indices = (int)force.size() * 2;
+    if (constrain_indices)
+    {
+        ibo_constrain.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * constrain_indices);
+        GLuint* map = (GLuint*)ibo_constrain.Map();
+        for (int i = 0; i < force.size(); i++)
+        {
+            map[2 * i + 0] = (GLuint)force[i].a;
+            map[2 * i + 1] = (GLuint)force[i].b;
+        }
+        ibo_constrain.Unmap();
+    }
 
 	vbo.Gen(GL_ARRAY_BUFFER, sizeof(gl_t[3]) * points);
     gl_t* vbo_ptr = (gl_t*)vbo.Map();
@@ -1170,14 +1183,17 @@ int main(int argc, char* argv[])
 
     vbo_voronoi.Unmap();
     ibo_voronoi.Unmap();
+
+    free(voronoi_idx_buf);
+    free(voronoi_vtx_buf);
     #endif
 
-    #ifdef Cdt
+    #ifdef WITH_CDT
     int tris_cdt = (int)cdt.triangles.size();
-    Buf ibo_delaunator;
-    ibo_delaunator.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_cdt);
+    Buf ibo_cdt;
+    ibo_cdt.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_cdt);
     {
-        ibo_ptr = (GLuint*)ibo_delaunator.Map();
+        ibo_ptr = (GLuint*)ibo_cdt.Map();
 
         if (dups.duplicates.size())
         {
@@ -1213,7 +1229,7 @@ int main(int argc, char* argv[])
                 ibo_ptr[3 * i + 2] = (GLuint)a;
             }
         }
-        ibo_delaunator.Unmap();
+        ibo_cdt.Unmap();
     }
     #endif
 
@@ -1236,6 +1252,23 @@ int main(int argc, char* argv[])
     }
 
 	printf("going interactive.\n");
+
+    bool show_f = true; // fill
+    bool show_b = true; // boundary
+    bool show_v = true; // voronoi
+    bool show_c = true; // constraints
+    bool show_x = true; // cross-compare with cdt
+    bool show_d = true; // delaunay
+
+    printf("\n");
+    printf(
+        "Change layers visibility while graphics window is in focus:\n"
+        "[F]ill, [B]oundary, [V]oronoi, [C]onstraints, [D]elaunay, [X]compare\n");
+
+    printf("\n");
+    printf(
+        "Mouse controls:\n"
+        "[LMB]pan, [RMB/wheel]zoom\n");
 
     for( ;; )
     {
@@ -1356,20 +1389,19 @@ int main(int argc, char* argv[])
                     break;
                 }
 
-                case SDL_KEYUP:
-                    if (event.key.keysym.sym == SDLK_ESCAPE)
-                    {
-                        /*
-                        printf("CONSTRAINTS DUMP:\n");
-                        for (int i = 0; i < CONSTRAINTS; i++)
-                            printf("%d - %d\n", constraint_from[i], constraint_to[i]);
-                        printf("VERTICES DUMP:\n");
-                        for (int i = 0; i < cloud.size(); i++)
-                        {
-                            printf("%f %f\n", cloud[i].x, cloud[i].y);
-                        }
-                        */
-                    }
+                case SDL_KEYDOWN:
+                    if (event.key.keysym.sym == SDLK_f)
+                        show_f = !show_f;
+                    if (event.key.keysym.sym == SDLK_b)
+                        show_b = !show_b;
+                    if (event.key.keysym.sym == SDLK_v)
+                        show_v = !show_v;
+                    if (event.key.keysym.sym == SDLK_c)
+                        show_c = !show_c;
+                    if (event.key.keysym.sym == SDLK_x)
+                        show_x = !show_x;
+                    if (event.key.keysym.sym == SDLK_d)
+                        show_d = !show_d;
                     break;
             }
 
@@ -1399,79 +1431,111 @@ int main(int argc, char* argv[])
         glCullFace(GL_BACK);
         glFrontFace(GL_CW);
 
-        // hello ancient world
         vbo.Bind();
-        //glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
 		glVertexPointer(3, gl_e, 0, 0);
 		glEnableClientState(GL_VERTEX_ARRAY);
 
         ibo_delabella.Bind();
 
-        glColor4f(0.2f,0.2f,0.2f,1.0f);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-        glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_delabella*3, GL_UNSIGNED_INT, 0);
+        // grey fill
+        if (show_f)
+        {
+            glColor4f(0.2f, 0.2f, 0.2f, 1.0f);
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_delabella * 3, GL_UNSIGNED_INT, 0);
+        }
 
-        // put verts over fill
-        glColor4f(1.0f,1.0f,0.0f,1.0f);
+        // paint constraints
+        if (constrain_indices && show_c)
+        {
+            ibo_constrain.Bind();
+            glLineWidth(5.0f);
+            glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
+            glDrawElements(GL_LINES, constrain_indices, GL_UNSIGNED_INT, (GLuint*)0);
+            glLineWidth(1.0f);
+
+            // oops
+            ibo_delabella.Bind();
+        }
+
+        //glColor4f(0.5f,0.5f,0.5f,1.0f);
+        if (show_d)
+        {
+            glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            glDrawElements(GL_TRIANGLES, tris_delabella * 3, GL_UNSIGNED_INT, 0);
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        }
+
+        if (show_b)
+        {
+            glColor4f(0.0f, 0.0f, 1.0f, 1.0f);
+            glLineWidth(3.0f);
+            glDrawElements(GL_LINE_LOOP, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella * 3);
+            glLineWidth(1.0f);
+        }
+
+        // compare with CDT
+        #ifdef WITH_CDT
+        if (show_x)
+        {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_ONE, GL_ONE);
+            ibo_cdt.Bind();
+            glColor4f(0.0f,0.0f,1.0f,1.0f);
+            glLineWidth(1.0f);
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_cdt * 3, GL_UNSIGNED_INT, 0);
+            glDisable(GL_BLEND);
+        }
+        #endif
+
+        // voronoi!
+        #ifdef VORONOI
+        if (show_v)
+        {
+            vbo_voronoi.Bind();
+            //glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
+            glVertexPointer(3, gl_e, 0, 0);
+            glEnableClientState(GL_VERTEX_ARRAY);
+
+            const static gl_t z2w[16] =
+            {
+                1,0,0,0,
+                0,1,0,0,
+                0,0,0,1,
+                0,0,0,0
+            };
+
+            glLoadMatrix(z2w);
+
+            // voro-verts in back
+            glColor4f(1.0f, 1.0f, 0.0f, 1.0f);
+            glPointSize(3.0f);
+            glDrawArrays(GL_POINTS, 0, voronoi_vertices - contour);
+            glPointSize(1.0f);
+            ibo_voronoi.Bind();
+
+            glColor4f(0.0f, 0.75f, 0.0f, 1.0f);
+
+            // draw edge soup
+            glDrawElements(GL_LINES, voronoi_indices, GL_UNSIGNED_INT, (GLuint*)0);
+        }
+        #endif
+
+
+        vbo.Bind();
+        ibo_delabella.Bind();
+        glVertexPointer(3, gl_e, 0, 0);
+        glEnableClientState(GL_VERTEX_ARRAY);
+
+        // put verts over everything else
+        glLoadIdentity();
+        glColor4f(1.0f, 1.0f, 0.0f, 1.0f);
         glPointSize(3.0f);
         glDrawArrays(GL_POINTS, 0, points);
         glPointSize(1.0f);
 
-        //glColor4f(0.5f,0.5f,0.5f,1.0f);
-        glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glDrawElements(GL_TRIANGLES, tris_delabella * 3, GL_UNSIGNED_INT, 0);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-
-        glColor4f(0.0f,0.0f,1.0f,1.0f);
-        glLineWidth(3.0f);
-        glDrawElements(GL_LINE_LOOP, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella*3);
-        glLineWidth(1.0f);
-
-        // compare with CDT
-		#if 1
-        #ifdef Cdt
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_ONE, GL_ONE);
-        ibo_delaunator.Bind();
-        glColor4f(0.0f,1.0f,0.0f,1.0f);
-        glLineWidth(1.0f);
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_cdt * 3, GL_UNSIGNED_INT, 0);
-        glDisable(GL_BLEND);
-        #endif
-		#endif
-
-        // voronoi!
-        #ifdef VORONOI
-        vbo_voronoi.Bind();
-        //glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
-		glVertexPointer(3, gl_e, 0, 0);
-		glEnableClientState(GL_VERTEX_ARRAY);
-
-        const static gl_t z2w[16]=
-        {
-            1,0,0,0,
-            0,1,0,0,
-            0,0,0,1,
-            0,0,0,0
-        };
-
-        glLoadMatrix(z2w);
-
-		// voro-verts in back
-		glColor4f(1.0f, 1.0f, 0.0f, 1.0f);
-		glPointSize(3.0f);
-		glDrawArrays(GL_POINTS, 0, voronoi_vertices - contour);
-		glPointSize(1.0f);
-        ibo_voronoi.Bind();
-
-        glColor4f(0.0f,0.75f,0.0f,1.0f);
-
-		// draw edge soup
-		glDrawElements(GL_LINES, voronoi_indices, GL_UNSIGNED_INT, (GLuint*)0);
-
-        #endif
 
         SDL_GL_SwapWindow(window);
         SDL_Delay(15);
@@ -1480,8 +1544,11 @@ int main(int argc, char* argv[])
     vbo.Del();
     ibo_delabella.Del();
 
-    #ifdef Cdt
-    ibo_delaunator.Del();
+    if (constrain_indices)
+        ibo_constrain.Del();
+
+    #ifdef WITH_CDT
+    ibo_cdt.Del();
     #endif
 
     #ifdef VORONOI
@@ -1492,10 +1559,6 @@ int main(int argc, char* argv[])
     SDL_GL_DeleteContext( context );
     SDL_DestroyWindow( window );
     SDL_Quit();
-
-    #ifdef XA_VAL_LEAKS
-    printf("LEAKED %d allocs\n", xa_leaks(0));
-    #endif
 
 	printf("exiting!\n");
 
