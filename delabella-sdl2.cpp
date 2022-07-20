@@ -16,7 +16,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 //#define WITH_DELAUNATOR
 
 // override build define
-#undef WITH_CDT
+//#undef WITH_CDT
 //#define WITH_CDT
 
 #include <math.h>
@@ -298,9 +298,20 @@ PFNGLDETACHSHADERPROC  glDetachShader = 0;
 PFNGLLINKPROGRAMPROC   glLinkProgram = 0;
 PFNGLUSEPROGRAMPROC    glUseProgram = 0;
 
+PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog = 0;
+PFNGLGETPROGRAMINFOLOGPROC glGetProgramInfoLog = 0;
+
+PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = 0;
+PFNGLUNIFORM4FPROC glUniform4f = 0;
+PFNGLUNIFORMMATRIX4DVPROC glUniformMatrix4dv = 0;
+PFNGLVERTEXATTRIBLPOINTERPROC glVertexAttribLPointer = 0;
+PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = 0;
+PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = 0;
+
 bool BindGL(bool prim_restart, bool shaders)
 {
 	#define BINDGL(proc) if ((*(void**)&proc = SDL_GL_GetProcAddress(#proc)) == 0) return false;
+    
 	BINDGL(glBindBuffer);
 	BINDGL(glDeleteBuffers);
 	BINDGL(glGenBuffers);
@@ -309,19 +320,31 @@ bool BindGL(bool prim_restart, bool shaders)
 	BINDGL(glMapBuffer);
 	BINDGL(glUnmapBuffer);
 
-	BINDGL(glCreateShader);
-	BINDGL(glDeleteShader);
-	BINDGL(glCreateProgram);
-	BINDGL(glDeleteProgram);
-	BINDGL(glShaderSource);
-	BINDGL(glCompileShader);
-	BINDGL(glAttachShader);
-	BINDGL(glDetachShader);
-	BINDGL(glLinkProgram);
-	BINDGL(glUseProgram);
+    if (shaders)
+    {
+        BINDGL(glCreateShader);
+        BINDGL(glDeleteShader);
+        BINDGL(glCreateProgram);
+        BINDGL(glDeleteProgram);
+        BINDGL(glShaderSource);
+        BINDGL(glCompileShader);
+        BINDGL(glAttachShader);
+        BINDGL(glDetachShader);
+        BINDGL(glLinkProgram);
+        BINDGL(glUseProgram);
+        BINDGL(glGetShaderInfoLog);
+        BINDGL(glGetProgramInfoLog);
+        BINDGL(glUniformMatrix4dv);
+        BINDGL(glUniform4f);
+        BINDGL(glVertexAttribLPointer);
+        BINDGL(glEnableVertexAttribArray);
+        BINDGL(glDisableVertexAttribArray);
+        BINDGL(glGetUniformLocation);
+    }
 
     if (prim_restart)
 	    BINDGL(glPrimitiveRestartIndex);
+
 	#undef BINDGL
 	return true;
 }
@@ -489,20 +512,161 @@ struct MyEdge
     int a, b;
 };
 
-template <typename gl_t = GLfloat, GLenum gl_e = GL_FLOAT>
 struct GfxStuffer
 {
-    // create vbo and ibo
+    GfxStuffer() : prg(0) {}
+
+    GLenum type;
     Buf vbo, ibo_delabella, ibo_constrain;
     Buf vbo_voronoi, ibo_voronoi;
     #ifdef WITH_CDT
     Buf ibo_cdt;
     #endif
-
     MyCoord box[4];
+
+    // for GLdouble only
+    GLuint prg; 
+    GLint tfm;
+    GLint clr;
+    GLdouble mat[16];
+
+    void VertexPointer(GLint s, GLenum t, GLsizei d, const GLvoid* ptr)
+    {
+        if (type == GL_DOUBLE)
+            glVertexAttribLPointer(0,s,t,d,ptr);
+        else
+            glVertexPointer(s,t,d,ptr);
+    }
+
+    void EnableVertexArray(bool on)
+    {
+        if (type == GL_DOUBLE)
+            if (on)
+                glEnableVertexAttribArray(0);
+            else
+                glDisableVertexAttribArray(0);
+        else
+            if (on)
+                glEnableClientState(GL_VERTEX_ARRAY);
+            else
+                glDisableClientState(GL_VERTEX_ARRAY);
+    }
+
+    void LoadIdentity()
+    {
+        if (type == GL_DOUBLE)
+        {
+            mat[10] = -1;
+            mat[11] = 0;
+            mat[15] = 1;
+            glUniformMatrix4dv(tfm, 1, GL_FALSE, mat);
+        }
+        else
+            glLoadIdentity();
+    }
+
+    void LoadProj(int vpw, int vph, double cx, double cy, double scale)
+    {
+        glViewport(0,0,vpw,vph);
+        if (type == GL_DOUBLE)
+        {
+            glUseProgram(prg);
+
+            /*
+            double dx = scale / vpw;
+            double dy = scale / vph;
+
+            mat[0] = dx; 
+            mat[5] = dy; 
+            mat[11] = 0;
+            mat[12] = cx * dx;
+            mat[13] = cy * dy;
+            mat[15] = 1;
+            */
+
+            double left = cx - vpw/scale;
+            double right = cx + vpw/scale;
+            double bottom = cy - vph/scale;
+            double top = cy + vph/scale;
+            double near = -1;
+            double far = +1;
+
+            mat[0] = 2/(right-left); 
+            mat[1] = 0;
+            mat[2] = 0;
+            mat[3] = 0;
+
+            mat[4] = 0;
+            mat[5] = 2/(top-bottom); 
+            mat[6] = 0;
+            mat[7] = 0;
+
+            mat[8] = 0;
+            mat[9] = 0;
+            mat[10] = -2/(far-near);
+            mat[11] = 0;
+
+            mat[12] = -(right+left)/(right-left);
+            mat[13] = -(top+bottom)/(top-bottom);
+            mat[14] = -(far+near)/(far-near);
+            mat[15] = 1;
+
+            // Z-damping
+            mat[10] = 0;
+
+            glUniformMatrix4dv(tfm, 1, GL_FALSE, mat);
+        }
+        else
+        {
+            glMatrixMode(GL_PROJECTION);
+            glLoadIdentity();
+            glOrtho(cx - vpw/scale, cx + vpw/scale, cy - vph/scale, cy + vph/scale, -1, +1);
+            glMatrixMode(GL_MODELVIEW);
+            glLoadIdentity();
+            glScalef(1,1,0); // flatten z when not shaded
+        }
+    }
+
+    void LoadZ2W()
+    {
+        if (type == GL_DOUBLE)
+        {
+            mat[10] = -1;
+            mat[11] = 1;
+            mat[15] = 0;
+            glUniformMatrix4dv(tfm, 1, GL_FALSE, mat);
+        }
+        else
+        {
+            const static GLfloat z2w[16] =
+            {
+                1,0,0,0,
+                0,1,0,0,
+                0,0,0,1,
+                0,0,0,0
+            };
+
+            glLoadMatrixf(z2w);
+        }
+    }    
+
+    void SetColor(float r, float g, float b, float a)
+    {
+        if (type == GL_DOUBLE)
+            glUniform4f(clr, r,g,b,a);
+        else
+            glColor4f(r,g,b,a);
+    }
 
     void Destroy()
     {
+        if (type == GL_DOUBLE)
+        {
+            glUseProgram(0);
+            if (prg)
+                glDeleteProgram(prg);
+        }
+
         vbo.Del();
         ibo_delabella.Del();
         ibo_constrain.Del();
@@ -515,25 +679,91 @@ struct GfxStuffer
         vbo_voronoi.Del();
         ibo_voronoi.Del();
         #endif
-    }
+    }    
 
-    void Upload(const IDelaBella* idb,
-                int points,
-                const MyPoint* cloud,
-                int constrain_edges,
-                const MyEdge* force
-                #ifdef VORONOI
-                , int voronoi_vertices,
-                const MyPoint* voronoi_vtx_buf,
-                int voronoi_indices,
-                const int* voronoi_idx_buf
-                #endif
-                #ifdef WITH_CDT
-                , const CDT::Triangulation<MyCoord>& cdt,
-                const CDT::DuplicatesInfo& dups
-                #endif
-                )
+    void Upload(
+        GLenum gl_e,
+        const IDelaBella* idb,
+        int points,
+        const MyPoint* cloud,
+        int constrain_edges,
+        const MyEdge* force
+        #ifdef VORONOI
+        , int voronoi_vertices,
+        const MyPoint* voronoi_vtx_buf,
+        int voronoi_indices,
+        const int* voronoi_idx_buf
+        #endif
+        #ifdef WITH_CDT
+        , const CDT::Triangulation<MyCoord>& cdt,
+        const CDT::DuplicatesInfo& dups
+        #endif
+    )
     {
+        Destroy();
+        
+        type = gl_e;
+
+        if (gl_e == GL_DOUBLE)
+        {
+            memset(mat,0,sizeof(mat));
+            
+            #define CODE(...) #__VA_ARGS__
+
+            static const char* vs_src[] = {CODE(#version 410\n
+                uniform dmat4 tfm;
+                layout (location = 0) in dvec4 v;
+                void main()
+                {
+                    dvec4 v_cs = tfm * v;
+                    gl_Position = vec4(v_cs);
+                }
+            )};
+
+            static const char* fs_src[] = {CODE(#version 410\n
+                uniform vec4 clr;
+                layout (location = 0) out vec4 c;
+                void main()
+                {
+                    c = clr;
+                }
+            )};
+
+            #undef CODE
+
+            char nfolog[1025];
+            int nfolen;
+
+            prg = glCreateProgram();
+            
+            GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+            glShaderSource(vs, 1, vs_src, 0);
+            glCompileShader(vs);
+            glAttachShader(prg,vs);
+
+            glGetShaderInfoLog(vs,1024,&nfolen,nfolog);
+            nfolog[nfolen]=0;
+            printf("VS:\n%s\n\n",nfolog);
+
+            GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+            glShaderSource(fs, 1, fs_src, 0);
+            glCompileShader(fs);
+            glAttachShader(prg,fs);
+
+            glGetShaderInfoLog(vs,1024,&nfolen,nfolog);
+            nfolog[nfolen]=0;
+            printf("FS:\n%s\n\n",nfolog);
+
+            glLinkProgram(prg);
+
+            glDeleteShader(vs);
+            glDeleteShader(fs);
+
+            tfm = glGetUniformLocation(prg, "tfm");
+            clr = glGetUniformLocation(prg, "clr");
+        }
+
+        int gl_s = gl_e == GL_DOUBLE ? sizeof(GLdouble) : sizeof(GLfloat);
         int tris_delabella = idb->GetNumOutputIndices() / 3;
         int contour = idb->GetNumBoundaryVerts();
 
@@ -549,8 +779,8 @@ struct GfxStuffer
             ibo_constrain.Unmap();
         }
 
-        vbo.Gen(GL_ARRAY_BUFFER, sizeof(gl_t[3]) * points);
-        gl_t* vbo_ptr = (gl_t*)vbo.Map();
+        vbo.Gen(GL_ARRAY_BUFFER, gl_s * 3 * points);
+        void* vbo_ptr = vbo.Map();
 
         // let's give a hand to gpu by centering vertices around 0,0
         box[0] = box[2] = cloud[0].x;
@@ -571,11 +801,25 @@ struct GfxStuffer
         box[2] -= vbo_x;
         box[3] -= vbo_y;
 
-        for (int i = 0; i<points; i++)
+        if (gl_e == GL_DOUBLE)
         {
-            vbo_ptr[3*i+0] = (gl_t)(cloud[i].x - vbo_x);
-            vbo_ptr[3*i+1] = (gl_t)(cloud[i].y - vbo_y);
-            vbo_ptr[3*i+2] = (gl_t)(1.0); // i%5; // color
+            GLdouble* p = (GLdouble*)vbo_ptr;
+            for (int i = 0; i<points; i++)
+            {
+                p[3*i+0] = (GLdouble)(cloud[i].x - vbo_x);
+                p[3*i+1] = (GLdouble)(cloud[i].y - vbo_y);
+                p[3*i+2] = (GLdouble)(1.0); // i%5; // color
+            }
+        }
+        else
+        {
+            GLfloat* p = (GLfloat*)vbo_ptr;
+            for (int i = 0; i<points; i++)
+            {
+                p[3*i+0] = (GLfloat)(cloud[i].x - vbo_x);
+                p[3*i+1] = (GLfloat)(cloud[i].y - vbo_y);
+                p[3*i+2] = (GLfloat)(1.0); // i%5; // color
+            }
         }
         vbo.Unmap();
 
@@ -599,100 +843,53 @@ struct GfxStuffer
         for (int i = 0; i<contour; i++)    
         {
             ibo_ptr[i + 3*tris_delabella] = (GLuint)vert->i;
-
-            /*
-            double nx = prev->y - vert->y;
-            double ny = vert->x - prev->x;
-            vbo_voronoi_ptr[3 * (tris_delabella + i) + 0] = (gl_t)(nx);
-            vbo_voronoi_ptr[3 * (tris_delabella + i) + 1] = (gl_t)(ny);
-            vbo_voronoi_ptr[3 * (tris_delabella + i) + 2] = (gl_t)(0.0);
-
-            // create special-fan / line_strip in ibo_voronoi around this boundary vertex
-            ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)i + tris_delabella; // begin
-
-            // iterate all dela faces around prev
-            // add their voro-vert index == dela face index
-            DelaBella_Iterator it;
-            const DelaBella_Triangle* t = prev->StartIterator(&it);
-
-            // it starts at random face, so lookup the prev->vert edge
-            while (1)
-            {
-                if (t->index >= 0)
-                {
-                    if (t->v[0] == prev && t->v[1] == vert ||
-                        t->v[1] == prev && t->v[2] == vert ||
-                        t->v[2] == prev && t->v[0] == vert)
-                        break;
-                }
-                t = it.Next();
-            }
-
-            // now iterate around, till we're inside the boundary
-            while (t->index >= 0)
-            {
-                ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // end
-                if (!prim_restart)
-                    ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // begin of next line segment
-                t = it.Next();
-            }
-
-            ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)( i==0 ? contour-1 : i-1 ) + tris_delabella; // loop-wrapping!
-            
-            if (prim_restart)
-                ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)~0; // primitive restart
-            */
-
             vert = vert->next;
         }
-
-        /*
-        // finally, for all internal vertices
-        vert = idb->GetFirstInternalVertex();
-        for (int i = 0; i<non_contour; i++)
-        {
-            // create regular-fan / line_loop in ibo_voronoi around this internal vertex
-            DelaBella_Iterator it;
-            const DelaBella_Triangle* t = vert->StartIterator(&it);
-            const DelaBella_Triangle* e = t;
-            do
-            {
-                assert(t->index>=0);
-                ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // begin
-                t = it.Next();
-                if (!prim_restart)
-                    ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // end
-            } while (t!=e);
-            
-            if (prim_restart)
-                ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)~0; // primitive restart
-
-            vert = vert->next;
-        }
-        */
-
 
         ibo_delabella.Unmap();
 
         #ifdef VORONOI
-        vbo_voronoi.Gen(GL_ARRAY_BUFFER, sizeof(gl_t[3])* voronoi_vertices);
+        vbo_voronoi.Gen(GL_ARRAY_BUFFER, gl_s * 3 * voronoi_vertices);
         ibo_voronoi.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)* voronoi_indices);
-        gl_t* vbo_voronoi_ptr = (gl_t*)vbo_voronoi.Map();
+        void* vbo_voronoi_ptr = vbo_voronoi.Map();
         GLuint* ibo_voronoi_ptr = (GLuint*)ibo_voronoi.Map();
 
-        for (int i = 0; i < voronoi_vertices; i++)
+        if (gl_e == GL_DOUBLE)
         {
-            if (i < voronoi_vertices - contour)
+            GLdouble* p = (GLdouble*)vbo_voronoi_ptr;
+            for (int i = 0; i < voronoi_vertices; i++)
             {
-                vbo_voronoi_ptr[3 * i + 0] = (gl_t)(voronoi_vtx_buf[i].x - vbo_x);
-                vbo_voronoi_ptr[3 * i + 1] = (gl_t)(voronoi_vtx_buf[i].y - vbo_y);
-                vbo_voronoi_ptr[3 * i + 2] = (gl_t)1;
+                if (i < voronoi_vertices - contour)
+                {
+                    p[3 * i + 0] = (GLdouble)(voronoi_vtx_buf[i].x - vbo_x);
+                    p[3 * i + 1] = (GLdouble)(voronoi_vtx_buf[i].y - vbo_y);
+                    p[3 * i + 2] = (GLdouble)1;
+                }
+                else
+                {
+                    p[3 * i + 0] = (GLdouble)voronoi_vtx_buf[i].x;
+                    p[3 * i + 1] = (GLdouble)voronoi_vtx_buf[i].y;
+                    p[3 * i + 2] = (GLdouble)0;
+                }
             }
-            else
+        }
+        else
+        {
+            GLfloat* p = (GLfloat*)vbo_voronoi_ptr;
+            for (int i = 0; i < voronoi_vertices; i++)
             {
-                vbo_voronoi_ptr[3 * i + 0] = (gl_t)voronoi_vtx_buf[i].x;
-                vbo_voronoi_ptr[3 * i + 1] = (gl_t)voronoi_vtx_buf[i].y;
-                vbo_voronoi_ptr[3 * i + 2] = (gl_t)0;
+                if (i < voronoi_vertices - contour)
+                {
+                    p[3 * i + 0] = (GLfloat)(voronoi_vtx_buf[i].x - vbo_x);
+                    p[3 * i + 1] = (GLfloat)(voronoi_vtx_buf[i].y - vbo_y);
+                    p[3 * i + 2] = (GLfloat)1;
+                }
+                else
+                {
+                    p[3 * i + 0] = (GLfloat)voronoi_vtx_buf[i].x;
+                    p[3 * i + 1] = (GLfloat)voronoi_vtx_buf[i].y;
+                    p[3 * i + 2] = (GLfloat)0;
+                }
             }
         }
 
@@ -705,7 +902,6 @@ struct GfxStuffer
 
         #ifdef WITH_CDT
         int tris_cdt = (int)cdt.triangles.size();
-        Buf ibo_cdt;
         ibo_cdt.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_cdt);
         {
             ibo_ptr = (GLuint*)ibo_cdt.Map();
@@ -751,8 +947,6 @@ struct GfxStuffer
     }
 };
 
-
-
 int main(int argc, char* argv[])
 {
 	#ifdef _WIN32
@@ -766,7 +960,6 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
-	
 	std::vector<MyPoint> cloud;
     std::vector<MyEdge> force;
 
@@ -787,7 +980,8 @@ int main(int argc, char* argv[])
         //std::normal_distribution<double> d{0.0,2.0};
         //std::gamma_distribution<double> d(0.1,2.0);
 
-        
+        MyCoord max_coord = sizeof(MyCoord) < 8 ? /*float*/0x1.p31 : /*double*/0x1.p255;
+
         for (int i = 0; i < n; i++)
         {
             //MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
@@ -796,7 +990,9 @@ int main(int argc, char* argv[])
             //p.x *= 0x1.p250;
             //p.y *= 0x1.p250;
 
-            assert(std::abs(p.x) <= 0x1.p255 && std::abs(p.y) <= 0x1.p255);
+            // please, leave some headroom for arithmetics!
+            assert(std::abs(p.x) <= max_coord && std::abs(p.y) <= max_coord);
+
             cloud.push_back(p);
         }
         
@@ -1300,6 +1496,9 @@ int main(int argc, char* argv[])
         }
     }
 
+    { int err = glGetError(); assert(err == GL_NO_ERROR); }
+
+
     // check if we can use shaders with dmat/dvec/double support
     // it is standard in GLSL 4.0 and above
     int glsl_ver = 0;
@@ -1307,15 +1506,23 @@ int main(int argc, char* argv[])
     if (glsl_str && glGetError() == GL_NO_ERROR)
     {
         int v[2];
-        if (2 == sscanf(glsl_str, "%d.%d", v+0,v+1))
+        int from,to;
+        if (2 == sscanf(glsl_str, "%d.%n%d%n", v+0,&from,v+1,&to))
         {
-            while (v[1] >= 10)
-                v[1] /= 10; // unify 4.10 to 4.1
-            glsl_ver = v[0]*10+v[1];
+            int num = to-from;
+            if (num == 1)
+                v[1] *= 10;
+            else
+            while (num>2)
+            {
+                v[1] /= 10;
+                num--;
+            }
+            glsl_ver = v[0]*100+v[1];
         }
     }
 
-	if (!BindGL(prim_restart, glsl_ver >= 40))
+	if (!BindGL(prim_restart, glsl_ver >= 410))
 	{
 		printf("Can't bind to necessary GL functions, terminating!\n");
 		idb->Destroy();
@@ -1324,231 +1531,12 @@ int main(int argc, char* argv[])
 
 	printf("preparing graphics...\n");
 
-	typedef GLfloat gl_t;
-	GLenum gl_e = GL_FLOAT;
-	#define glLoadMatrix(m) glLoadMatrixf(m)
-
-#if 0
-    int constrain_indices = (int)force.size() * 2;
-    if (constrain_indices)
-    {
-        ibo_constrain.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * constrain_indices);
-        GLuint* map = (GLuint*)ibo_constrain.Map();
-        for (int i = 0; i < force.size(); i++)
-        {
-            map[2 * i + 0] = (GLuint)force[i].a;
-            map[2 * i + 1] = (GLuint)force[i].b;
-        }
-        ibo_constrain.Unmap();
-    }
-
-	vbo.Gen(GL_ARRAY_BUFFER, sizeof(gl_t[3]) * points);
-    gl_t* vbo_ptr = (gl_t*)vbo.Map();
-
-    // let's give a hand to gpu by centering vertices around 0,0
-    double box[4]={(double)cloud[0].x, (double)cloud[0].y, (double)cloud[0].x, (double)cloud[0].y};
-	for (int i = 0; i<points; i++)
-    {
-        box[0] = fmin(box[0], (double)cloud[i].x);
-        box[1] = fmin(box[1], (double)cloud[i].y);
-        box[2] = fmax(box[2], (double)cloud[i].x);
-        box[3] = fmax(box[3], (double)cloud[i].y);
-    }
-
-    double vbo_x = 0.5 * (box[0]+box[2]);
-    double vbo_y = 0.5 * (box[1]+box[3]);
-
-    box[0] -= vbo_x;
-    box[1] -= vbo_y;
-    box[2] -= vbo_x;
-    box[3] -= vbo_y;
-
-	for (int i = 0; i<points; i++)
-    {
-        vbo_ptr[3*i+0] = (gl_t)(cloud[i].x - vbo_x);
-        vbo_ptr[3*i+1] = (gl_t)(cloud[i].y - vbo_y);
-        vbo_ptr[3*i+2] = (gl_t)(1.0); // i%5; // color
-    }
-    vbo.Unmap();
-
-    ibo_delabella.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delabella + sizeof(GLuint) * contour);	
-    GLuint* ibo_ptr = (GLuint*)ibo_delabella.Map();
-    const DelaBella_Triangle* dela = idb->GetFirstDelaunaySimplex();
-	for (int i = 0; i<tris_delabella; i++)
-	{
-        int v0 = dela->v[0]->i;
-        int v1 = dela->v[1]->i;
-        int v2 = dela->v[2]->i;
-
-        ibo_ptr[3*i+0] = (GLuint)v0;
-        ibo_ptr[3*i+1] = (GLuint)v1;
-        ibo_ptr[3*i+2] = (GLuint)v2;
-
-		dela = dela->next;
-	}
-
-    const DelaBella_Vertex* vert = idb->GetFirstBoundaryVertex();
-    for (int i = 0; i<contour; i++)    
-    {
-        ibo_ptr[i + 3*tris_delabella] = (GLuint)vert->i;
-
-        /*
-        double nx = prev->y - vert->y;
-        double ny = vert->x - prev->x;
-        vbo_voronoi_ptr[3 * (tris_delabella + i) + 0] = (gl_t)(nx);
-        vbo_voronoi_ptr[3 * (tris_delabella + i) + 1] = (gl_t)(ny);
-        vbo_voronoi_ptr[3 * (tris_delabella + i) + 2] = (gl_t)(0.0);
-
-        // create special-fan / line_strip in ibo_voronoi around this boundary vertex
-        ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)i + tris_delabella; // begin
-
-        // iterate all dela faces around prev
-        // add their voro-vert index == dela face index
-        DelaBella_Iterator it;
-        const DelaBella_Triangle* t = prev->StartIterator(&it);
-
-        // it starts at random face, so lookup the prev->vert edge
-        while (1)
-        {
-            if (t->index >= 0)
-            {
-                if (t->v[0] == prev && t->v[1] == vert ||
-                    t->v[1] == prev && t->v[2] == vert ||
-                    t->v[2] == prev && t->v[0] == vert)
-                    break;
-            }
-            t = it.Next();
-        }
-
-        // now iterate around, till we're inside the boundary
-        while (t->index >= 0)
-        {
-            ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // end
-            if (!prim_restart)
-                ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // begin of next line segment
-            t = it.Next();
-        }
-
-        ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)( i==0 ? contour-1 : i-1 ) + tris_delabella; // loop-wrapping!
-        
-        if (prim_restart)
-            ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)~0; // primitive restart
-        */
-
-        vert = vert->next;
-    }
-
-    /*
-    // finally, for all internal vertices
-    vert = idb->GetFirstInternalVertex();
-    for (int i = 0; i<non_contour; i++)
-    {
-        // create regular-fan / line_loop in ibo_voronoi around this internal vertex
-        DelaBella_Iterator it;
-        const DelaBella_Triangle* t = vert->StartIterator(&it);
-        const DelaBella_Triangle* e = t;
-        do
-        {
-            assert(t->index>=0);
-            ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // begin
-            t = it.Next();
-            if (!prim_restart)
-                ibo_voronoi_ptr[ibo_voronoi_idx++] = t->index; // end
-        } while (t!=e);
-        
-        if (prim_restart)
-            ibo_voronoi_ptr[ibo_voronoi_idx++] = (GLuint)~0; // primitive restart
-
-        vert = vert->next;
-    }
-    */
-
-
-    ibo_delabella.Unmap();
-
-    #ifdef VORONOI
-    Buf vbo_voronoi, ibo_voronoi;
-    vbo_voronoi.Gen(GL_ARRAY_BUFFER, sizeof(gl_t[3])* voronoi_vertices);
-    ibo_voronoi.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)* voronoi_indices);
-    gl_t* vbo_voronoi_ptr = (gl_t*)vbo_voronoi.Map();
-    GLuint* ibo_voronoi_ptr = (GLuint*)ibo_voronoi.Map();
-
-    for (int i = 0; i < voronoi_vertices; i++)
-    {
-        if (i < voronoi_vertices - contour)
-        {
-            vbo_voronoi_ptr[3 * i + 0] = (gl_t)(voronoi_vtx_buf[i].x - vbo_x);
-            vbo_voronoi_ptr[3 * i + 1] = (gl_t)(voronoi_vtx_buf[i].y - vbo_y);
-            vbo_voronoi_ptr[3 * i + 2] = (gl_t)1;
-        }
-        else
-        {
-            vbo_voronoi_ptr[3 * i + 0] = (gl_t)voronoi_vtx_buf[i].x;
-            vbo_voronoi_ptr[3 * i + 1] = (gl_t)voronoi_vtx_buf[i].y;
-            vbo_voronoi_ptr[3 * i + 2] = (gl_t)0;
-        }
-    }
-
-    for (int i = 0; i < voronoi_indices; i++)
-        ibo_voronoi_ptr[i] = (GLuint)(voronoi_idx_buf[i]);
-
-    vbo_voronoi.Unmap();
-    ibo_voronoi.Unmap();
-
-    free(voronoi_idx_buf);
-    free(voronoi_vtx_buf);
-    #endif
-
-    #ifdef WITH_CDT
-    int tris_cdt = (int)cdt.triangles.size();
-    Buf ibo_cdt;
-    ibo_cdt.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_cdt);
-    {
-        ibo_ptr = (GLuint*)ibo_cdt.Map();
-
-        if (dups.duplicates.size())
-        {
-            // let's make inverse mapping first
-            int* invmap = 0;
-            int invmap_size = (int)dups.mapping.size() - (int)dups.duplicates.size();
-            invmap = (int*)malloc(sizeof(int) * invmap_size);
-            for (int i = 0; i < (int)dups.mapping.size(); i++)
-                invmap[dups.mapping[i]] = i;
-
-            for (int i = 0; i < tris_cdt; i++)
-            {
-                int a = cdt.triangles[i].vertices[0];
-                int b = cdt.triangles[i].vertices[1];
-                int c = cdt.triangles[i].vertices[2];
-                ibo_ptr[3 * i + 0] = (GLuint)invmap[c];
-                ibo_ptr[3 * i + 1] = (GLuint)invmap[b];
-                ibo_ptr[3 * i + 2] = (GLuint)invmap[a];
-            }
-
-            free(invmap);
-        }
-        else
-        {
-            // 1:1 mapping (no dups)
-            for (int i = 0; i < tris_cdt; i++)
-            {
-                int a = cdt.triangles[i].vertices[0];
-                int b = cdt.triangles[i].vertices[1];
-                int c = cdt.triangles[i].vertices[2];
-                ibo_ptr[3 * i + 0] = (GLuint)c;
-                ibo_ptr[3 * i + 1] = (GLuint)b;
-                ibo_ptr[3 * i + 2] = (GLuint)a;
-            }
-        }
-        ibo_cdt.Unmap();
-    }
-    #endif
-
-#endif
+    { int err = glGetError(); assert(err == GL_NO_ERROR); }
 
     GfxStuffer gfx;
 
-    gfx.Upload( idb,
+    gfx.Upload( glsl_ver >= 410 ? GL_DOUBLE : GL_FLOAT,
+                idb,
                 (int)cloud.size(),
                 cloud.data(),
                 (int)force.size(),
@@ -1564,6 +1552,9 @@ int main(int argc, char* argv[])
                 dups
                 #endif
                 );
+
+    { int err = glGetError(); assert(err == GL_NO_ERROR); }
+
 
     #ifdef VORONOI
     free(voronoi_idx_buf);
@@ -1589,6 +1580,8 @@ int main(int argc, char* argv[])
     }
 
 	printf("going interactive.\n");
+
+    { int err = glGetError(); assert(err == GL_NO_ERROR); }
 
     bool show_f = true; // fill
     bool show_b = true; // boundary
@@ -1762,35 +1755,38 @@ int main(int argc, char* argv[])
 
         int vpw, vph;
         SDL_GL_GetDrawableSize(window, &vpw, &vph);
-        glViewport(0,0,vpw,vph);
 
         double scale = pow(1.01, zoom);
 
         glClearColor(0,0,0,0);
         glClear(GL_COLOR_BUFFER_BIT);
-        glMatrixMode(GL_PROJECTION);
-        glLoadIdentity();
-        glOrtho(cx - vpw/scale, cx + vpw/scale, cy - vph/scale, cy + vph/scale, -1, +1);
-        glMatrixMode(GL_MODELVIEW);
-        glLoadIdentity();
-        glScalef(1,1,0); // flatten z when not shaded
+
+        { int err = glGetError(); assert(err == GL_NO_ERROR); }
+
+        gfx.LoadProj(vpw,vph, cx,cy, scale);
+
+        { int err = glGetError(); assert(err == GL_NO_ERROR); }
 
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
         glFrontFace(GL_CW);
 
         gfx.vbo.Bind();
-		glVertexPointer(3, gl_e, 0, 0);
-		glEnableClientState(GL_VERTEX_ARRAY);
+		gfx.VertexPointer(3, gfx.type, 0, 0);
+        { int err = glGetError(); assert(err == GL_NO_ERROR); }
+		gfx.EnableVertexArray(true);
+        { int err = glGetError(); assert(err == GL_NO_ERROR); }
 
         gfx.ibo_delabella.Bind();
 
         // grey fill
         if (show_f)
         {
-            glColor4f(0.2f, 0.2f, 0.2f, 1.0f);
+            gfx.SetColor(0.2f, 0.2f, 0.2f, 1.0f);
+            { int err = glGetError(); assert(err == GL_NO_ERROR); }
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_delabella * 3, GL_UNSIGNED_INT, 0);
+            { int err = glGetError(); assert(err == GL_NO_ERROR); }
         }
 
         // paint constraints
@@ -1799,29 +1795,32 @@ int main(int argc, char* argv[])
         {
             gfx.ibo_constrain.Bind();
             glLineWidth(3.0f);
-            glColor4f(.9f, .9f, .9f, 1.0f);
+            gfx.SetColor(.9f, .9f, .9f, 1.0f);
             glDrawElements(GL_LINES, constrain_indices, GL_UNSIGNED_INT, (GLuint*)0);
+            { int err = glGetError(); assert(err == GL_NO_ERROR); }
             glLineWidth(1.0f);
 
             // oops
             gfx.ibo_delabella.Bind();
+            { int err = glGetError(); assert(err == GL_NO_ERROR); }
         }
 
-        //glColor4f(0.5f,0.5f,0.5f,1.0f);
         if (show_d)
         {
-            glColor4f(1.0f, 0.0f, 0.0f, 1.0f);
+            gfx.SetColor(1.0f, 0.0f, 0.0f, 1.0f);
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
             glDrawElements(GL_TRIANGLES, tris_delabella * 3, GL_UNSIGNED_INT, 0);
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            { int err = glGetError(); assert(err == GL_NO_ERROR); }
         }
 
         if (show_b)
         {
-            glColor4f(0.0f, 0.0f, 1.0f, 1.0f);
+            gfx.SetColor(0.0f, 0.0f, 1.0f, 1.0f);
             glLineWidth(3.0f);
             glDrawElements(GL_LINE_LOOP, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella * 3);
             glLineWidth(1.0f);
+            { int err = glGetError(); assert(err == GL_NO_ERROR); }
         }
 
         // compare with CDT
@@ -1833,11 +1832,12 @@ int main(int argc, char* argv[])
             glEnable(GL_BLEND);
             glBlendFunc(GL_ONE, GL_ONE);
             gfx.ibo_cdt.Bind();
-            glColor4f(0.0f,0.0f,1.0f,1.0f);
+            gfx.SetColor(0.0f,0.0f,1.0f,1.0f);
             glLineWidth(1.0f);
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
             glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_cdt * 3, GL_UNSIGNED_INT, 0);
             glDisable(GL_BLEND);
+            { int err = glGetError(); assert(err == GL_NO_ERROR); }
         }
         #endif
 
@@ -1846,28 +1846,22 @@ int main(int argc, char* argv[])
         if (show_v)
         {
             gfx.vbo_voronoi.Bind();
-            //glInterleavedArrays(GL_V3F,0,0); // x,y, palette_index(not yet)
-            glVertexPointer(3, gl_e, 0, 0);
-            glEnableClientState(GL_VERTEX_ARRAY);
+            gfx.VertexPointer(3, gfx.type, 0, 0);
+            gfx.EnableVertexArray(true);
+            { int err = glGetError(); assert(err == GL_NO_ERROR); }
 
-            const static gl_t z2w[16] =
-            {
-                1,0,0,0,
-                0,1,0,0,
-                0,0,0,1,
-                0,0,0,0
-            };
-
-            glLoadMatrix(z2w);
+            gfx.LoadZ2W();
+            { int err = glGetError(); assert(err == GL_NO_ERROR); }
 
             // voro-verts in back
-            glColor4f(1.0f, 1.0f, 0.0f, 1.0f);
+            gfx.SetColor(1.0f, 1.0f, 0.0f, 1.0f);
             glPointSize(3.0f);
             glDrawArrays(GL_POINTS, 0, voronoi_vertices - contour);
             glPointSize(1.0f);
             gfx.ibo_voronoi.Bind();
+            { int err = glGetError(); assert(err == GL_NO_ERROR); }
 
-            glColor4f(0.0f, 0.75f, 0.0f, 1.0f);
+            gfx.SetColor(0.0f, 0.75f, 0.0f, 1.0f);
 
             #ifdef VORONOI_POLYS
             // draw structured polys, note: open polys are silently closed (at infinity)
@@ -1880,25 +1874,32 @@ int main(int argc, char* argv[])
             // draw edge soup
             glDrawElements(GL_LINES, voronoi_indices, GL_UNSIGNED_INT, (GLuint*)0);
             #endif
+
+            { int err = glGetError(); assert(err == GL_NO_ERROR); }
         }
         #endif
 
 
         gfx.vbo.Bind();
         gfx.ibo_delabella.Bind();
-        glVertexPointer(3, gl_e, 0, 0);
-        glEnableClientState(GL_VERTEX_ARRAY);
+        gfx.VertexPointer(3, gfx.type, 0, 0);
+        gfx.EnableVertexArray(true);
+
+        { int err = glGetError(); assert(err == GL_NO_ERROR); }
 
         // put verts over everything else
-        glLoadIdentity();
-        glColor4f(1.0f, 1.0f, 0.0f, 1.0f);
+        gfx.LoadIdentity();
+        gfx.SetColor(1.0f, 1.0f, 0.0f, 1.0f);
         glPointSize(3.0f);
         glDrawArrays(GL_POINTS, 0, points);
         glPointSize(1.0f);
 
+        { int err = glGetError(); assert(err == GL_NO_ERROR); }
 
         SDL_GL_SwapWindow(window);
         SDL_Delay(15);
+
+        { int err = glGetError(); assert(err == GL_NO_ERROR); }
     }
 
     gfx.Destroy();
