@@ -78,14 +78,17 @@ struct IDelaBella2
 	virtual const Vertex*  GetFirstInternalVertex() const = 0;
 	virtual const Vertex*  GetVertexByIndex(int i) const = 0;
 
-	virtual int Constrain(int num, const int* pa, const int* pb, int advance_bytes) = 0;
+	// if classify=true return number of interior faces 
+	// and links these faces in front of delaunay simplex list,
+	// if classify=false all faces are classified as interior
+	virtual int ConstrainEdges(int edges, const int* pa, const int* pb, int advance_bytes, bool classify) = 0;
 
 	virtual int Polygonize(const Simplex* poly[/*GetNumOutputIndices()/3*/] = 0) = 0; // valid only if Triangulate() > 0
 
 	// GenVoronoiDiagramVerts(), valid only if Triangulate() > 0
 	// it makes sense to call it prior to constraining only
 	// generates VD vertices (for use with VD edges or VD polys indices)
-	// <x>,<y> and/or <indices> can be null if their values are not needed
+	// <x>,<y> can be null if only number of vertices is needed
 	// assuming:
 	//   N = GetNumBoundaryVerts()
 	//   M = GetNumInternalVerts()
@@ -106,7 +109,7 @@ struct IDelaBella2
 	//   M = GetNumInternalVerts()
 	//   P = GetNumPolygons()
 	//   I = 2 * (N + M + P - 1)
-	// <indices> must be (at least) I elements long
+	// <indices> must be (at least) I elements long or must be null
 	// every pair of consecutive values in <indices> represent VD edge
 	// there is no guaranteed correspondence between edges order and other data
 	// function returns number of indices filled (I) on success, otherwise 0
@@ -120,7 +123,7 @@ struct IDelaBella2
 	//   M = GetNumInternalVerts()
 	//   P = GetNumPolygons()
 	//   I = 3 * (N + M) + 2 * (P - 1) + N
-	// <indices> must be (at least) I elements long
+	// <indices> must be (at least) I elements long or must be null
 	// first M polys in <indices> represent closed VD cells, thay are in order
 	// and corresponding to vertices from GetFirstInternalVertex() -> Vertex::next list
 	// next N polys in <indices> represent open VD cells, thay are in order

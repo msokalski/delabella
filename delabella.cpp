@@ -1183,7 +1183,7 @@ struct CDelaBella3 : IDelaBella2<T>
 		return 0;
 	}
 
-	virtual int Constrain(int num, const int* pa, const int* pb, int advance_bytes)
+	virtual int ConstrainEdges(int edges, const int* pa, const int* pb, int advance_bytes, bool classify)
 	{
 		if (advance_bytes <= 0)
 			advance_bytes = 2*sizeof(int);
@@ -1193,15 +1193,15 @@ struct CDelaBella3 : IDelaBella2<T>
 		int flips = 0;
 
 		int pro = 0;
-		for (int con = 0; con < num; con++)
+		for (int con = 0; con < edges; con++)
 		{
 			if (con >= pro)
 			{
-				int p = (int)((uint64_t)100 * con / num);
-				pro = (int)((uint64_t)(p + 1) * num / 100);
-				if (pro >= num)
-					pro = num - 1;
-				if (con == num - 1)
+				int p = (int)((uint64_t)100 * con / edges);
+				pro = (int)((uint64_t)(p + 1) * edges / 100);
+				if (pro >= edges)
+					pro = edges - 1;
+				if (con == edges - 1)
 					p = 100;
 				if (errlog_proc)
 					errlog_proc(errlog_file, "\r[%2d%s] constraining ", p, p >= 100 ? "" : "%");

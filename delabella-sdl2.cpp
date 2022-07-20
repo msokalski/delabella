@@ -772,7 +772,7 @@ int main(int argc, char* argv[])
     #endif
 
     if (force.size()>0)
-        int flips = idb->Constrain((int)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge));
+        idb->ConstrainEdges((int)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge), false);
 
     const DelaBella_Triangle** dela_polys = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * tris_delabella);
     int polys_delabella = idb->Polygonize(dela_polys);
@@ -1012,6 +1012,14 @@ int main(int argc, char* argv[])
 	}
 
 	printf("preparing graphics...\n");
+
+    // TODO:
+    // check if we can use shaders with dmat/dvec/double support
+    // it is standard in GLSL 4.0 or above
+    // ...
+
+    const char* glsl = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
+    printf("GLSL: %s\n",glsl);
 
 	typedef GLfloat gl_t;
 	GLenum gl_e = GL_FLOAT;
