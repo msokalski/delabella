@@ -6,11 +6,11 @@ CPP=g++
 OPT="-std=c++17 -g -O3 -I/usr/include/SDL2"
 
 if [ -d "delaunator" ]; then
-    OPT="$OPT -DDELAUNATOR"
+    OPT="$OPT -DWITH_DELAUNATOR"
 fi
 
 if [ -d "CDT" ]; then
-    OPT="$OPT -DCdt"
+    OPT="$OPT -DWITH_CDT"
 fi
 
 if [[ $OSTYPE == 'darwin'* ]]; then
