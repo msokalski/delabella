@@ -11,12 +11,12 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #define VORONOI_POLYS // otherwise EDGES
 
 // override build define
-#undef WITH_DELAUNATOR 
-#define WITH_DELAUNATOR
+//#undef WITH_DELAUNATOR 
+//#define WITH_DELAUNATOR
 
 // override build define
-#undef WITH_CDT
-#define WITH_CDT
+//#undef WITH_CDT
+//#define WITH_CDT
 
 #include <math.h>
 #include <stdlib.h>
@@ -487,8 +487,8 @@ int main(int argc, char* argv[])
         std::random_device rd{};
         std::mt19937_64 gen{ 0x12345678 /*rd()*/};
 
-        //std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
-        std::normal_distribution<double> d{0.0,2.0};
+        std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
+        //std::normal_distribution<double> d{0.0,2.0};
         //std::gamma_distribution<double> d(0.1,2.0);
 
         
@@ -968,7 +968,7 @@ int main(int argc, char* argv[])
     //SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
 	// create viewer wnd
-    int width = 1000, height = 1000;
+    int width = 800, height = 600;
     const char* title = "delablella-sdl2";
     SDL_Window * window = SDL_CreateWindow( title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     if (!window)
@@ -1248,7 +1248,7 @@ int main(int argc, char* argv[])
 
     double cx = 0.5 * (box[0]+box[2]);
     double cy = 0.5 * (box[1]+box[3]);
-    double scale = 0.8* 2.0 * fmin((double)vpw/(box[2]-box[0]),(double)vph/(box[3]-box[1]));
+    double scale = 2.0 * fmin((double)vpw/(box[2]-box[0]),(double)vph/(box[3]-box[1]));
     int zoom = -3+(int)round(log(scale) / log(1.01));
 
     int drag_x, drag_y, drag_zoom;
@@ -1533,7 +1533,8 @@ int main(int argc, char* argv[])
             #ifdef VORONOI_POLYS
             // draw structured polys, note: open polys are silently closed (at infinity)
             // glDrawElements(GL_LINE_LOOP, voronoi_indices, GL_UNSIGNED_INT, (GLuint*)0);
-            // if you wanna be a ganan: after first M closed polys switch from line_loops to line_strips :)
+            // if you wanna be a ganan: after first M closed polys switch from line_loops to line_strips
+            // and draw remaining N open polygons
             glDrawElements(GL_LINE_LOOP, voronoi_closed_indices, GL_UNSIGNED_INT, (GLuint*)0);
             glDrawElements(GL_LINE_STRIP, voronoi_open_indices, GL_UNSIGNED_INT, (GLuint*)0+voronoi_closed_indices);
             #else
@@ -1580,7 +1581,7 @@ int main(int argc, char* argv[])
     SDL_DestroyWindow( window );
     SDL_Quit();
 
-	printf("exiting!\n");
+	printf("exiting.\n");
 
 	return 0;
 }
