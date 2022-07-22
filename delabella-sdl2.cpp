@@ -587,30 +587,6 @@ struct GfxStuffer
     GLint tfm;
     GLint clr;
 
-    void VertexPointer(GLint s, GLenum t, GLsizei d, const GLvoid* ptr)
-    {
-        assert(glGetError() == GL_NO_ERROR);
-
-        if (type == GL_DOUBLE)
-            glVertexAttribLPointer(0, s, t, d, ptr);
-        else
-            glVertexPointer(s,t,d,ptr);
-    }
-
-    void EnableVertexArray(bool on)
-    {
-        if (type == GL_DOUBLE)
-            if (on)
-                glEnableVertexAttribArray(0);
-            else
-                glDisableVertexAttribArray(0);
-        else
-            if (on)
-                glEnableClientState(GL_VERTEX_ARRAY);
-            else
-                glDisableClientState(GL_VERTEX_ARRAY);
-    }
-
     void LoadProj(int vpw, int vph, double cx, double cy, double scale)
     {
         glViewport(0,0,vpw,vph);
@@ -1640,6 +1616,16 @@ int main(int argc, char* argv[])
 
     printf("\n");
 
+    float thin = 1.0f;
+    float thick;
+    glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE,&thick);
+    if (thick>3.0f)
+        thick = 3.0f;
+
+    float dot = 1.0f;
+    float blob;
+    glGetFloatv(GL_ALIASED_POINT_SIZE_RANGE,&blob);
+
     for( ;; )
     {
         bool x = false;
@@ -1791,14 +1777,10 @@ int main(int argc, char* argv[])
         glClear(GL_COLOR_BUFFER_BIT);
 
         gfx.LoadProj(vpw,vph, cx,cy, scale);
-        assert(glGetError() == GL_NO_ERROR);
 
         glEnable(GL_CULL_FACE);
-        assert(glGetError() == GL_NO_ERROR);
         glCullFace(GL_BACK);
-        assert(glGetError() == GL_NO_ERROR);
         glFrontFace(GL_CW);
-        assert(glGetError() == GL_NO_ERROR);
 
         gfx.vao_main.Bind();
         //gfx.vbo.Bind();
@@ -1810,11 +1792,8 @@ int main(int argc, char* argv[])
         if (show_f)
         {
             gfx.SetColor(0.2f, 0.2f, 0.2f, 1.0f);
-            assert(glGetError() == GL_NO_ERROR);
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-            assert(glGetError() == GL_NO_ERROR);
             glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_delabella * 3, GL_UNSIGNED_INT, 0);
-            assert(glGetError() == GL_NO_ERROR);
         }
 
         // paint constraints
@@ -1823,10 +1802,10 @@ int main(int argc, char* argv[])
         {
             gfx.vao_constraint.Bind();
             //gfx.ibo_constraint.Bind();
-            glLineWidth(3.0f);
+            glLineWidth(thick);
             gfx.SetColor(.9f, .9f, .9f, 1.0f);
             glDrawElements(GL_LINES, constrain_indices, GL_UNSIGNED_INT, (GLuint*)0);
-            glLineWidth(1.0f);
+            glLineWidth(thin);
 
             // oops
             gfx.vao_main.Bind();
@@ -1844,9 +1823,9 @@ int main(int argc, char* argv[])
         if (show_b)
         {
             gfx.SetColor(0.0f, 0.0f, 1.0f, 1.0f);
-            glLineWidth(3.0f);
+            glLineWidth(thick);
             glDrawElements(GL_LINE_LOOP, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella * 3);
-            glLineWidth(1.0f);
+            glLineWidth(thin);
         }
 
         // compare with CDT
@@ -1860,7 +1839,7 @@ int main(int argc, char* argv[])
             gfx.vao_cdt.Bind();
             //gfx.ibo_cdt.Bind();
             gfx.SetColor(0.0f,0.0f,1.0f,1.0f);
-            glLineWidth(1.0f);
+            glLineWidth(thin);
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
             glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_cdt * 3, GL_UNSIGNED_INT, 0);
             glDisable(GL_BLEND);
@@ -1878,9 +1857,9 @@ int main(int argc, char* argv[])
 
             // voro-verts in back
             gfx.SetColor(1.0f, 1.0f, 0.0f, 1.0f);
-            glPointSize(3.0f);
+            glPointSize(blob);
             glDrawArrays(GL_POINTS, 0, voronoi_vertices - contour);
-            glPointSize(1.0f);
+            glPointSize(dot);
             gfx.ibo_voronoi.Bind();
 
             gfx.SetColor(0.0f, 0.75f, 0.0f, 1.0f);
@@ -1907,9 +1886,9 @@ int main(int argc, char* argv[])
 
         // put verts over everything else
         gfx.SetColor(1.0f, 1.0f, 0.0f, 1.0f);
-        glPointSize(3.0f);
+        glPointSize(blob);
         glDrawArrays(GL_POINTS, 0, points);
-        glPointSize(1.0f);
+        glPointSize(dot);
 
         SDL_GL_SwapWindow(window);
         SDL_Delay(15);
