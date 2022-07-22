@@ -328,11 +328,16 @@ PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = 0;
 PFNGLUNIFORM4FPROC glUniform4f = 0;
 //PFNGLUNIFORMMATRIX4DVPROC glUniformMatrix4dv = 0;
 PFNGLUNIFORM4DVPROC glUniform4dv = 0;
+//PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = 0;
 PFNGLVERTEXATTRIBLPOINTERPROC glVertexAttribLPointer = 0;
 PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = 0;
 PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = 0;
 
-bool BindGL(bool prim_restart, bool shaders)
+PFNGLGENVERTEXARRAYSPROC glGenVertexArrays = 0;
+PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = 0;
+PFNGLBINDVERTEXARRAYPROC glBindVertexArray = 0;
+
+bool BindGL()
 {
 	#define BINDGL(proc) if ((*(void**)&proc = SDL_GL_GetProcAddress(#proc)) == 0) return false;
     
@@ -344,31 +349,32 @@ bool BindGL(bool prim_restart, bool shaders)
 	BINDGL(glMapBuffer);
 	BINDGL(glUnmapBuffer);
 
-    if (shaders)
-    {
-        BINDGL(glCreateShader);
-        BINDGL(glDeleteShader);
-        BINDGL(glCreateProgram);
-        BINDGL(glDeleteProgram);
-        BINDGL(glShaderSource);
-        BINDGL(glCompileShader);
-        BINDGL(glAttachShader);
-        BINDGL(glDetachShader);
-        BINDGL(glLinkProgram);
-        BINDGL(glUseProgram);
-        BINDGL(glGetShaderInfoLog);
-        BINDGL(glGetProgramInfoLog);
-        //BINDGL(glUniformMatrix4dv);
-        BINDGL(glUniform4dv);
-        BINDGL(glUniform4f);
-        BINDGL(glVertexAttribLPointer);
-        BINDGL(glEnableVertexAttribArray);
-        BINDGL(glDisableVertexAttribArray);
-        BINDGL(glGetUniformLocation);
-    }
+    BINDGL(glCreateShader);
+    BINDGL(glDeleteShader);
+    BINDGL(glCreateProgram);
+    BINDGL(glDeleteProgram);
+    BINDGL(glShaderSource);
+    BINDGL(glCompileShader);
+    BINDGL(glAttachShader);
+    BINDGL(glDetachShader);
+    BINDGL(glLinkProgram);
+    BINDGL(glUseProgram);
+    BINDGL(glGetShaderInfoLog);
+    BINDGL(glGetProgramInfoLog);
+    //BINDGL(glUniformMatrix4dv); // packed proj to vec4 
+    BINDGL(glUniform4dv);
+    BINDGL(glUniform4f);
+    //BINDGL(glVertexAttribPointer); // everything is double
+    BINDGL(glVertexAttribLPointer);
+    BINDGL(glEnableVertexAttribArray);
+    BINDGL(glDisableVertexAttribArray);
+    BINDGL(glGetUniformLocation);
 
-    if (prim_restart)
-	    BINDGL(glPrimitiveRestartIndex);
+    BINDGL(glGenVertexArrays);
+    BINDGL(glDeleteVertexArrays);
+    BINDGL(glBindVertexArray);
+
+    BINDGL(glPrimitiveRestartIndex);
 
 	#undef BINDGL
 	return true;
@@ -542,12 +548,39 @@ struct GfxStuffer
     GfxStuffer() : prg(0) {}
 
     GLenum type;
-    Buf vbo, ibo_delabella, ibo_constrain;
+    Buf vbo, ibo_delabella, ibo_constraint;
     Buf vbo_voronoi, ibo_voronoi;
     #ifdef WITH_CDT
     Buf ibo_cdt;
     #endif
     MyCoord box[4];
+
+    struct Vao
+    {
+        Vao() : vao(0) {}
+
+        GLuint Gen()
+        {
+            glGenVertexArrays(1, &vao);
+            return vao;
+        }
+
+        void Bind()
+        {
+            glBindVertexArray(vao);
+        }
+
+        void Del()
+        {
+            if (vao)
+                glDeleteVertexArrays(1, &vao);
+            vao = 0;
+        }
+
+        GLuint vao;
+    };
+
+    Vao vao_main, vao_constraint, vao_voronoi, vao_cdt;
 
     // for GLdouble only
     GLuint prg; 
@@ -556,8 +589,10 @@ struct GfxStuffer
 
     void VertexPointer(GLint s, GLenum t, GLsizei d, const GLvoid* ptr)
     {
+        assert(glGetError() == GL_NO_ERROR);
+
         if (type == GL_DOUBLE)
-            glVertexAttribLPointer(0,s,t,d,ptr);
+            glVertexAttribLPointer(0, s, t, d, ptr);
         else
             glVertexPointer(s,t,d,ptr);
     }
@@ -626,6 +661,11 @@ struct GfxStuffer
 
     void Destroy()
     {
+        vao_main.Del();
+        vao_constraint.Del();
+        vao_voronoi.Del();
+        vao_cdt.Del();
+
         if (type == GL_DOUBLE)
         {
             glUseProgram(0);
@@ -635,7 +675,7 @@ struct GfxStuffer
 
         vbo.Del();
         ibo_delabella.Del();
-        ibo_constrain.Del();
+        ibo_constraint.Del();
 
         #ifdef WITH_CDT
         ibo_cdt.Del();
@@ -667,7 +707,9 @@ struct GfxStuffer
     )
     {
         Destroy();
-        
+
+        vao_main.Gen();
+
         type = gl_e;
 
         if (gl_e == GL_DOUBLE)
@@ -697,8 +739,8 @@ struct GfxStuffer
 
             #undef CODE
 
-            char nfolog[1025];
-            int nfolen;
+            //char nfolog[1025];
+            //int nfolen;
 
             prg = glCreateProgram();
             
@@ -707,18 +749,22 @@ struct GfxStuffer
             glCompileShader(vs);
             glAttachShader(prg,vs);
 
+            /*
             glGetShaderInfoLog(vs,1024,&nfolen,nfolog);
             nfolog[nfolen]=0;
             printf("VS:\n%s\n\n",nfolog);
+            */
 
             GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
             glShaderSource(fs, 1, fs_src, 0);
             glCompileShader(fs);
             glAttachShader(prg,fs);
 
+            /*
             glGetShaderInfoLog(vs,1024,&nfolen,nfolog);
             nfolog[nfolen]=0;
             printf("FS:\n%s\n\n",nfolog);
+            */
 
             glLinkProgram(prg);
 
@@ -735,14 +781,16 @@ struct GfxStuffer
 
         if (constrain_edges)
         {
-            ibo_constrain.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[2]) * constrain_edges);
-            GLuint* map = (GLuint*)ibo_constrain.Map();
+            vao_constraint.Gen();
+
+            ibo_constraint.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[2]) * constrain_edges);
+            GLuint* map = (GLuint*)ibo_constraint.Map();
             for (int i = 0; i < constrain_edges; i++)
             {
                 map[2 * i + 0] = (GLuint)force[i].a;
                 map[2 * i + 1] = (GLuint)force[i].b;
             }
-            ibo_constrain.Unmap();
+            ibo_constraint.Unmap();
         }
 
         vbo.Gen(GL_ARRAY_BUFFER, gl_s * 3 * points);
@@ -820,6 +868,8 @@ struct GfxStuffer
         ibo_delabella.Unmap();
 
         #ifdef VORONOI
+        vao_voronoi.Gen();
+
         vbo_voronoi.Gen(GL_ARRAY_BUFFER, gl_s * 3 * voronoi_vertices);
         ibo_voronoi.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)* voronoi_indices);
         void* vbo_voronoi_ptr = vbo_voronoi.Map();
@@ -872,6 +922,8 @@ struct GfxStuffer
         #endif
 
         #ifdef WITH_CDT
+        vao_cdt.Gen();
+
         int tris_cdt = (int)cdt.triangles.size();
         ibo_cdt.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_cdt);
         {
@@ -915,6 +967,35 @@ struct GfxStuffer
         }
         #endif
 
+        vao_main.Bind();
+        vbo.Bind();
+        ibo_delabella.Bind();
+        glVertexAttribLPointer(0, 3, GL_DOUBLE, 0, 0);
+        glEnableVertexAttribArray(0);
+
+        vao_constraint.Bind();
+        vbo.Bind();
+        ibo_constraint.Bind();
+        glVertexAttribLPointer(0, 3, GL_DOUBLE, 0, 0);
+        glEnableVertexAttribArray(0);
+
+        #ifdef VORONOI
+        vao_voronoi.Bind();
+        vbo_voronoi.Bind();
+        ibo_voronoi.Bind();
+        glVertexAttribLPointer(0, 3, GL_DOUBLE, 0, 0);
+        glEnableVertexAttribArray(0);
+        #endif
+
+        #ifdef WITH_CDT
+        vao_cdt.Bind();
+        vbo.Bind();
+        ibo_cdt.Bind();
+        glVertexAttribLPointer(0, 3, GL_DOUBLE, 0, 0);
+        glEnableVertexAttribArray(0);
+        #endif
+
+        glBindVertexArray(0);
     }
 };
 
@@ -1263,7 +1344,7 @@ int main(int argc, char* argv[])
 
         int tris_cdt = (int)cdt.triangles.size();
 
-        if (tris_delabella != tris_cdt || polys_delabella == cdt_polys.size())
+        if (tris_delabella != tris_cdt || polys_delabella != cdt_polys.size())
             printf("WARNING! Results are not comparable - different number of tris or polys\n");
         else
         {
@@ -1432,9 +1513,9 @@ int main(int argc, char* argv[])
     SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
 
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
-    //SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
 	// create viewer wnd
     int width = 800, height = 600;
@@ -1457,6 +1538,9 @@ int main(int argc, char* argv[])
 
     bool prim_restart = false;
     {
+        // we're 4.1
+        prim_restart = true;
+        /*
         const char* ext = (const char*)glGetString(GL_EXTENSIONS);
         while (ext)
         {
@@ -1471,34 +1555,10 @@ int main(int argc, char* argv[])
                 ext += 23;
             }
         }
+        */
     }
 
-    // check if we can use shaders with dmat/dvec/double support
-    // it is standard in GLSL 4.0 and above
-    int glsl_ver = 0;
-    const char* glsl_str = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
-    if (glsl_str && glGetError() == GL_NO_ERROR)
-    {
-        int v[2];
-        int from,to;
-        if (2 == sscanf(glsl_str, "%d.%n%d%n", v+0,&from,v+1,&to))
-        {
-            int num = to-from;
-            if (num == 1)
-                v[1] *= 10;
-            else
-            while (num>2)
-            {
-                v[1] /= 10;
-                num--;
-            }
-            glsl_ver = v[0]*100+v[1];
-        }
-    }
-
-    //glsl_ver = 0;
-
-	if (!BindGL(prim_restart, glsl_ver >= 410))
+	if (!BindGL())
 	{
 		printf("Can't bind to necessary GL functions, terminating!\n");
 		idb->Destroy();
@@ -1509,7 +1569,7 @@ int main(int argc, char* argv[])
 
     GfxStuffer gfx;
 
-    gfx.Upload( glsl_ver >= 410 ? GL_DOUBLE : GL_FLOAT,
+    gfx.Upload( GL_DOUBLE,
                 idb,
                 (int)cloud.size(),
                 cloud.data(),
@@ -1731,37 +1791,46 @@ int main(int argc, char* argv[])
         glClear(GL_COLOR_BUFFER_BIT);
 
         gfx.LoadProj(vpw,vph, cx,cy, scale);
+        assert(glGetError() == GL_NO_ERROR);
 
         glEnable(GL_CULL_FACE);
+        assert(glGetError() == GL_NO_ERROR);
         glCullFace(GL_BACK);
+        assert(glGetError() == GL_NO_ERROR);
         glFrontFace(GL_CW);
+        assert(glGetError() == GL_NO_ERROR);
 
-        gfx.vbo.Bind();
-		gfx.VertexPointer(3, gfx.type, 0, 0);
-		gfx.EnableVertexArray(true);
-
-        gfx.ibo_delabella.Bind();
+        gfx.vao_main.Bind();
+        //gfx.vbo.Bind();
+        //gfx.VertexPointer(3, gfx.type, 0, 0);
+        //gfx.EnableVertexArray(true);
+        //gfx.ibo_delabella.Bind();
 
         // grey fill
         if (show_f)
         {
             gfx.SetColor(0.2f, 0.2f, 0.2f, 1.0f);
+            assert(glGetError() == GL_NO_ERROR);
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            assert(glGetError() == GL_NO_ERROR);
             glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_delabella * 3, GL_UNSIGNED_INT, 0);
+            assert(glGetError() == GL_NO_ERROR);
         }
 
         // paint constraints
         int constrain_indices = 2*(int)force.size();
         if (constrain_indices && show_c)
         {
-            gfx.ibo_constrain.Bind();
+            gfx.vao_constraint.Bind();
+            //gfx.ibo_constraint.Bind();
             glLineWidth(3.0f);
             gfx.SetColor(.9f, .9f, .9f, 1.0f);
             glDrawElements(GL_LINES, constrain_indices, GL_UNSIGNED_INT, (GLuint*)0);
             glLineWidth(1.0f);
 
             // oops
-            gfx.ibo_delabella.Bind();
+            gfx.vao_main.Bind();
+            //gfx.ibo_delabella.Bind();
         }
 
         if (show_d)
@@ -1788,7 +1857,8 @@ int main(int argc, char* argv[])
 
             glEnable(GL_BLEND);
             glBlendFunc(GL_ONE, GL_ONE);
-            gfx.ibo_cdt.Bind();
+            gfx.vao_cdt.Bind();
+            //gfx.ibo_cdt.Bind();
             gfx.SetColor(0.0f,0.0f,1.0f,1.0f);
             glLineWidth(1.0f);
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -1801,9 +1871,10 @@ int main(int argc, char* argv[])
         #ifdef VORONOI
         if (show_v)
         {
-            gfx.vbo_voronoi.Bind();
-            gfx.VertexPointer(3, gfx.type, 0, 0);
-            gfx.EnableVertexArray(true);
+            gfx.vao_voronoi.Bind();
+            //gfx.vbo_voronoi.Bind();
+            //gfx.VertexPointer(3, gfx.type, 0, 0);
+            //gfx.EnableVertexArray(true);
 
             // voro-verts in back
             gfx.SetColor(1.0f, 1.0f, 0.0f, 1.0f);
@@ -1828,11 +1899,11 @@ int main(int argc, char* argv[])
         }
         #endif
 
-
-        gfx.vbo.Bind();
-        gfx.ibo_delabella.Bind();
-        gfx.VertexPointer(3, gfx.type, 0, 0);
-        gfx.EnableVertexArray(true);
+        gfx.vao_main.Bind();
+        //gfx.vbo.Bind();
+        //gfx.ibo_delabella.Bind();
+        //gfx.VertexPointer(3, gfx.type, 0, 0);
+        //gfx.EnableVertexArray(true);
 
         // put verts over everything else
         gfx.SetColor(1.0f, 1.0f, 0.0f, 1.0f);

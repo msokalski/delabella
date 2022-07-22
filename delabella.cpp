@@ -412,6 +412,9 @@ struct CDelaBella3 : IDelaBella2<T>
 					}
 					else
 					{
+						#ifdef DELABELLA_AUTOTEST
+						assert(dot > 0);
+						#endif
 						// upper
 						vert_alloc[j].sew = 0;
 					}
@@ -420,8 +423,7 @@ struct CDelaBella3 : IDelaBella2<T>
 
 			struct
 			{
-				// default to CW order (unlikely, if wrong, we will reverse later)
-
+				// default to CW order (unlikely, if wrong, we will reverse using one=2 and two=1)
 				
 				bool operator()(const int& a, const int& b) const
 				{
