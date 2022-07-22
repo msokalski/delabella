@@ -369,16 +369,57 @@ struct CDelaBella3 : IDelaBella2<T>
 		bool colinear = f.sign0(); // hybrid
 		if (colinear)
 		{
+			vert_sub = (int*)malloc(sizeof(int) * (i+1));
+			if (!vert_sub)
+			{
+				if (errlog_proc)
+					errlog_proc(errlog_file, "[ERR] Not enough memory, shop for some more RAM. See you!\n");
+				return 0;
+			}
+
+			for (int s = 0; s <= i; s++)
+				vert_sub[s] = s;
+
 			// choose x or y axis to sort verts (no need to be exact)
 			if (hi_x - lo_x > hi_y - lo_y)
 			{
-				struct { bool operator()(const Vert& a, const Vert& b) const { return a.x < b.x; } } c;
-				std::sort(vert_alloc, vert_alloc + i, c);
+				struct 
+				{ 
+					bool operator() (const int& a, const int& b)
+					{
+						return less(vert_alloc[a], vert_alloc[b]);
+					}
+
+					bool less(const Vert& a, const Vert& b) const 
+					{ 
+						return a.x < b.x; 
+					}
+
+					Vert* vert_alloc;
+				} c;
+
+				c.vert_alloc = vert_alloc;
+				std::sort(vert_sub, vert_sub + i, c);
 			}
 			else
 			{
-				struct { bool operator()(const Vert& a, const Vert& b) const { return a.y < b.y; } } c;
-				std::sort(vert_alloc, vert_alloc + i, c);
+				struct 
+				{ 
+					bool operator() (const int& a, const int& b)
+					{
+						return less(vert_alloc[a], vert_alloc[b]);
+					}
+
+					bool less(const Vert& a, const Vert& b) const 
+					{ 
+						return a.y < b.y; 
+					} 
+
+					Vert* vert_alloc;
+				} c;
+
+				c.vert_alloc = vert_alloc;
+				std::sort(vert_sub, vert_sub + i, c);
 			}
 		}
 		else
@@ -532,14 +573,15 @@ struct CDelaBella3 : IDelaBella2<T>
 			if (colinear)
 			{
 				// link verts into open list
-				first_boundary_vert = vert_alloc + 0;
+				first_boundary_vert = vert_alloc + vert_sub[0];
 				first_internal_vert = 0;
 				out_boundary_verts = points;
 
 				for (int j = 1; j < points; j++)
-					vert_alloc[j - 1].next = vert_alloc + j;
+					vert_alloc[j - 1].next = vert_alloc + vert_sub[j];
 				vert_alloc[points - 1].next = 0;
 
+				free(vert_sub);
 				return -points;
 			}
 
