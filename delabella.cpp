@@ -58,8 +58,10 @@ struct CDelaBella3 : IDelaBella2<T>
 		first_dela_face(0),
 		first_hull_face(0),
 		first_boundary_vert(0),
+		first_internal_vert(0),
 		inp_verts(0),
 		out_verts(0),
+		out_boundary_verts(0),
 		polygons(0),
 		out_hull_faces(0),
 		unique_points(0),
@@ -326,8 +328,8 @@ struct CDelaBella3 : IDelaBella2<T>
 		{
 			if (i >= pro)
 			{
-				int p = (int)((uint64_t)100 * i / points);
-				pro = (int)((uint64_t)(p + 1) * points / 100);
+				uint64_t p = (int)((uint64_t)100 * i / points);
+				pro = (int)((p + 1) * points / 100);
 				if (pro >= points)
 					pro = points - 1;
 				if (i == points - 1)
@@ -369,7 +371,7 @@ struct CDelaBella3 : IDelaBella2<T>
 		bool colinear = f.sign0(); // hybrid
 		if (colinear)
 		{
-			vert_sub = (int*)malloc(sizeof(int) * (i+1));
+			vert_sub = (int*)malloc(sizeof(int) * ((size_t)i+1));
 			if (!vert_sub)
 			{
 				if (errlog_proc)
@@ -511,7 +513,7 @@ struct CDelaBella3 : IDelaBella2<T>
 				Vert* vert_alloc;
 			} c;
 
-			vert_sub = (int*)malloc(sizeof(int) * (i+1));
+			vert_sub = (int*)malloc(sizeof(int) * ((size_t)i+1));
 			if (!vert_sub)
 			{
 				if (errlog_proc)
@@ -755,8 +757,8 @@ struct CDelaBella3 : IDelaBella2<T>
 		{
 			if (i >= pro)
 			{
-				int p = (int)((uint64_t)100 * i / points);
-				pro = (int)((uint64_t)(p+1) * points / 100);
+				uint64_t p = (int)((uint64_t)100 * i / points);
+				pro = (int)((p+1) * points / 100);
 				if (pro >= points)
 					pro = points - 1;
 				if (i == points - 1)
@@ -783,7 +785,7 @@ struct CDelaBella3 : IDelaBella2<T>
 					// if no visible face can be located at last vertex,
 					// let's run through all faces (approximately last to first),
 					// yes this is emergency fallback and should not ever happen.
-					f = face_alloc + 2 * i - 4 - 1;
+					f = face_alloc + (intptr_t)2 * i - 4 - 1;
 					//while (f->dot(*q) <= 0)
 					while (f->dotNP(*q))
 					//while (f->dotN(*q)) // we want to consume coplanar faces
@@ -903,7 +905,7 @@ struct CDelaBella3 : IDelaBella2<T>
 
 			// 3. SEW SIDES OF CONE BUILT ON SLIHOUTTE SEGMENTS
 
-			hull = face_alloc + 2 * i - 4 + 1; // last added face
+			hull = face_alloc + (intptr_t)2 * i - 4 + 1; // last added face
 
 										  // last face must contain part of the silhouette
 										  // (edge between its v[0] and v[1])
@@ -1261,8 +1263,8 @@ struct CDelaBella3 : IDelaBella2<T>
 		{
 			if (con >= pro)
 			{
-				int p = (int)((uint64_t)100 * con / edges);
-				pro = (int)((uint64_t)(p + 1) * edges / 100);
+				uint64_t p = (int)((uint64_t)100 * con / edges);
+				pro = (int)((p + 1) * edges / 100);
 				if (pro >= edges)
 					pro = edges - 1;
 				if (con == edges - 1)
@@ -1271,8 +1273,8 @@ struct CDelaBella3 : IDelaBella2<T>
 					errlog_proc(errlog_file, "\r[%2d%s] constraining ", p, p >= 100 ? "" : "%");
 			}
 
-			int a = *(const int*)((const char*)pa + con * advance_bytes);
-			int b = *(const int*)((const char*)pb + con * advance_bytes);
+			int a = *(const int*)((const char*)pa + (intptr_t)con * advance_bytes);
+			int b = *(const int*)((const char*)pb + (intptr_t)con * advance_bytes);
 
 			if (!first_dela_face || a == b)
 				continue;
@@ -1666,8 +1668,8 @@ struct CDelaBella3 : IDelaBella2<T>
 		{
 			if (i >= pro)
 			{
-				int p = (int)((uint64_t)100 * i / faces);
-				pro = (int)((uint64_t)(p + 1) * faces / 100);
+				uint64_t p = (int)((uint64_t)100 * i / faces);
+				pro = (int)((p + 1) * faces / 100);
 				if (pro >= faces)
 					pro = faces - 1;
 				if (i == faces - 1)
@@ -1927,8 +1929,8 @@ struct CDelaBella3 : IDelaBella2<T>
 		{
 			Vert* v = vert_alloc + i;
 			v->i = i;
-			v->x = *(const T*)((const char*)x + i*advance_bytes);
-			v->y = *(const T*)((const char*)y + i*advance_bytes);
+			v->x = *(const T*)((const char*)x + (intptr_t)i*advance_bytes);
+			v->y = *(const T*)((const char*)y + (intptr_t)i*advance_bytes);
 		}
 
 		out_hull_faces = 0;

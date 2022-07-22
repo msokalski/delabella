@@ -522,7 +522,7 @@ struct MyEdge
 
 struct GfxStuffer
 {
-    GfxStuffer() : prg(0) {}
+    GfxStuffer() { memset(this, 0, sizeof(GfxStuffer));  }
 
     GLenum type;
     Buf vbo, ibo_delabella, ibo_constraint;
@@ -888,6 +888,8 @@ struct GfxStuffer
                 int* invmap = 0;
                 int invmap_size = (int)dups.mapping.size() - (int)dups.duplicates.size();
                 invmap = (int*)malloc(sizeof(int) * invmap_size);
+                assert(invmap);
+
                 for (int i = 0; i < (int)dups.mapping.size(); i++)
                     invmap[dups.mapping[i]] = i;
 
@@ -981,16 +983,16 @@ int main(int argc, char* argv[])
         std::random_device rd{};
         std::mt19937_64 gen{ 0x12345678 /*rd()*/};
 
-        //std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
+        std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
         //std::normal_distribution<double> d{0.0,2.0};
-        std::gamma_distribution<double> d(0.1,2.0);
+        //std::gamma_distribution<double> d(0.1,2.0);
 
         MyCoord max_coord = sizeof(MyCoord) < 8 ? /*float*/0x1.p31 : /*double*/0x1.p255;
 
         for (int i = 0; i < n; i++)
         {
-            MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
-            //MyPoint p = { d(gen), d(gen) };
+            //MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
+            MyPoint p = { d(gen), d(gen) };
             
             //p.x *= 0x1.p250;
             //p.y *= 0x1.p250;
@@ -1249,6 +1251,7 @@ int main(int argc, char* argv[])
     printf("Generating VD vertices\n");
     int voronoi_vertices = idb->GenVoronoiDiagramVerts(0, 0, 0);
     MyPoint* voronoi_vtx_buf = (MyPoint*)malloc(voronoi_vertices * sizeof(MyPoint));
+    assert(voronoi_vtx_buf);
     idb->GenVoronoiDiagramVerts(&voronoi_vtx_buf->x, &voronoi_vtx_buf->y, sizeof(MyPoint));
 
     printf("Generating VD indices\n");
@@ -1257,11 +1260,13 @@ int main(int argc, char* argv[])
     int voronoi_closed_indices;
     int voronoi_indices = idb->GenVoronoiDiagramPolys(0, 0, 0);
     int* voronoi_idx_buf = (int*)malloc(voronoi_indices * sizeof(int));
+    assert(voronoi_idx_buf);
     idb->GenVoronoiDiagramPolys(voronoi_idx_buf, sizeof(int), &voronoi_closed_indices);
     #else
     int voronoi_closed_indices = 0;
     int voronoi_indices = idb->GenVoronoiDiagramEdges(0, 0);
     int* voronoi_idx_buf = (int*)malloc(voronoi_indices * sizeof(int));
+    assert(voronoi_idx_buf);
     idb->GenVoronoiDiagramEdges(voronoi_idx_buf, sizeof(int));
     #endif
 
@@ -1537,6 +1542,9 @@ int main(int argc, char* argv[])
 
     glPrimitiveRestartIndex((GLuint)~0);
     glEnable(GL_PRIMITIVE_RESTART);
+    glEnable(GL_LINE_SMOOTH);
+    glEnable(GL_POINT_SMOOTH);
+    glEnable(GL_BLEND);
 
 	printf("going interactive.\n");
 
@@ -1619,8 +1627,8 @@ int main(int argc, char* argv[])
                         int dy = event.motion.y - drag_y;
 
                         double scale = pow(1.01, zoom);
-                        cx = drag_cx - 2*dx/scale;
-                        cy = drag_cy + 2*dy/scale;
+                        cx = drag_cx - 2.0*dx/scale;
+                        cy = drag_cy + 2.0*dy/scale;
                     }
 
                     if (drag == 2)
@@ -1774,7 +1782,7 @@ int main(int argc, char* argv[])
         {
             gfx.SetColor(0.0f, 0.0f, 1.0f, 1.0f);
             glLineWidth(thick);
-            glDrawElements(GL_LINE_LOOP, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella * 3);
+            glDrawElements(GL_LINE_LOOP, contour, GL_UNSIGNED_INT, (GLuint*)0 + (intptr_t)tris_delabella * 3);
             glLineWidth(thin);
         }
 
@@ -1786,14 +1794,16 @@ int main(int argc, char* argv[])
 
             int tris_cdt = (int)cdt.triangles.size();
 
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_ONE, GL_ONE);
+            //glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 
             gfx.SetColor(0.0f,0.0f,1.0f,1.0f);
             glLineWidth(thin);
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
             glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_cdt * 3, GL_UNSIGNED_INT, 0);
-            glDisable(GL_BLEND);
+
+            //glDisable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         }
         #endif
 
@@ -1818,7 +1828,7 @@ int main(int argc, char* argv[])
             // if you wanna be a ganan: after first M closed polys switch from line_loops to line_strips
             // and draw remaining N open polygons
             glDrawElements(GL_LINE_LOOP, voronoi_closed_indices, GL_UNSIGNED_INT, (GLuint*)0);
-            glDrawElements(GL_LINE_STRIP, voronoi_indices - voronoi_closed_indices, GL_UNSIGNED_INT, (GLuint*)0+voronoi_closed_indices);
+            glDrawElements(GL_LINE_STRIP, voronoi_indices - voronoi_closed_indices, GL_UNSIGNED_INT, (GLuint*)0 + (intptr_t)voronoi_closed_indices);
             #else
             // draw edge soup
             glDrawElements(GL_LINES, voronoi_indices, GL_UNSIGNED_INT, (GLuint*)0);
