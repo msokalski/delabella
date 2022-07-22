@@ -15,9 +15,32 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 //#undef WITH_DELAUNATOR 
 //#define WITH_DELAUNATOR
 
+struct int2048
+{
+    /*
+    int2048()
+    {
+        memset(bits, 0, sizeof(bits));
+    }
+
+    int2048& operator += (double d)
+    {
+        // extract sign, exp, mantissa
+
+    }
+
+    void extract(uint8_t doubles, double* data)
+    {
+        // bitscan to locate exponent
+    }
+
+    uint32_t bits[64];
+    */
+};
+
 // override build define
-//#undef WITH_CDT
-//#define WITH_CDT
+#undef WITH_CDT
+#define WITH_CDT
 
 #include <math.h>
 #include <stdlib.h>
@@ -303,7 +326,8 @@ PFNGLGETPROGRAMINFOLOGPROC glGetProgramInfoLog = 0;
 
 PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = 0;
 PFNGLUNIFORM4FPROC glUniform4f = 0;
-PFNGLUNIFORMMATRIX4DVPROC glUniformMatrix4dv = 0;
+//PFNGLUNIFORMMATRIX4DVPROC glUniformMatrix4dv = 0;
+PFNGLUNIFORM4DVPROC glUniform4dv = 0;
 PFNGLVERTEXATTRIBLPOINTERPROC glVertexAttribLPointer = 0;
 PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = 0;
 PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = 0;
@@ -334,7 +358,8 @@ bool BindGL(bool prim_restart, bool shaders)
         BINDGL(glUseProgram);
         BINDGL(glGetShaderInfoLog);
         BINDGL(glGetProgramInfoLog);
-        BINDGL(glUniformMatrix4dv);
+        //BINDGL(glUniformMatrix4dv);
+        BINDGL(glUniform4dv);
         BINDGL(glUniform4f);
         BINDGL(glVertexAttribLPointer);
         BINDGL(glEnableVertexAttribArray);
@@ -528,7 +553,6 @@ struct GfxStuffer
     GLuint prg; 
     GLint tfm;
     GLint clr;
-    GLdouble mat[16];
 
     void VertexPointer(GLint s, GLenum t, GLsizei d, const GLvoid* ptr)
     {
@@ -552,19 +576,6 @@ struct GfxStuffer
                 glDisableClientState(GL_VERTEX_ARRAY);
     }
 
-    void LoadIdentity()
-    {
-        if (type == GL_DOUBLE)
-        {
-            mat[10] = -1;
-            mat[11] = 0;
-            mat[15] = 1;
-            glUniformMatrix4dv(tfm, 1, GL_FALSE, mat);
-        }
-        else
-            glLoadIdentity();
-    }
-
     void LoadProj(int vpw, int vph, double cx, double cy, double scale)
     {
         glViewport(0,0,vpw,vph);
@@ -572,72 +583,27 @@ struct GfxStuffer
         {
             glUseProgram(prg);
 
-            /*
-            double dx = scale / vpw;
-            double dy = scale / vph;
-
-            mat[0] = dx; 
-            mat[5] = dy; 
-            mat[11] = 0;
-            mat[12] = cx * dx;
-            mat[13] = cy * dy;
-            mat[15] = 1;
-            */
-
             double left = cx - vpw/scale;
             double right = cx + vpw/scale;
             double bottom = cy - vph/scale;
             double top = cy + vph/scale;
-            double near = -1;
-            double far = +1;
 
-            mat[0] = 2/(right-left); 
-            mat[1] = 0;
-            mat[2] = 0;
-            mat[3] = 0;
+            GLdouble mat[4];
 
-            mat[4] = 0;
-            mat[5] = 2/(top-bottom); 
-            mat[6] = 0;
-            mat[7] = 0;
+            mat[0] = scale / vpw;
+            mat[1] = scale / vph;
+            mat[2] = -cx * mat[0];
+            mat[3] = -cy * mat[1];
 
-            mat[8] = 0;
-            mat[9] = 0;
-            mat[10] = -2/(far-near);
-            mat[11] = 0;
-
-            mat[12] = -(right+left)/(right-left);
-            mat[13] = -(top+bottom)/(top-bottom);
-            mat[14] = -(far+near)/(far-near);
-            mat[15] = 1;
-
-            // Z-damping
-            mat[10] = 0;
-
-            glUniformMatrix4dv(tfm, 1, GL_FALSE, mat);
+            //glUniformMatrix4dv(tfm, 1, GL_FALSE, mat);
+            glUniform4dv(tfm, 1, mat);
         }
         else
         {
             glMatrixMode(GL_PROJECTION);
             glLoadIdentity();
             glOrtho(cx - vpw/scale, cx + vpw/scale, cy - vph/scale, cy + vph/scale, -1, +1);
-            glMatrixMode(GL_MODELVIEW);
-            glLoadIdentity();
-            glScalef(1,1,0); // flatten z when not shaded
-        }
-    }
 
-    void LoadZ2W()
-    {
-        if (type == GL_DOUBLE)
-        {
-            mat[10] = -1;
-            mat[11] = 1;
-            mat[15] = 0;
-            glUniformMatrix4dv(tfm, 1, GL_FALSE, mat);
-        }
-        else
-        {
             const static GLfloat z2w[16] =
             {
                 1,0,0,0,
@@ -646,9 +612,9 @@ struct GfxStuffer
                 0,0,0,0
             };
 
-            glLoadMatrixf(z2w);
+            glMultMatrixf(z2w);
         }
-    }    
+    }
 
     void SetColor(float r, float g, float b, float a)
     {
@@ -706,17 +672,17 @@ struct GfxStuffer
 
         if (gl_e == GL_DOUBLE)
         {
-            memset(mat,0,sizeof(mat));
-            
             #define CODE(...) #__VA_ARGS__
 
             static const char* vs_src[] = {CODE(#version 410\n
-                uniform dmat4 tfm;
-                layout (location = 0) in dvec4 v;
+                uniform dvec4 tfm;
+                layout (location = 0) in dvec3 v;
                 void main()
                 {
-                    dvec4 v_cs = tfm * v;
-                    gl_Position = vec4(v_cs);
+                    gl_Position = vec4(
+                        tfm.x * v.x + tfm.z * v.z, 
+                        tfm.y * v.y + tfm.w * v.z,
+                        0.0lf, v.z);
                 }
             )};
 
@@ -796,10 +762,15 @@ struct GfxStuffer
         MyCoord vbo_x = (box[0]+box[2]) / 2;
         MyCoord vbo_y = (box[1]+box[3]) / 2;
 
+        #if 0 // vbo centering?
         box[0] -= vbo_x;
         box[1] -= vbo_y;
         box[2] -= vbo_x;
         box[3] -= vbo_y;
+        #else
+        vbo_x = 0;
+        vbo_y = 0;
+        #endif
 
         if (gl_e == GL_DOUBLE)
         {
@@ -976,16 +947,16 @@ int main(int argc, char* argv[])
         std::random_device rd{};
         std::mt19937_64 gen{ 0x12345678 /*rd()*/};
 
-        std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
+        //std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
         //std::normal_distribution<double> d{0.0,2.0};
-        //std::gamma_distribution<double> d(0.1,2.0);
+        std::gamma_distribution<double> d(0.1,2.0);
 
         MyCoord max_coord = sizeof(MyCoord) < 8 ? /*float*/0x1.p31 : /*double*/0x1.p255;
 
         for (int i = 0; i < n; i++)
         {
-            //MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
-            MyPoint p = { d(gen), d(gen) };
+            MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
+            //MyPoint p = { d(gen), d(gen) };
             
             //p.x *= 0x1.p250;
             //p.y *= 0x1.p250;
@@ -1291,140 +1262,146 @@ int main(int argc, char* argv[])
         #ifdef WITH_CDT
 
         int tris_cdt = (int)cdt.triangles.size();
-        assert(tris_delabella == tris_cdt);
-        assert(polys_delabella == cdt_polys.size());
 
-        int poly_indices = 2 * polys_delabella + tris_delabella;
-
-        struct MyPoly
+        if (tris_delabella != tris_cdt || polys_delabella == cdt_polys.size())
+            printf("WARNING! Results are not comparable - different number of tris or polys\n");
+        else
         {
-            int size;
-            int offs;
-        };
+            // note:
+            // currently, any difference between constrained edges passing 
+            // internal edge of a polygon won't be detected !!!
 
-        struct PolyPred
-        {
-            PolyPred(const std::vector<MyPoint>& v) : v(v) {}
-            bool operator () (const MyPoly& p, const MyPoly& q) const
+            int poly_indices = 2 * polys_delabella + tris_delabella;
+
+            struct MyPoly
             {
-                if (p.size < q.size)
-                    return true;
-                if (p.size == q.size)
+                int size;
+                int offs;
+            };
+
+            struct PolyPred
+            {
+                PolyPred(const std::vector<MyPoint>& v) : v(v) {}
+                bool operator () (const MyPoly& p, const MyPoly& q) const
                 {
-                    for (size_t i = 0; i < (size_t)p.size; i++)
+                    if (p.size < q.size)
+                        return true;
+                    if (p.size == q.size)
                     {
-                        if (v[i + p.offs] == v[i + q.offs])
-                            continue;
-                        return v[i + p.offs] < v[i + q.offs];
+                        for (size_t i = 0; i < (size_t)p.size; i++)
+                        {
+                            if (v[i + p.offs] == v[i + q.offs])
+                                continue;
+                            return v[i + p.offs] < v[i + q.offs];
+                        }
                     }
+                    return false;
                 }
-                return false;
-            }
-            const std::vector<MyPoint>& v;
-        };
+                const std::vector<MyPoint>& v;
+            };
 
-        printf("preping cdt for cmp ...\n");
-        std::vector<MyPoint> cdt_v(poly_indices);
-        std::vector<MyPoly> cdt_p(cdt_polys.size());
-        for (int p = 0, n = 0; p < (int)cdt_polys.size(); p++)
-        {
-            int s = 0;
-
-            for (int i = 0; i < 3; i++)
+            printf("preping cdt for cmp ...\n");
+            std::vector<MyPoint> cdt_v(poly_indices);
+            std::vector<MyPoly> cdt_p(cdt_polys.size());
+            for (int p = 0, n = 0; p < (int)cdt_polys.size(); p++)
             {
-                int j = n + s;
-                int k = cdt.triangles[cdt_polys[p][0]].vertices[i];
-                cdt_v[j].x = cdt.vertices[k].x;
-                cdt_v[j].y = cdt.vertices[k].y;
-                s++;
+                int s = 0;
+
+                for (int i = 0; i < 3; i++)
+                {
+                    int j = n + s;
+                    int k = cdt.triangles[cdt_polys[p][0]].vertices[i];
+                    cdt_v[j].x = cdt.vertices[k].x;
+                    cdt_v[j].y = cdt.vertices[k].y;
+                    s++;
+                }
+
+                for (int i = 1; i < (int)cdt_polys[p].size(); i++)
+                {
+                    int j = n + s;
+                    int k = cdt.triangles[cdt_polys[p][i]].vertices[0];
+                    cdt_v[j].x = cdt.vertices[k].x;
+                    cdt_v[j].y = cdt.vertices[k].y;
+                    s++;
+                }
+
+                // convert from ccw to cw
+                std::reverse(cdt_v.begin() + n, cdt_v.begin() + n + s);
+
+                // find smallest point, make it leftmost
+                std::vector<MyPoint>::iterator smallest = std::min_element(cdt_v.begin() + n, cdt_v.begin() + n + s);
+                std::rotate(cdt_v.begin() + n, smallest, cdt_v.begin() + n + s);
+
+
+                cdt_p[p].size = s;
+                cdt_p[p].offs = n;
+
+                n += s;
             }
+            printf("sorting cdt ...\n");
+            std::sort(cdt_p.begin(), cdt_p.end(), PolyPred(cdt_v));
 
-            for (int i = 1; i < (int)cdt_polys[p].size(); i++)
+            printf("preping idb for cmp ...\n");
+            std::vector<MyPoint> idb_v(poly_indices);
+            std::vector<MyPoly> idb_p(polys_delabella);
+            for (int p = 0, n = 0; p < polys_delabella; p++)
             {
-                int j = n + s;
-                int k = cdt.triangles[cdt_polys[p][i]].vertices[0];
-                cdt_v[j].x = cdt.vertices[k].x;
-                cdt_v[j].y = cdt.vertices[k].y;
-                s++;
-            }
+                int s = 0;
 
-            // convert from ccw to cw
-            std::reverse(cdt_v.begin() + n, cdt_v.begin() + n + s);
+                const DelaBella_Triangle* f = dela_polys[p];
 
-            // find smallest point, make it leftmost
-            std::vector<MyPoint>::iterator smallest = std::min_element(cdt_v.begin() + n, cdt_v.begin() + n + s);
-            std::rotate(cdt_v.begin() + n, smallest, cdt_v.begin() + n + s);
+                for (int i = 0; i < 3; i++)
+                {
+                    int j = n + s;
+                    const DelaBella_Vertex* k = f->v[i];
+                    idb_v[j].x = k->x;
+                    idb_v[j].y = k->y;
+                    s++;
+                }
 
-
-            cdt_p[p].size = s;
-            cdt_p[p].offs = n;
-
-            n += s;
-        }
-        printf("sorting cdt ...\n");
-        std::sort(cdt_p.begin(), cdt_p.end(), PolyPred(cdt_v));
-
-        printf("preping idb for cmp ...\n");
-        std::vector<MyPoint> idb_v(poly_indices);
-        std::vector<MyPoly> idb_p(polys_delabella);
-        for (int p = 0, n = 0; p < polys_delabella; p++)
-        {
-            int s = 0;
-
-            const DelaBella_Triangle* f = dela_polys[p];
-
-            for (int i = 0; i < 3; i++)
-            {
-                int j = n + s;
-                const DelaBella_Vertex* k = f->v[i];
-                idb_v[j].x = k->x;
-                idb_v[j].y = k->y;
-                s++;
-            }
-
-            f = f->next;
-
-            while (f && f->index == p)
-            {
-                int j = n + s;
-                const DelaBella_Vertex* k = f->v[0];
-                idb_v[j].x = k->x;
-                idb_v[j].y = k->y;
-                s++;
                 f = f->next;
+
+                while (f && f->index == p)
+                {
+                    int j = n + s;
+                    const DelaBella_Vertex* k = f->v[0];
+                    idb_v[j].x = k->x;
+                    idb_v[j].y = k->y;
+                    s++;
+                    f = f->next;
+                }
+
+                // find smallest point, rotate it to the left
+                std::vector<MyPoint>::iterator smallest = std::min_element(idb_v.begin() + n, idb_v.begin() + n + s);
+                std::rotate(idb_v.begin() + n, smallest, idb_v.begin() + n + s);
+
+                idb_p[p].size = s;
+                idb_p[p].offs = n;
+
+                n += s;
             }
+            printf("sorting idb ...\n");
+            std::sort(idb_p.begin(), idb_p.end(), PolyPred(idb_v));
 
-            // find smallest point, rotate it to the left
-            std::vector<MyPoint>::iterator smallest = std::min_element(idb_v.begin() + n, idb_v.begin() + n + s);
-            std::rotate(idb_v.begin() + n, smallest, idb_v.begin() + n + s);
-            
-            idb_p[p].size = s;
-            idb_p[p].offs = n;
-
-            n += s;
-        }
-        printf("sorting idb ...\n");
-        std::sort(idb_p.begin(), idb_p.end(), PolyPred(idb_v));
-
-        printf("COMPARING... ");
-        bool compare_ok = true;
-        for (int p = 0; p < polys_delabella; p++)
-        {
-            MyPoly p_idb = idb_p[p];
-            MyPoly p_cdt = cdt_p[p];
-
-            MyPoint* data_idb = idb_v.data() + p_idb.offs;
-            MyPoint* data_cdt = cdt_v.data() + p_cdt.offs;
-
-            if (p_idb.size != p_cdt.size ||
-                memcmp(data_idb, data_cdt, sizeof(MyPoint) * p_idb.size))
+            printf("COMPARING... ");
+            bool compare_ok = true;
+            for (int p = 0; p < polys_delabella; p++)
             {
-                compare_ok = false;
-                break;
-            }
-        }
-        printf(compare_ok ? "OK\n" : "DIFFERENT!\n");
+                MyPoly p_idb = idb_p[p];
+                MyPoly p_cdt = cdt_p[p];
 
+                MyPoint* data_idb = idb_v.data() + p_idb.offs;
+                MyPoint* data_cdt = cdt_v.data() + p_cdt.offs;
+
+                if (p_idb.size != p_cdt.size ||
+                    memcmp(data_idb, data_cdt, sizeof(MyPoint) * p_idb.size))
+                {
+                    compare_ok = false;
+                    break;
+                }
+            }
+            printf(compare_ok ? "OK\n" : "DIFFERENT!\n");
+        }
         #endif
     }
 
@@ -1496,9 +1473,6 @@ int main(int argc, char* argv[])
         }
     }
 
-    { int err = glGetError(); assert(err == GL_NO_ERROR); }
-
-
     // check if we can use shaders with dmat/dvec/double support
     // it is standard in GLSL 4.0 and above
     int glsl_ver = 0;
@@ -1522,6 +1496,8 @@ int main(int argc, char* argv[])
         }
     }
 
+    //glsl_ver = 0;
+
 	if (!BindGL(prim_restart, glsl_ver >= 410))
 	{
 		printf("Can't bind to necessary GL functions, terminating!\n");
@@ -1530,8 +1506,6 @@ int main(int argc, char* argv[])
 	}
 
 	printf("preparing graphics...\n");
-
-    { int err = glGetError(); assert(err == GL_NO_ERROR); }
 
     GfxStuffer gfx;
 
@@ -1552,9 +1526,6 @@ int main(int argc, char* argv[])
                 dups
                 #endif
                 );
-
-    { int err = glGetError(); assert(err == GL_NO_ERROR); }
-
 
     #ifdef VORONOI
     free(voronoi_idx_buf);
@@ -1580,8 +1551,6 @@ int main(int argc, char* argv[])
     }
 
 	printf("going interactive.\n");
-
-    { int err = glGetError(); assert(err == GL_NO_ERROR); }
 
     bool show_f = true; // fill
     bool show_b = true; // boundary
@@ -1761,11 +1730,7 @@ int main(int argc, char* argv[])
         glClearColor(0,0,0,0);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        { int err = glGetError(); assert(err == GL_NO_ERROR); }
-
         gfx.LoadProj(vpw,vph, cx,cy, scale);
-
-        { int err = glGetError(); assert(err == GL_NO_ERROR); }
 
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
@@ -1773,9 +1738,7 @@ int main(int argc, char* argv[])
 
         gfx.vbo.Bind();
 		gfx.VertexPointer(3, gfx.type, 0, 0);
-        { int err = glGetError(); assert(err == GL_NO_ERROR); }
 		gfx.EnableVertexArray(true);
-        { int err = glGetError(); assert(err == GL_NO_ERROR); }
 
         gfx.ibo_delabella.Bind();
 
@@ -1783,10 +1746,8 @@ int main(int argc, char* argv[])
         if (show_f)
         {
             gfx.SetColor(0.2f, 0.2f, 0.2f, 1.0f);
-            { int err = glGetError(); assert(err == GL_NO_ERROR); }
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_delabella * 3, GL_UNSIGNED_INT, 0);
-            { int err = glGetError(); assert(err == GL_NO_ERROR); }
         }
 
         // paint constraints
@@ -1797,12 +1758,10 @@ int main(int argc, char* argv[])
             glLineWidth(3.0f);
             gfx.SetColor(.9f, .9f, .9f, 1.0f);
             glDrawElements(GL_LINES, constrain_indices, GL_UNSIGNED_INT, (GLuint*)0);
-            { int err = glGetError(); assert(err == GL_NO_ERROR); }
             glLineWidth(1.0f);
 
             // oops
             gfx.ibo_delabella.Bind();
-            { int err = glGetError(); assert(err == GL_NO_ERROR); }
         }
 
         if (show_d)
@@ -1811,7 +1770,6 @@ int main(int argc, char* argv[])
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
             glDrawElements(GL_TRIANGLES, tris_delabella * 3, GL_UNSIGNED_INT, 0);
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-            { int err = glGetError(); assert(err == GL_NO_ERROR); }
         }
 
         if (show_b)
@@ -1820,7 +1778,6 @@ int main(int argc, char* argv[])
             glLineWidth(3.0f);
             glDrawElements(GL_LINE_LOOP, contour, GL_UNSIGNED_INT, (GLuint*)0 + tris_delabella * 3);
             glLineWidth(1.0f);
-            { int err = glGetError(); assert(err == GL_NO_ERROR); }
         }
 
         // compare with CDT
@@ -1837,7 +1794,6 @@ int main(int argc, char* argv[])
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
             glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_cdt * 3, GL_UNSIGNED_INT, 0);
             glDisable(GL_BLEND);
-            { int err = glGetError(); assert(err == GL_NO_ERROR); }
         }
         #endif
 
@@ -1848,10 +1804,6 @@ int main(int argc, char* argv[])
             gfx.vbo_voronoi.Bind();
             gfx.VertexPointer(3, gfx.type, 0, 0);
             gfx.EnableVertexArray(true);
-            { int err = glGetError(); assert(err == GL_NO_ERROR); }
-
-            gfx.LoadZ2W();
-            { int err = glGetError(); assert(err == GL_NO_ERROR); }
 
             // voro-verts in back
             gfx.SetColor(1.0f, 1.0f, 0.0f, 1.0f);
@@ -1859,7 +1811,6 @@ int main(int argc, char* argv[])
             glDrawArrays(GL_POINTS, 0, voronoi_vertices - contour);
             glPointSize(1.0f);
             gfx.ibo_voronoi.Bind();
-            { int err = glGetError(); assert(err == GL_NO_ERROR); }
 
             gfx.SetColor(0.0f, 0.75f, 0.0f, 1.0f);
 
@@ -1874,8 +1825,6 @@ int main(int argc, char* argv[])
             // draw edge soup
             glDrawElements(GL_LINES, voronoi_indices, GL_UNSIGNED_INT, (GLuint*)0);
             #endif
-
-            { int err = glGetError(); assert(err == GL_NO_ERROR); }
         }
         #endif
 
@@ -1885,21 +1834,14 @@ int main(int argc, char* argv[])
         gfx.VertexPointer(3, gfx.type, 0, 0);
         gfx.EnableVertexArray(true);
 
-        { int err = glGetError(); assert(err == GL_NO_ERROR); }
-
         // put verts over everything else
-        gfx.LoadIdentity();
         gfx.SetColor(1.0f, 1.0f, 0.0f, 1.0f);
         glPointSize(3.0f);
         glDrawArrays(GL_POINTS, 0, points);
         glPointSize(1.0f);
 
-        { int err = glGetError(); assert(err == GL_NO_ERROR); }
-
         SDL_GL_SwapWindow(window);
         SDL_Delay(15);
-
-        { int err = glGetError(); assert(err == GL_NO_ERROR); }
     }
 
     gfx.Destroy();

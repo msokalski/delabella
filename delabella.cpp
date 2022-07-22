@@ -210,9 +210,12 @@ struct CDelaBella3 : IDelaBella2<T>
 
 		// rmove dups
 		{
+			vert_map[vert_alloc[0].i] = 0;
+
 			int w = 0, r = 1; // skip initial no-dups block
 			while (r < points && !Vert::overlap(vert_alloc + r, vert_alloc + w))
 			{
+				vert_map[vert_alloc[r].i] = r;
 				w++;
 				r++;
 			}
@@ -222,9 +225,6 @@ struct CDelaBella3 : IDelaBella2<T>
 
 			while (r < points)
 			{
-				// fill map with dups only
-				// unique verts will be filled after initial hull creation
-				// which may require additional sorting on unique verts
 				vert_map[vert_alloc[r].i] = d; // add first dup in run
 				r++;
 
@@ -237,7 +237,10 @@ struct CDelaBella3 : IDelaBella2<T>
 
 				// copy next no-dups block (in percent chunks?)
 				while (r < points && !Vert::overlap(vert_alloc + r, vert_alloc + r - 1))
+				{
+					vert_map[vert_alloc[r].i] = w;
 					vert_alloc[w++] = vert_alloc[r++];
+				}
 
 				d = w - 1;
 			}
@@ -260,12 +263,8 @@ struct CDelaBella3 : IDelaBella2<T>
 
 		if (points < 3)
 		{
-			vert_map[vert_alloc[0].i] = 0;
-
 			if (points == 2)
 			{
-				vert_map[vert_alloc[1].i] = 1;
-
 				if (errlog_proc)
 					errlog_proc(errlog_file, "[WRN] all input points are colinear, returning single segment!\n");
 				first_boundary_vert = vert_alloc + 0;
@@ -365,6 +364,8 @@ struct CDelaBella3 : IDelaBella2<T>
 			i++;
 		}
 
+		int* vert_sub = 0;
+
 		bool colinear = f.sign0(); // hybrid
 		if (colinear)
 		{
@@ -420,7 +421,14 @@ struct CDelaBella3 : IDelaBella2<T>
 			struct
 			{
 				// default to CW order (unlikely, if wrong, we will reverse later)
-				bool operator()(const Vert& a, const Vert& b) const
+
+				
+				bool operator()(const int& a, const int& b) const
+				{
+					return less(vert_alloc[a], vert_alloc[b]);
+				}
+
+				bool less(const Vert& a, const Vert& b) const
 				{
 					// if a is lower and b is upper, return true
 					if (a.sew && !b.sew)
@@ -456,14 +464,24 @@ struct CDelaBella3 : IDelaBella2<T>
 					#endif
 					return false;
 				}
+
+				Vert* vert_alloc;
 			} c;
 
-			std::sort(vert_alloc, vert_alloc + i, c);
-		}
+			vert_sub = (int*)malloc(sizeof(int) * (i+1));
+			if (!vert_sub)
+			{
+				if (errlog_proc)
+					errlog_proc(errlog_file, "[ERR] Not enough memory, shop for some more RAM. See you!\n");
+				return 0;
+			}
 
-		// fill map with unique verts
-		for (int j = 0; j < points; j++)
-			vert_map[vert_alloc[j].i] = j;
+			for (int s = 0; s <= i; s++)
+				vert_sub[s] = s;
+
+			c.vert_alloc = vert_alloc;
+			std::sort(vert_sub, vert_sub + i, c);
+		}
 
 		*out_hull_faces = 0;
 
@@ -533,15 +551,15 @@ struct CDelaBella3 : IDelaBella2<T>
 			for (int j = 2; j < i; j++)
 			{
 				Face* p = next_p;
-				p->v[0] = vert_alloc + 0;
-				p->v[1] = vert_alloc + j-1;
-				p->v[2] = vert_alloc + j;
+				p->v[0] = vert_alloc + vert_sub[0];
+				p->v[1] = vert_alloc + vert_sub[j-1];
+				p->v[2] = vert_alloc + vert_sub[j];
 
 				// mirrored
 				Face* q = next_q;
-				q->v[0] = vert_alloc + 0;
-				q->v[1] = vert_alloc + j;
-				q->v[2] = vert_alloc + j-1;
+				q->v[0] = vert_alloc + vert_sub[0];
+				q->v[1] = vert_alloc + vert_sub[j];
+				q->v[2] = vert_alloc + vert_sub[j-1];
 
 				if (j < i - 1)
 				{
@@ -573,12 +591,12 @@ struct CDelaBella3 : IDelaBella2<T>
 			// time to build cone hull with i'th vertex at the tip and 0..i-1 verts in the base
 			// build cone's base in direction it is invisible to cone's tip!
 
-			f.v[0] = vert_alloc + 0;
-			f.v[1] = vert_alloc + 1;
-			f.v[2] = vert_alloc + 2;
+			f.v[0] = vert_alloc + vert_sub[0];
+			f.v[1] = vert_alloc + vert_sub[1];
+			f.v[2] = vert_alloc + vert_sub[2];
 
 			int one = 1, two = 2;
-			if (!f.dotNP(vert_alloc[i]))
+			if (!f.dotNP(vert_alloc[vert_sub[i]]))
 			{
 				// if i-th vert can see the contour we will flip every face
 				one = 2;
@@ -595,9 +613,9 @@ struct CDelaBella3 : IDelaBella2<T>
 			for (int j = 2; j < i; j++)
 			{
 				Face* p = next_p;
-				p->v[0] = vert_alloc + 0;
-				p->v[one] = vert_alloc + j - 1;
-				p->v[two] = vert_alloc + j;
+				p->v[0] = vert_alloc + vert_sub[0];
+				p->v[one] = vert_alloc + vert_sub[j - 1];
+				p->v[two] = vert_alloc + vert_sub[j];
 
 				Face* q;
 
@@ -605,9 +623,9 @@ struct CDelaBella3 : IDelaBella2<T>
 				{
 					// first base triangle also build extra tip face
 					q = Face::Alloc(cache);
-					q->v[0] = vert_alloc + i;
-					q->v[one] = vert_alloc + 1;
-					q->v[two] = vert_alloc + 0;
+					q->v[0] = vert_alloc + vert_sub[i];
+					q->v[one] = vert_alloc + vert_sub[1];
+					q->v[two] = vert_alloc + vert_sub[0];
 
 					q->f[0] = p;
 					q->f[one] = 0; // LAST_Q;
@@ -618,9 +636,9 @@ struct CDelaBella3 : IDelaBella2<T>
 				}
 
 				q = next_q;
-				q->v[0] = vert_alloc + i;
-				q->v[one] = vert_alloc + j;
-				q->v[two] = vert_alloc + j-1;
+				q->v[0] = vert_alloc + vert_sub[i];
+				q->v[one] = vert_alloc + vert_sub[j];
+				q->v[two] = vert_alloc + vert_sub[j-1];
 
 				next_q = Face::Alloc(cache);
 
@@ -639,9 +657,9 @@ struct CDelaBella3 : IDelaBella2<T>
 				{
 					// last base triangle also build extra tip face
 					q = next_q;
-					q->v[0] = vert_alloc + i;
-					q->v[one] = vert_alloc + 0;
-					q->v[two] = vert_alloc + i-1;
+					q->v[0] = vert_alloc + vert_sub[i];
+					q->v[one] = vert_alloc + vert_sub[0];
+					q->v[two] = vert_alloc + vert_sub[i-1];
 
 					q->f[0] = p;
 					q->f[one] = prev_q;
@@ -663,6 +681,8 @@ struct CDelaBella3 : IDelaBella2<T>
 
 			i++;
 		}
+
+		free(vert_sub);
 
 		*start = i;
 		return points;
