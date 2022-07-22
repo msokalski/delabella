@@ -15,29 +15,6 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 //#undef WITH_DELAUNATOR 
 //#define WITH_DELAUNATOR
 
-struct int2048
-{
-    /*
-    int2048()
-    {
-        memset(bits, 0, sizeof(bits));
-    }
-
-    int2048& operator += (double d)
-    {
-        // extract sign, exp, mantissa
-
-    }
-
-    void extract(uint8_t doubles, double* data)
-    {
-        // bitscan to locate exponent
-    }
-
-    uint32_t bits[64];
-    */
-};
-
 // override build define
 #undef WITH_CDT
 #define WITH_CDT
@@ -1512,28 +1489,6 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    bool prim_restart = false;
-    {
-        // we're 4.1
-        prim_restart = true;
-        /*
-        const char* ext = (const char*)glGetString(GL_EXTENSIONS);
-        while (ext)
-        {
-            ext = strstr(ext,"GL_NV_primitive_restart");
-            if (ext)
-            {
-                if (ext[23]==0 || ext[23]==' ')
-                {
-                    prim_restart = true;
-                    break;
-                }
-                ext += 23;
-            }
-        }
-        */
-    }
-
 	if (!BindGL())
 	{
 		printf("Can't bind to necessary GL functions, terminating!\n");
@@ -1580,11 +1535,8 @@ int main(int argc, char* argv[])
     double drag_cx, drag_cy;
     int drag = 0;
 
-    if (prim_restart)
-    {
-        glPrimitiveRestartIndex((GLuint)~0);
-        glEnable(GL_PRIMITIVE_RESTART);
-    }
+    glPrimitiveRestartIndex((GLuint)~0);
+    glEnable(GL_PRIMITIVE_RESTART);
 
 	printf("going interactive.\n");
 
@@ -1616,15 +1568,17 @@ int main(int argc, char* argv[])
 
     printf("\n");
 
-    float thin = 1.0f;
-    float thick;
-    glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE,&thick);
-    if (thick>3.0f)
-        thick = 3.0f;
+    float lohi[2];
 
-    float dot = 1.0f;
-    float blob;
-    glGetFloatv(GL_ALIASED_POINT_SIZE_RANGE,&blob);
+    glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, lohi);
+    float thin = 1.0f, thick = 3.0f;
+    if (thick > lohi[1])
+        thick = lohi[1];
+
+    glGetFloatv(GL_ALIASED_POINT_SIZE_RANGE, lohi);
+    float dot = 1.0f, blob = 3.0f;
+    if (blob > lohi[1])
+        blob = lohi[1];
 
     for( ;; )
     {
@@ -1783,10 +1737,6 @@ int main(int argc, char* argv[])
         glFrontFace(GL_CW);
 
         gfx.vao_main.Bind();
-        //gfx.vbo.Bind();
-        //gfx.VertexPointer(3, gfx.type, 0, 0);
-        //gfx.EnableVertexArray(true);
-        //gfx.ibo_delabella.Bind();
 
         // grey fill
         if (show_f)
@@ -1801,7 +1751,7 @@ int main(int argc, char* argv[])
         if (constrain_indices && show_c)
         {
             gfx.vao_constraint.Bind();
-            //gfx.ibo_constraint.Bind();
+
             glLineWidth(thick);
             gfx.SetColor(.9f, .9f, .9f, 1.0f);
             glDrawElements(GL_LINES, constrain_indices, GL_UNSIGNED_INT, (GLuint*)0);
@@ -1832,12 +1782,13 @@ int main(int argc, char* argv[])
         #ifdef WITH_CDT
         if (show_x)
         {
+            gfx.vao_cdt.Bind();
+
             int tris_cdt = (int)cdt.triangles.size();
 
             glEnable(GL_BLEND);
             glBlendFunc(GL_ONE, GL_ONE);
-            gfx.vao_cdt.Bind();
-            //gfx.ibo_cdt.Bind();
+
             gfx.SetColor(0.0f,0.0f,1.0f,1.0f);
             glLineWidth(thin);
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -1851,9 +1802,6 @@ int main(int argc, char* argv[])
         if (show_v)
         {
             gfx.vao_voronoi.Bind();
-            //gfx.vbo_voronoi.Bind();
-            //gfx.VertexPointer(3, gfx.type, 0, 0);
-            //gfx.EnableVertexArray(true);
 
             // voro-verts in back
             gfx.SetColor(1.0f, 1.0f, 0.0f, 1.0f);
@@ -1878,13 +1826,8 @@ int main(int argc, char* argv[])
         }
         #endif
 
-        gfx.vao_main.Bind();
-        //gfx.vbo.Bind();
-        //gfx.ibo_delabella.Bind();
-        //gfx.VertexPointer(3, gfx.type, 0, 0);
-        //gfx.EnableVertexArray(true);
-
         // put verts over everything else
+        gfx.vao_main.Bind();
         gfx.SetColor(1.0f, 1.0f, 0.0f, 1.0f);
         glPointSize(blob);
         glDrawArrays(GL_POINTS, 0, points);
