@@ -983,9 +983,9 @@ int main(int argc, char* argv[])
         std::random_device rd{};
         std::mt19937_64 gen{ 0x12345678 /*rd()*/};
 
-        std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
+        //std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
         //std::normal_distribution<double> d{0.0,2.0};
-        //std::gamma_distribution<double> d(0.1,2.0);
+        std::gamma_distribution<double> d(0.1,2.0);
 
         MyCoord max_coord = sizeof(MyCoord) < 8 ? /*float*/0x1.p31 : /*double*/0x1.p255;
 
