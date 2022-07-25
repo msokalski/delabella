@@ -7,17 +7,19 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 #define DELABELLA_LEGACY double
 
+#include "predicates.h"
+
 #define VORONOI
 //#define VORONOI_POLYS
 // otherwise EDGES
 
 // override build define
-//#undef WITH_DELAUNATOR 
+#undef WITH_DELAUNATOR 
 //#define WITH_DELAUNATOR
 
 // override build define
 #undef WITH_CDT
-#define WITH_CDT
+//#define WITH_CDT
 
 #include <math.h>
 #include <stdlib.h>
@@ -562,29 +564,27 @@ struct GfxStuffer
     // for GLdouble only
     GLuint prg; 
     GLint tfm;
+    GLint low;
     GLint clr;
 
-    void LoadProj(int vpw, int vph, double cx, double cy, double scale)
+    void LoadProj(int vpw, int vph, double cx, double cy, double scale, double lx, double ly)
     {
         glViewport(0,0,vpw,vph);
         if (type == GL_DOUBLE)
         {
             glUseProgram(prg);
 
-            double left = cx - vpw/scale;
-            double right = cx + vpw/scale;
-            double bottom = cy - vph/scale;
-            double top = cy + vph/scale;
-
             GLdouble mat[4];
 
             mat[0] = scale / vpw;
             mat[1] = scale / vph;
-            mat[2] = -cx * mat[0];
-            mat[3] = -cy * mat[1];
+            mat[2] = -cx;
+            mat[3] = -cy;
 
-            //glUniformMatrix4dv(tfm, 1, GL_FALSE, mat);
             glUniform4dv(tfm, 1, mat);
+
+            GLdouble lxy[4] = { -lx, -ly, 0.0, 0.0 }; // zw-spare
+            glUniform4dv(low, 1, lxy);
         }
         else
         {
@@ -671,13 +671,12 @@ struct GfxStuffer
 
             static const char* vs_src[] = {CODE(#version 410\n
                 uniform dvec4 tfm;
+                uniform dvec4 low;
                 layout (location = 0) in dvec3 v;
                 void main()
                 {
-                    gl_Position = vec4(
-                        tfm.x * v.x + tfm.z * v.z, 
-                        tfm.y * v.y + tfm.w * v.z,
-                        0.0lf, v.z);
+                    dvec4 p = dvec4(v.xy + tfm.zw * v.z + low.xy * v.z, 0.0lf, v.z);
+                    gl_Position = vec4(p*tfm.xy);
                 }
             )};
 
@@ -725,6 +724,7 @@ struct GfxStuffer
             glDeleteShader(fs);
 
             tfm = glGetUniformLocation(prg, "tfm");
+            low = glGetUniformLocation(prg, "low");
             clr = glGetUniformLocation(prg, "clr");
         }
 
@@ -991,8 +991,8 @@ int main(int argc, char* argv[])
 
         for (int i = 0; i < n; i++)
         {
-            //MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
-            MyPoint p = { d(gen), d(gen) };
+            MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
+            //MyPoint p = { d(gen), d(gen) };
             
             //p.x *= 0x1.p250;
             //p.y *= 0x1.p250;
@@ -1533,11 +1533,14 @@ int main(int argc, char* argv[])
 
     double cx = 0.5 * (gfx.box[0]+gfx.box[2]);
     double cy = 0.5 * (gfx.box[1]+gfx.box[3]);
+    double lx = 0.0;
+    double ly = 0.0;
     double scale = 2.0 * fmin((double)vpw/(gfx.box[2]-gfx.box[0]),(double)vph/(gfx.box[3]-gfx.box[1]));
     int zoom = -3+(int)round(log(scale) / log(1.01));
 
     int drag_x, drag_y, drag_zoom;
     double drag_cx, drag_cy;
+    double drag_lx, drag_ly;
     int drag = 0;
 
     glPrimitiveRestartIndex((GLuint)~0);
@@ -1627,8 +1630,24 @@ int main(int argc, char* argv[])
                         int dy = event.motion.y - drag_y;
 
                         double scale = pow(1.01, zoom);
-                        cx = drag_cx - 2.0*dx/scale;
-                        cy = drag_cy + 2.0*dy/scale;
+                        //cx = drag_cx - 2.0*dx/scale;
+                        //cy = drag_cy + 2.0*dy/scale;
+
+                        predicates::detail::Expansion<MyCoord, 1> adx,ady;
+                        adx.push_back(-2.0 * dx / scale);
+                        ady.push_back(2.0 * dy / scale);
+
+                        auto edx =
+                            predicates::detail::ExpansionBase<MyCoord>::Plus(drag_cx, drag_lx) + adx;
+
+                        auto edy =
+                            predicates::detail::ExpansionBase<MyCoord>::Plus(drag_cy, drag_ly) + ady;
+
+                        cx = edx.m_size > 0 ? edx[edx.m_size - 1] : 0.0;
+                        lx = edx.m_size > 1 ? edx[edx.m_size - 2] : 0.0;
+
+                        cy = edy.m_size > 0 ? edy[edy.m_size - 1] : 0.0;
+                        ly = edy.m_size > 1 ? edy[edy.m_size - 2] : 0.0;
                     }
 
                     if (drag == 2)
@@ -1659,6 +1678,8 @@ int main(int argc, char* argv[])
                             drag_y = event.button.y;
                             drag_cx = cx;
                             drag_cy = cy;
+                            drag_lx = lx;
+                            drag_ly = ly;
                             drag_zoom = zoom;
                             SDL_CaptureMouse(SDL_TRUE);
                         }
@@ -1738,7 +1759,7 @@ int main(int argc, char* argv[])
         glClearColor(0,0,0,0);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        gfx.LoadProj(vpw,vph, cx,cy, scale);
+        gfx.LoadProj(vpw,vph, cx,cy, scale, lx,ly);
 
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
