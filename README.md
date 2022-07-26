@@ -66,7 +66,7 @@
 	if (verts>0)
 	{
 		int tris = idb->GetNumPolygons();
-		const IDelaBella2::Simplex* dela = idb->GetFirstDelaunaySimplex();
+		const IDelaBella2<MyCoord>::Simplex* dela = idb->GetFirstDelaunaySimplex();
 		for (int i = 0; i<tris; i++)
 		{
 			// do something with dela triangle 
