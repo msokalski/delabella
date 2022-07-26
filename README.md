@@ -1,5 +1,5 @@
-# delabella
-## 2D Delaunay triangulation (dela) - super stable (bella!)
+# DelaBella
+## 2D Exact Delaunay triangulation
 
 - Bunch of credits must go to David for inventing such beautiful algorithm (Newton Apple Wrapper):
 
@@ -8,33 +8,28 @@
 - It is pretty well described in this paper:
 
   https://arxiv.org/ftp/arxiv/papers/1602/1602.04707.pdf
-  
-## Example triangulation of signed distance field around some fancy font glyph
 
-![Example](sample.png)
+- Currently DelaBella makes use of adaptive-exact predicates by William C. Lenthe
 
-## NEW!!!
-Added exact arithmetic (crude-xa) as option, you can enable it by adding globally
-```
-#define CRUDE_XA
-```
-(see `delabella.h` for details on how is this handled)
-## Adding new interactive sample builds
-- delabella-sdl2
-- delabella-xa-sdl2 (this one requires crude-xa to be cloned inside delabella dir)
-  https://github.com/msokalski/crude-xa
+  https://github.com/wlenthe/GeometricPredicates
 
-Both use SDL2 library for rendering calculated triangulation using OpenGL
-They expect 'xy' input file passed as argument, file should contain space separated x y coordinates.
+## What you can do with DelaBella?
 
-![delabella-sdl2 1000](delabella-sdl2.png)
+- Delaunay triangulations
 
-Also you can simply pass a number of points (instead of xy file name) to be randomly generated.
-Use mouse to navifate (zoom: RMB / wheel, pan: LMB)
+  ![delaunay](images/delaunay.png)
 
-## delabella usage:
+- Voronoi diagrams
 
-```c++
+  ![voronoi](images/voronoi.png)
+
+- Constrained Delaunay triangulations
+
+  ![constraints](images/constraints.png)
+
+## Minimalistic DelaBella usage:
+
+```cpp
 
 #include "delabella.h"
 // ...
@@ -43,13 +38,13 @@ Use mouse to navifate (zoom: RMB / wheel, pan: LMB)
 
 	int POINTS = 1000000;
 
+	typedef double MyCoord;
+
 	struct MyPoint
 	{
-		char something;
-		float x;
-		int something_else;
-		float y;
-		float foo[5];
+		MyCoord x;
+		MyCoord y;
+		// ...
 	};
 
 	MyPoint* cloud = new MyPoint[POINTS];
@@ -63,15 +58,15 @@ Use mouse to navifate (zoom: RMB / wheel, pan: LMB)
 		cloud[i].y = rand();
 	}
 
-	IDelaBella* idb = IDelaBella::Create();
+	IDelaBella2<MyCoord>* idb = IDelaBella2<MyCoord>::Create();
 
 	int verts = idb->Triangulate(POINTS, &cloud->x, &cloud->y, sizeof(MyPoint));
 
 	// if positive, all ok 
 	if (verts>0)
 	{
-		int tris = verts / 3;
-		const DelaBella_Triangle* dela = idb->GetFirstDelaunayTriangle();
+		int tris = idb->GetNumPolygons();
+		const IDelaBella2::Simplex* dela = idb->GetFirstDelaunaySimplex();
 		for (int i = 0; i<tris; i++)
 		{
 			// do something with dela triangle 
@@ -90,30 +85,22 @@ Use mouse to navifate (zoom: RMB / wheel, pan: LMB)
 
 	// ...
 
+```
+
+## If you're migrating from the previous version 
+
+```cpp
+
+#define DELABELLA_LEGACY double // or float or whatever you've used before
+#include "delabella.h"
+
+// Your old code should work without additional changes
+// ...
 
 ```
-## performance comparison:
-Output from speedtest.cpp
 
-|         points |        QHULL |       S-HULL |    S-HULL-3D |   DELAUNATOR |    DELABELLA |
-| --------------:| ------------:| ------------:| ------------:| ------------:| ------------:|
-|             10 |     0.023 ms |     0.009 ms |     0.016 ms |     0.004 ms |     0.002 ms |
-|             25 |     0.068 ms |     0.028 ms |     0.033 ms |     0.011 ms |     0.006 ms |
-|             50 |     0.132 ms |     0.065 ms |     0.046 ms |     0.022 ms |     0.013 ms |
-|            100 |     0.256 ms |     0.124 ms |     0.096 ms |     0.043 ms |     0.028 ms |
-|            250 |     0.658 ms |     0.375 ms |     0.267 ms |     0.118 ms |     0.097 ms |
-|            500 |     1.354 ms |     0.691 ms |     0.620 ms |     0.301 ms |     0.181 ms |
-|          1,000 |     3.173 ms |     1.442 ms |     1.220 ms |     0.527 ms |     0.384 ms |
-|          2,500 |     8.709 ms |     3.864 ms |     3.175 ms |     1.509 ms |     1.191 ms |
-|          5,000 |    17.050 ms |     8.891 ms |     8.823 ms |     3.231 ms |     2.857 ms |
-|         10,000 |    34.756 ms |    18.308 ms |    17.732 ms |     6.947 ms |     5.957 ms |
-|         25,000 |   110.397 ms |    53.015 ms |    44.851 ms |    19.349 ms |    16.812 ms |
-|         50,000 |   215.183 ms |   114.530 ms |    94.747 ms |    42.580 ms |    35.093 ms |
-|        100,000 |   432.254 ms |   231.915 ms |   188.614 ms |    85.278 ms |    74.180 ms |
-|        250,000 |  1242.280 ms |   652.245 ms |   510.195 ms |   255.369 ms |   196.017 ms |
-|        500,000 |  2782.869 ms |  1400.072 ms |  1090.790 ms |   567.055 ms |   419.753 ms |
-|      1,000,000 |  5913.905 ms |  3127.992 ms |  2286.446 ms |  1276.912 ms |   897.941 ms |
-|      2,500,000 | 16091.611 ms |  8820.593 ms |  6203.232 ms |  3747.699 ms |  2405.105 ms |
-|      5,000,000 | 53809.487 ms | 19320.767 ms | 13289.362 ms |  8374.141 ms |  5056.733 ms |
+## On the go progress information for all lengthy functions
 
-![speedtest results in Log,Log scale](speedtest.png)
+![terminal](images/terminal.gif)
+
+## `TODO: more examples`

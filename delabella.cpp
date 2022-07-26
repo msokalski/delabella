@@ -1,58 +1,81 @@
 /*
 DELABELLA - Delaunay triangulation library
-Copyright (C) 2018 GUMIX - Marcin Sokalski
+Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 */
+
+#define DELABELLA_AUTOTEST
+// in case of troubles, allows to see if any assert pops up.
+// define it globally (like with -DDELABELLA_AUTOTEST)
 
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <algorithm>
 #include "delabella.h"
+#include "predicates.h"
 
-static Unsigned28 s14sqr(const Signed14& s)
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+static uint64_t uSec()
 {
-	return (Unsigned28)((Signed29)s*(Signed29)s);
+#ifdef _WIN32
+	LARGE_INTEGER c;
+	static LARGE_INTEGER f;
+	static BOOL bf = QueryPerformanceFrequency(&f);
+	QueryPerformanceCounter(&c);
+	uint64_t n = c.QuadPart;
+	uint64_t d = f.QuadPart;
+	uint64_t m = 1000000;
+	// calc microseconds = n*m/d carefully!
+	// naive mul/div would work only for upto 5h on 1GHz freq
+	// we exploit fact that m*d fits in uint64 (upto 18THz freq)
+	// so n%d*m fits as well,
+	return n / d * m + n % d * m / d;
+#else
+	timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (uint64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+#endif
 }
 
-typedef DelaBella_Circumcenter Norm;
 
-struct Vect
+template <typename T>
+IDelaBella2<T>::~IDelaBella2()
 {
-	Signed15 x, y;
-	Signed29 z;
+}
 
-	Norm cross (const Vect& v) const // cross prod
+template <typename T>
+struct CDelaBella3 : IDelaBella2<T>
+{
+	CDelaBella3() : 
+		vert_map(0),
+		vert_alloc(0),
+		face_alloc(0),
+		max_verts(0),
+		max_faces(0),
+		first_dela_face(0),
+		first_hull_face(0),
+		first_boundary_vert(0),
+		first_internal_vert(0),
+		inp_verts(0),
+		out_verts(0),
+		out_boundary_verts(0),
+		polygons(0),
+		out_hull_faces(0),
+		unique_points(0),
+		errlog_proc(0),
+		errlog_file(0)
 	{
-		Norm n;
-		n.x = (Signed45)y*(Signed45)v.z - (Signed45)z*(Signed45)v.y;
-		n.y = (Signed45)z*(Signed45)v.x - (Signed45)x*(Signed45)v.z;
-		n.z = (Signed31)x*(Signed31)v.y - (Signed31)y*(Signed31)v.x;
-		return n;
 	}
-};
 
-IDelaBella::~IDelaBella()
-{
-}
-
-struct CDelaBella : IDelaBella
-{
 	struct Face;
 
-	struct Vert : DelaBella_Vertex
+	struct Iter : IDelaBella2<T>::Iterator {};
+
+	struct Vert : IDelaBella2<T>::Vertex
 	{
-		Unsigned28 z;
-		//Face* sew; now it is inherited!
-
-		Vect operator - (const Vert& v) const // diff
-		{
-			Vect d;
-			d.x = (Signed15)x - (Signed15)v.x;
-			d.y = (Signed15)y - (Signed15)v.y;
-			d.z = (Signed29)z - (Signed29)v.z;
-			return d;
-		}
-
 		static bool overlap(const Vert* v1, const Vert* v2)
 		{
 			return v1->x == v2->x && v1->y == v2->y;
@@ -60,104 +83,105 @@ struct CDelaBella : IDelaBella
 
 		bool operator < (const Vert& v) const
 		{
-			return u28cmp(this, &v) < 0;
-		}
+			T dif = predicates::adaptive::sqrlendif2d(this->x, this->y, v.x, v.y);
 
-		static int u28cmp(const void* a, const void* b)
-		{
-			const Vert* va = (const Vert*)a;
-			const Vert* vb = (const Vert*)b;
-			if (va->z < vb->z)
-				return -1;
-			if (va->z > vb->z)
-				return 1;
-			if (va->y < vb->y)
-				return -1;
-			if (va->y > vb->y)
-				return 1;
-			if (va->x < vb->x)
-				return -1;
-			if (va->x > vb->x)
-				return 1;
-			if (va->i < vb->i)
-				return -1;
-			if (va->i > vb->i)
-				return 1;
-			return 0;
+			if (dif < 0)
+				return true;
+			if (dif > 0)
+				return false;
+			if (this->x < v.x || this->x == v.x && this->y < v.y)
+				return true;
+			return false;
 		}
 	};
 
-	struct Face : DelaBella_Triangle
+	struct Face : IDelaBella2<T>::Simplex
 	{
-		// Norm n;
-
 		static Face* Alloc(Face** from)
 		{
 			Face* f = *from;
 			*from = (Face*)f->next;
 			f->next = 0;
-			// init all arithmetics to 0
 			return f;
 		}
 
 		void Free(Face** to)
 		{
-			// free all arithmetics
-			next = *to;
+			this->next = *to;
 			*to = this;
 		}
 
 		Face* Next(const Vert* p) const
 		{
-			// return next face in same direction as face vertices are (cw/ccw)
-
-			if (v[0] == p)
-				return (Face*)f[1];
-			if (v[1] == p)
-				return (Face*)f[2];
-			if (v[2] == p)
-				return (Face*)f[0];
+			if (this->v[0] == p)
+				return (Face*)this->f[1];
+			if (this->v[1] == p)
+				return (Face*)this->f[2];
+			if (this->v[2] == p)
+				return (Face*)this->f[0];
 			return 0;
 		}
 
-		bool dot0(const Vert& p)
+		bool signN() const
 		{
-			return 
-				(Signed62)n.x * (Signed62)((Signed15)p.x - (Signed15)v[0]->x) + 
-				(Signed62)n.y * (Signed62)((Signed15)p.y - (Signed15)v[0]->y) == 
-				(Signed62)n.z * (Signed62)((Signed29)((Vert*)v[0])->z - (Signed29)p.z);
+			return 0 > predicates::adaptive::orient2d(
+				this->v[0]->x, this->v[0]->y, 
+				this->v[1]->x, this->v[1]->y, 
+				this->v[2]->x, this->v[2]->y);
 		}
 
-		bool dotP(const Vert& p)
+		bool sign0() const
 		{
-			return 
-				(Signed62)n.x * (Signed62)((Signed15)p.x - (Signed15)v[0]->x) + 
-				(Signed62)n.y * (Signed62)((Signed15)p.y - (Signed15)v[0]->y) > 
-				(Signed62)n.z * (Signed62)((Signed29)((Vert*)v[0])->z - (Signed29)p.z);
+			return 0 == predicates::adaptive::orient2d(
+				this->v[0]->x, this->v[0]->y, 
+				this->v[1]->x, this->v[1]->y, 
+				this->v[2]->x, this->v[2]->y);
 		}
 
-		bool dotNP(const Vert& p)
+		bool dot0(const Vert& p) const
 		{
-			return 
-				(Signed62)n.x * (Signed62)((Signed15)p.x - (Signed15)v[0]->x) + 
-				(Signed62)n.y * (Signed62)((Signed15)p.y - (Signed15)v[0]->y) <= 
-				(Signed62)n.z * (Signed62)((Signed29)((Vert*)v[0])->z - (Signed29)p.z);
+			return
+				predicates::adaptive::incircle(
+					p.x, p.y,
+					this->v[0]->x, this->v[0]->y,
+					this->v[1]->x, this->v[1]->y,
+					this->v[2]->x, this->v[2]->y) == 0;
 		}
 
-		Signed62 dot(const Vert& p) const // dot
+		bool dotP(const Vert& p) const
 		{
-			Vect d = p - *(Vert*)v[0];
-			return (Signed62)n.x * (Signed62)d.x + (Signed62)n.y * (Signed62)d.y + (Signed62)n.z * (Signed62)d.z;
+			return
+				predicates::adaptive::incircle(
+					p.x, p.y,
+					this->v[0]->x, this->v[0]->y,
+					this->v[1]->x, this->v[1]->y,
+					this->v[2]->x, this->v[2]->y) > 0;
 		}
 
-		Norm cross() const // cross of diffs
+		bool dotN(const Vert& p) const
 		{
-			return (*(Vert*)v[1] - *(Vert*)v[0]).cross(*(Vert*)v[2] - *(Vert*)v[0]);
+			return
+				predicates::adaptive::incircle(
+					p.x, p.y,
+					this->v[0]->x, this->v[0]->y,
+					this->v[1]->x, this->v[1]->y,
+					this->v[2]->x, this->v[2]->y) < 0;
+		}
+
+		bool dotNP(const Vert& p) const
+		{
+			return
+				predicates::adaptive::incircle(
+					p.x,p.y, 
+					this->v[0]->x, this->v[0]->y, 
+					this->v[1]->x, this->v[1]->y, 
+					this->v[2]->x, this->v[2]->y) <= 0;
 		}
 	};
 
 	Vert* vert_alloc;
 	Face* face_alloc;
+	int* vert_map;
 	int max_verts;
 	int max_faces;
 
@@ -168,6 +192,7 @@ struct CDelaBella : IDelaBella
 
 	int inp_verts;
 	int out_verts;
+	int polygons;
 	int out_hull_faces;
 	int out_boundary_verts;
 	int unique_points;
@@ -175,39 +200,65 @@ struct CDelaBella : IDelaBella
 	int(*errlog_proc)(void* file, const char* fmt, ...);
 	void* errlog_file;
 
-	int Prepare(int* start, Face** hull, int* out_hull_faces, Face** cache)
+	int Prepare(int* start, Face** hull, int* out_hull_faces, Face** cache, uint64_t* sort_stamp)
 	{
+		uint64_t time0 = uSec();
+
+		if (errlog_proc)
+			errlog_proc(errlog_file, "[...] sorting vertices");
 		int points = inp_verts;
+
 		std::sort(vert_alloc, vert_alloc + points);
 
 		// rmove dups
 		{
+			vert_map[vert_alloc[0].i] = 0;
+
 			int w = 0, r = 1; // skip initial no-dups block
 			while (r < points && !Vert::overlap(vert_alloc + r, vert_alloc + w))
 			{
+				vert_map[vert_alloc[r].i] = r;
 				w++;
 				r++;
 			}
 
+			int d = w; // dup map
 			w++;
 
 			while (r < points)
 			{
+				vert_map[vert_alloc[r].i] = d; // add first dup in run
 				r++;
 
 				// skip dups
 				while (r < points && Vert::overlap(vert_alloc + r, vert_alloc + r - 1))
+				{
+					vert_map[vert_alloc[r].i] = d; // add next dup in run
 					r++;
+				}
 
-				// copy next no-dups block
+				// copy next no-dups block (in percent chunks?)
 				while (r < points && !Vert::overlap(vert_alloc + r, vert_alloc + r - 1))
+				{
+					vert_map[vert_alloc[r].i] = w;
 					vert_alloc[w++] = vert_alloc[r++];
+				}
+
+				d = w - 1;
 			}
+
+			uint64_t time1 = uSec();
+			if (sort_stamp)
+				*sort_stamp = time1;
+
+			if (errlog_proc)
+				errlog_proc(errlog_file, "\r[100] sorting vertices (%lld ms)\n", (time1 - time0) / 1000);
+			time0 = time1;
 
 			if (points - w)
 			{
 				if (errlog_proc)
-					errlog_proc(errlog_file, "[WRN] detected %d dups in xy array!\n", points - w);
+					errlog_proc(errlog_file, "[WRN] detected %d duplicates in xy array!\n", points - w);
 				points = w;
 			}
 		}
@@ -220,7 +271,7 @@ struct CDelaBella : IDelaBella
 					errlog_proc(errlog_file, "[WRN] all input points are colinear, returning single segment!\n");
 				first_boundary_vert = vert_alloc + 0;
 				first_internal_vert = 0;
-				vert_alloc[0].next = (DelaBella_Vertex*)vert_alloc + 1;
+				vert_alloc[0].next = vert_alloc + 1;
 				vert_alloc[1].next = 0;
 			}
 			else
@@ -232,355 +283,454 @@ struct CDelaBella : IDelaBella
 				vert_alloc[0].next = 0;
 			}
 
+			out_boundary_verts = points;
 			return -points;
 		}
 
-		int hull_faces = 2 * points - 4;
-		*out_hull_faces = hull_faces;
+		int i;
+		Face f; // tmp
+		f.v[0] = vert_alloc + 0;
 
-		if (max_faces < hull_faces)
+		T lo_x = vert_alloc[0].x, hi_x = lo_x;
+		T lo_y = vert_alloc[0].y, hi_y = lo_y;
+		int lower_left = 0;
+		int upper_right = 0;
+		for (i = 1; i < 3; i++)
 		{
-			if (max_faces)
+			Vert* v = vert_alloc + i;
+			f.v[i] = v;
+
+			if (v->x < lo_x)
 			{
-				//free(face_alloc);
-				delete [] face_alloc;
+				lo_x = v->x;
+				lower_left = i;
 			}
-			max_faces = 0;
-			//face_alloc = (Face*)malloc(sizeof(Face) * hull_faces);
-			face_alloc = new Face[hull_faces];
-			if (face_alloc)
-				max_faces = hull_faces;
 			else
+			if (v->x == lo_x && v->y < vert_alloc[lower_left].y)
+				lower_left = i;
+
+			if (v->x > hi_x)
+			{
+				hi_x = v->x;
+				upper_right = i;
+			}
+			else
+			if (v->x == hi_x && v->y > vert_alloc[upper_right].y)
+				upper_right = i;
+
+			lo_y = v->y < lo_y ? v->y : lo_y;
+			hi_y = v->y > hi_y ? v->y : hi_y;
+		}
+		
+		int pro = 0;
+		// skip until points are coplanar
+		while (i < points && f.dot0(vert_alloc[i]))
+		{
+			if (i >= pro)
+			{
+				uint64_t p = (int)((uint64_t)100 * i / points);
+				pro = (int)((p + 1) * points / 100);
+				if (pro >= points)
+					pro = points - 1;
+				if (i == points - 1)
+				{
+					p = 100;
+				}
+				if (errlog_proc)
+					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation ", p, p >= 100 ? "" : "%");
+			}
+
+			Vert* v = vert_alloc + i;
+
+			if (v->x < lo_x)
+			{
+				lo_x = v->x;
+				lower_left = i;
+			}
+			else
+			if (v->x == lo_x && v->y < vert_alloc[lower_left].y)
+				lower_left = i;
+
+			if (v->x > hi_x)
+			{
+				hi_x = v->x;
+				upper_right = i;
+			}
+			else
+			if (v->x == hi_x && v->y > vert_alloc[upper_right].y)
+				upper_right = i;
+
+			lo_y = v->y < lo_y ? v->y : lo_y;
+			hi_y = v->y > hi_y ? v->y : hi_y;
+
+			i++;
+		}
+
+		int* vert_sub = 0;
+
+		bool colinear = f.sign0(); // hybrid
+		if (colinear)
+		{
+			vert_sub = (int*)malloc(sizeof(int) * ((size_t)i+1));
+			if (!vert_sub)
 			{
 				if (errlog_proc)
 					errlog_proc(errlog_file, "[ERR] Not enough memory, shop for some more RAM. See you!\n");
 				return 0;
 			}
-		}
 
-		for (int i = 1; i < hull_faces; i++)
-			face_alloc[i - 1].next = face_alloc + i;
-		face_alloc[hull_faces - 1].next = 0;
+			for (int s = 0; s <= i; s++)
+				vert_sub[s] = s;
 
-		*cache = face_alloc;
-
-		Face f; // tmp
-		f.v[0] = vert_alloc + 0;
-		f.v[1] = vert_alloc + 1;
-		f.v[2] = vert_alloc + 2;
-		f.n = f.cross();
-
-		bool colinear = f.n.z == 0;
-		int i = 3;
-
-		/////////////////////////////////////////////////////////////////////////
-		// UNTIL INPUT IS COPLANAR, GROW IT IN FORM OF A 2D CONTOUR
-		/*
-		. |                |         after adding     . |        ________* L
-		. \ Last points to / Head     next point      . \ ______/        /
-		.  *____          |             ----->        .H *____          |
-		.  |\_  \_____    |                           .  |\_  \_____    |
-		.   \ \_      \__* - Tail points to Last      .   \ \_      \__* T
-		.    \  \_      /                             .    \  \_      /
-		.     \__ \_ __/                              .     \__ \_ __/
-		.        \__* - Head points to Tail           .        \__/
-		*/
-
-		Vert* head = (Vert*)f.v[0];
-		Vert* tail = (Vert*)f.v[1];
-		Vert* last = (Vert*)f.v[2];
-
-		head->next = tail;
-		tail->next = last;
-		last->next = head;
-
-		//while (i < points && f.dot(vert_alloc[i]) == 0)
-		while (i < points && f.dot0(vert_alloc[i]))
-		{
-			Vert* v = vert_alloc + i;
-
-			// it is enough to test just 1 non-zero coord
-			// but we want also to test stability (assert)
-			// so we calc all signs...
-
-			// why not testing sign of dot prod of 2 normals?
-			// that way we'd fall into precission problems
-
-			Norm LvH = (*v - *last).cross(*head - *last);
-			bool lvh =
-				(f.n.x > 0 && LvH.x > 0) || (f.n.x < 0 && LvH.x < 0) ||
-				(f.n.y > 0 && LvH.y > 0) || (f.n.y < 0 && LvH.y < 0) ||
-				(f.n.z > 0 && LvH.z > 0) || (f.n.z < 0 && LvH.z < 0);
-
-			Norm TvL = (*v - *tail).cross(*last - *tail);
-			bool tvl =
-				(f.n.x > 0 && TvL.x > 0) || (f.n.x < 0 && TvL.x < 0) ||
-				(f.n.y > 0 && TvL.y > 0) || (f.n.y < 0 && TvL.y < 0) ||
-				(f.n.z > 0 && TvL.z > 0) || (f.n.z < 0 && TvL.z < 0);
-
-			if (lvh && !tvl) // insert new f on top of e(2,0) = (last,head)
+			// choose x or y axis to sort verts (no need to be exact)
+			if (hi_x - lo_x > hi_y - lo_y)
 			{
-				// f.v[0] = head;
-				f.v[1] = last;
-				f.v[2] = v;
+				struct 
+				{ 
+					bool operator() (const int& a, const int& b)
+					{
+						return less(vert_alloc[a], vert_alloc[b]);
+					}
 
-				last->next = v;
-				v->next = head;
-				tail = last;
+					bool less(const Vert& a, const Vert& b) const 
+					{ 
+						return a.x < b.x; 
+					}
+
+					Vert* vert_alloc;
+				} c;
+
+				c.vert_alloc = vert_alloc;
+				std::sort(vert_sub, vert_sub + i, c);
 			}
 			else
-				if (tvl && !lvh) // insert new f on top of e(1,2) = (tail,last)
-				{
-					f.v[0] = last;
-					//f.v[1] = tail;
-					f.v[2] = v;
+			{
+				struct 
+				{ 
+					bool operator() (const int& a, const int& b)
+					{
+						return less(vert_alloc[a], vert_alloc[b]);
+					}
 
-					tail->next = v;
-					v->next = last;
-					head = last;
+					bool less(const Vert& a, const Vert& b) const 
+					{ 
+						return a.y < b.y; 
+					} 
+
+					Vert* vert_alloc;
+				} c;
+
+				c.vert_alloc = vert_alloc;
+				std::sort(vert_sub, vert_sub + i, c);
+			}
+		}
+		else
+		{
+			// split to lower (below diag) and uppert (above diag) parts, 
+			// sort parts separately in opposite directions
+			// mark part with Vert::sew temporarily
+
+			for (int j = 0; j < i; j++)
+			{
+				if (j == lower_left)
+				{
+					// lower
+					vert_alloc[j].sew = &f;
+				}
+				else
+				if (j == upper_right)
+				{
+					// upper
+					vert_alloc[j].sew = 0;
 				}
 				else
 				{
-					// wtf? dilithium crystals are fucked.
-					assert(0);
+					Vert* ll = vert_alloc + lower_left;
+					Vert* ur = vert_alloc + upper_right;
+					T dot = predicates::adaptive::orient2d(ll->x, ll->y, ur->x, ur->y, vert_alloc[j].x, vert_alloc[j].y);
+					if (dot < 0)
+					{
+						// lower
+						vert_alloc[j].sew = &f;
+					}
+					else
+					{
+						#ifdef DELABELLA_AUTOTEST
+						assert(dot > 0);
+						#endif
+						// upper
+						vert_alloc[j].sew = 0;
+					}
+				}
+			}
+
+			struct
+			{
+				// default to CW order (unlikely, if wrong, we will reverse using one=2 and two=1)
+				
+				bool operator()(const int& a, const int& b) const
+				{
+					return less(vert_alloc[a], vert_alloc[b]);
 				}
 
-			last = v;
-			i++;
+				bool less(const Vert& a, const Vert& b) const
+				{
+					// if a is lower and b is upper, return true
+					if (a.sew && !b.sew)
+						return false;
+
+					// if a is upper and b is lower, return false
+					if (!a.sew && b.sew)
+						return true;
+
+					// actually we can compare coords directly
+					if (a.sew)
+					{
+						// lower
+						if (a.x > b.x)
+							return true;
+						if (a.x == b.x)
+							return a.y > b.y;
+						return false;
+					}
+					else
+					{
+						// upper
+						if (a.x < b.x)
+							return true;
+						if (a.x == b.x)
+							return a.y < b.y;
+						return false;
+					}
+
+					// otherwise
+					#ifdef DELABELLA_AUTOTEST
+					assert(0);
+					#endif
+					return false;
+				}
+
+				Vert* vert_alloc;
+			} c;
+
+			vert_sub = (int*)malloc(sizeof(int) * ((size_t)i+1));
+			if (!vert_sub)
+			{
+				if (errlog_proc)
+					errlog_proc(errlog_file, "[ERR] Not enough memory, shop for some more RAM. See you!\n");
+				return 0;
+			}
+
+			for (int s = 0; s <= i; s++)
+				vert_sub[s] = s;
+
+			c.vert_alloc = vert_alloc;
+			std::sort(vert_sub, vert_sub + i, c);
+		}
+
+		*out_hull_faces = 0;
+
+		// alloc faces only if we're going to create them
+		if (i < points || !colinear)
+		{
+			int hull_faces = 2 * points - 4;
+			*out_hull_faces = hull_faces;
+
+			if (max_faces < hull_faces)
+			{
+				if (max_faces)
+				{
+					//free(face_alloc);
+					delete[] face_alloc;
+				}
+				max_faces = 0;
+				face_alloc = new Face[hull_faces];
+				if (face_alloc)
+					max_faces = hull_faces;
+				else
+				{
+					if (errlog_proc)
+						errlog_proc(errlog_file, "[ERR] Not enough memory, shop for some more RAM. See you!\n");
+					return 0;
+				}
+			}
+
+			for (int i = 1; i < hull_faces; i++)
+				face_alloc[i - 1].next = face_alloc + i;
+			face_alloc[hull_faces - 1].next = 0;
+
+			*cache = face_alloc;
 		}
 
 		if (i == points)
 		{
+			if (errlog_proc)
+			{
+				if (colinear)
+					errlog_proc(errlog_file, "[WRN] all input points are colinear\n");
+				else
+					errlog_proc(errlog_file, "[WRN] all input points are cocircular\n");
+			}
+
 			if (colinear)
 			{
-				if (errlog_proc)
-					errlog_proc(errlog_file, "[WRN] all input points are colinear, returning segment list!\n");
-				first_boundary_vert = head;
+				// link verts into open list
+				first_boundary_vert = vert_alloc + vert_sub[0];
 				first_internal_vert = 0;
-				last->next = 0; // break contour, make it a list
+				out_boundary_verts = points;
+
+				for (int j = 1; j < points; j++)
+					vert_alloc[j - 1].next = vert_alloc + vert_sub[j];
+				vert_alloc[points - 1].next = 0;
+
+				free(vert_sub);
 				return -points;
 			}
-			else
+
+			// we're almost done!
+			// time to build final flat hull
+			Face* next_p = Face::Alloc(cache);
+			Face* next_q = Face::Alloc(cache);
+			Face* prev_p = 0;
+			Face* prev_q = 0;
+
+			for (int j = 2; j < i; j++)
 			{
-				if (points > 3)
+				Face* p = next_p;
+				p->v[0] = vert_alloc + vert_sub[0];
+				p->v[1] = vert_alloc + vert_sub[j-1];
+				p->v[2] = vert_alloc + vert_sub[j];
+
+				// mirrored
+				Face* q = next_q;
+				q->v[0] = vert_alloc + vert_sub[0];
+				q->v[1] = vert_alloc + vert_sub[j];
+				q->v[2] = vert_alloc + vert_sub[j-1];
+
+				if (j < i - 1)
 				{
-					if (errlog_proc)
-						errlog_proc(errlog_file, "[NFO] all input points are cocircular.\n");
+					next_p = Face::Alloc(cache);
+					next_q = Face::Alloc(cache);
 				}
 				else
 				{
-					if (errlog_proc)
-						errlog_proc(errlog_file, "[NFO] trivial case of 3 points, thank you.\n");
-
-					first_dela_face = Face::Alloc(cache);
-					first_dela_face->next = 0;
-					first_hull_face = Face::Alloc(cache);
-					first_hull_face->next = 0;
-
-					first_dela_face->f[0] = first_dela_face->f[1] = first_dela_face->f[2] = first_hull_face;
-					first_hull_face->f[0] = first_hull_face->f[1] = first_hull_face->f[2] = first_dela_face;
-
-					head->sew = tail->sew = last->sew = first_hull_face;
-
-					if (f.n.z < 0)
-					{
-						first_dela_face->v[0] = head;
-						first_dela_face->v[1] = tail;
-						first_dela_face->v[2] = last;
-						first_hull_face->v[0] = last;
-						first_hull_face->v[1] = tail;
-						first_hull_face->v[2] = head;
-
-						// reverse silhouette
-						head->next = last;
-						last->next = tail;
-						tail->next = head;
-
-						first_boundary_vert = last;
-						first_internal_vert = 0;
-					}
-					else
-					{
-						first_dela_face->v[0] = last;
-						first_dela_face->v[1] = tail;
-						first_dela_face->v[2] = head;
-						first_hull_face->v[0] = head;
-						first_hull_face->v[1] = tail;
-						first_hull_face->v[2] = last;
-
-						first_boundary_vert = head;
-						first_internal_vert = 0;
-					}
-
-					first_dela_face->n = first_dela_face->cross();
-					first_hull_face->n = first_hull_face->cross();
-
-					return 3;
+					next_p = 0;
+					next_q = 0;
 				}
 
-				// retract last point it will be added as a cone's top later
-				last = head;
-				head = (Vert*)head->next;
-				i--;
+				p->f[0] = q;
+				p->f[1] = next_p ? next_p : q;
+				p->f[2] = prev_p ? prev_p : q;
+
+				q->f[0] = p;
+				q->f[1] = prev_q ? prev_q : p;
+				q->f[2] = next_q ? next_q : p;
+
+				prev_p = p;
+				prev_q = q;
 			}
+
+			*hull = prev_q;
 		}
-
-		/////////////////////////////////////////////////////////////////////////
-		// CREATE CONE HULL WITH TOP AT cloud[i] AND BASE MADE OF CONTOUR LIST
-		// in 2 ways :( - depending on at which side of the contour a top vertex appears
-
+		else
 		{
-			Vert* q = vert_alloc + i;
+			// time to build cone hull with i'th vertex at the tip and 0..i-1 verts in the base
+			// build cone's base in direction it is invisible to cone's tip!
 
-			//if (f.dot(*q) > 0)
-			if (f.dotP(*q))
+			f.v[0] = vert_alloc + vert_sub[0];
+			f.v[1] = vert_alloc + vert_sub[1];
+			f.v[2] = vert_alloc + vert_sub[2];
+
+			int one = 1, two = 2;
+			if (!f.dotNP(vert_alloc[vert_sub[i]]))
 			{
-				Vert* p = last;
-				Vert* n = (Vert*)p->next;
-
-				Face* first_side = Face::Alloc(cache);
-				first_side->v[0] = p;
-				first_side->v[1] = n;
-				first_side->v[2] = q;
-				first_side->n = first_side->cross();
-				*hull = first_side;
-
-				p = n;
-				n = (Vert*)n->next;
-
-				Face* prev_side = first_side;
-				Face* prev_base = 0;
-				Face* first_base = 0;
-
-				do
-				{
-					Face* base = Face::Alloc(cache);
-					base->v[0] = n;
-					base->v[1] = p;
-					base->v[2] = last;
-					base->n = base->cross();
-
-					Face* side = Face::Alloc(cache);
-					side->v[0] = p;
-					side->v[1] = n;
-					side->v[2] = q;
-					side->n = side->cross();
-
-					side->f[2] = base;
-					base->f[2] = side;
-
-					side->f[1] = prev_side;
-					prev_side->f[0] = side;
-
-					base->f[0] = prev_base;
-					if (prev_base)
-						prev_base->f[1] = base;
-					else
-						first_base = base;
-
-					prev_base = base;
-					prev_side = side;
-
-					p = n;
-					n = (Vert*)n->next;
-				} while (n != last);
-
-				Face* last_side = Face::Alloc(cache);
-				last_side->v[0] = p;
-				last_side->v[1] = n;
-				last_side->v[2] = q;
-				last_side->n = last_side->cross();
-
-				last_side->f[1] = prev_side;
-				prev_side->f[0] = last_side;
-
-				last_side->f[0] = first_side;
-				first_side->f[1] = last_side;
-
-				first_base->f[0] = first_side;
-				first_side->f[2] = first_base;
-
-				last_side->f[2] = prev_base;
-				prev_base->f[1] = last_side;
-
-				i++;
+				// if i-th vert can see the contour we will flip every face
+				one = 2;
+				two = 1;
 			}
-			else
+
+			Face* next_p = Face::Alloc(cache);
+			Face* prev_p = 0;
+
+			Face* first_q = 0;
+			Face* next_q = Face::Alloc(cache);
+			Face* prev_q = 0;
+
+			for (int j = 2; j < i; j++)
 			{
-				Vert* p = last;
-				Vert* n = (Vert*)p->next;
+				Face* p = next_p;
+				p->v[0] = vert_alloc + vert_sub[0];
+				p->v[one] = vert_alloc + vert_sub[j - 1];
+				p->v[two] = vert_alloc + vert_sub[j];
 
-				Face* first_side = Face::Alloc(cache);
-				first_side->v[0] = n;
-				first_side->v[1] = p;
-				first_side->v[2] = q;
-				first_side->n = first_side->cross();
-				*hull = first_side;
+				Face* q;
 
-				p = n;
-				n = (Vert*)n->next;
-
-				Face* prev_side = first_side;
-				Face* prev_base = 0;
-				Face* first_base = 0;
-
-				do
+				if (j == 2)
 				{
-					Face* base = Face::Alloc(cache);
-					base->v[0] = p;
-					base->v[1] = n;
-					base->v[2] = last;
-					base->n = base->cross();
+					// first base triangle also build extra tip face
+					q = Face::Alloc(cache);
+					q->v[0] = vert_alloc + vert_sub[i];
+					q->v[one] = vert_alloc + vert_sub[1];
+					q->v[two] = vert_alloc + vert_sub[0];
 
-					Face* side = Face::Alloc(cache);
-					side->v[0] = n;
-					side->v[1] = p;
-					side->v[2] = q;
-					side->n = side->cross();
+					q->f[0] = p;
+					q->f[one] = 0; // LAST_Q;
+					q->f[two] = next_q;
 
-					side->f[2] = base;
-					base->f[2] = side;
+					first_q = q;
+					prev_q = q;
+				}
 
-					side->f[0] = prev_side;
-					prev_side->f[1] = side;
+				q = next_q;
+				q->v[0] = vert_alloc + vert_sub[i];
+				q->v[one] = vert_alloc + vert_sub[j];
+				q->v[two] = vert_alloc + vert_sub[j-1];
 
-					base->f[1] = prev_base;
-					if (prev_base)
-						prev_base->f[0] = base;
-					else
-						first_base = base;
+				next_q = Face::Alloc(cache);
 
-					prev_base = base;
-					prev_side = side;
+				q->f[0] = p;
+				q->f[one] = prev_q;
+				q->f[two] = next_q;
+				prev_q = q;
 
-					p = n;
-					n = (Vert*)n->next;
-				} while (n != last);
+				p->f[0] = q;
 
-				Face* last_side = Face::Alloc(cache);
-				last_side->v[0] = n;
-				last_side->v[1] = p;
-				last_side->v[2] = q;
-				last_side->n = last_side->cross();
+				if (j < i - 1)
+				{
+					next_p = Face::Alloc(cache);
+				}
+				else
+				{
+					// last base triangle also build extra tip face
+					q = next_q;
+					q->v[0] = vert_alloc + vert_sub[i];
+					q->v[one] = vert_alloc + vert_sub[0];
+					q->v[two] = vert_alloc + vert_sub[i-1];
 
-				last_side->f[0] = prev_side;
-				prev_side->f[1] = last_side;
+					q->f[0] = p;
+					q->f[one] = prev_q;
+					q->f[two] = first_q;
 
-				last_side->f[1] = first_side;
-				first_side->f[0] = last_side;
+					first_q->f[one] = q;
 
-				first_base->f[1] = first_side;
-				first_side->f[2] = first_base;
+					next_p = 0;
+					prev_q = q;
+				}
 
-				last_side->f[2] = prev_base;
-				prev_base->f[0] = last_side;
+				p->f[one] = next_p ? next_p : q;
+				p->f[two] = prev_p ? prev_p : first_q;
 
-				i++;
+				prev_p = p;
 			}
+
+			*hull = prev_q;
+
+			i++;
 		}
+
+		free(vert_sub);
 
 		*start = i;
-
 		return points;
 	}
 
@@ -591,18 +741,33 @@ struct CDelaBella : IDelaBella
 		int hull_faces = 0;
 		Face* cache = 0;
 
-		int points = Prepare(&i, &hull, &hull_faces, &cache);
+		uint64_t sort_stamp;
+		int points = Prepare(&i, &hull, &hull_faces, &cache, &sort_stamp);
 		unique_points = points < 0 ? -points : points;
-		if (points <= 0 || points == 3)
+		if (points <= 0)
+		{
 			return points;
+		}
 
 		/////////////////////////////////////////////////////////////////////////
 		// ACTUAL ALGORITHM
 
+		int pro = 0;
 		for (; i < points; i++)
 		{
-			//ValidateHull(alloc, 2 * i - 4);
+			if (i >= pro)
+			{
+				uint64_t p = (int)((uint64_t)100 * i / points);
+				pro = (int)((p+1) * points / 100);
+				if (pro >= points)
+					pro = points - 1;
+				if (i == points - 1)
+					p = 100;
+				if (errlog_proc)
+					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation ", p, p>=100 ? "":"%");
+			}
 
+			//ValidateHull(alloc, 2 * i - 4);
 			Vert* q = vert_alloc + i;
 			Vert* p = vert_alloc + i - 1;
 			Face* f = hull;
@@ -611,18 +776,23 @@ struct CDelaBella : IDelaBella
 			//    simply iterate around last vertex using last added triange adjecency info
 			//while (f->dot(*q) <= 0)
 			while (f->dotNP(*q))
+			//while (f->dotN(*q)) // we want to consume coplanar faces
 			{
 				f = f->Next(p);
 				if (f == hull)
 				{
+					//printf(".");
 					// if no visible face can be located at last vertex,
 					// let's run through all faces (approximately last to first),
 					// yes this is emergency fallback and should not ever happen.
-					f = face_alloc + 2 * i - 4 - 1;
+					f = face_alloc + (intptr_t)2 * i - 4 - 1;
 					//while (f->dot(*q) <= 0)
 					while (f->dotNP(*q))
+					//while (f->dotN(*q)) // we want to consume coplanar faces
 					{
+						#ifdef DELABELLA_AUTOTEST
 						assert(f != face_alloc); // no face is visible? you must be kidding!
+						#endif
 						f--;
 					}
 				}
@@ -663,6 +833,7 @@ struct CDelaBella : IDelaBella
 						// if neighbor is not visible we have slihouette edge
 						//if (n->dot(*q) <= 0) 
 						if (n->dotNP(*q))
+						//if (n->dotN(*q)) // consuming coplanar faces
 						{
 							// build face
 							add++;
@@ -679,20 +850,21 @@ struct CDelaBella : IDelaBella
 							s->v[1] = b;
 							s->v[2] = q;
 
-							s->n = s->cross();
 							s->f[2] = n;
 
 							// change neighbour's adjacency from old visible face to cone side
 							if (n->f[0] == f)
 								n->f[0] = s;
 							else
-								if (n->f[1] == f)
-									n->f[1] = s;
-								else
-									if (n->f[2] == f)
-										n->f[2] = s;
-									else
-										assert(0);
+							if (n->f[1] == f)
+								n->f[1] = s;
+							else
+							if (n->f[2] == f)
+								n->f[2] = s;
+							#ifdef DELABELLA_AUTOTEST
+							else
+								assert(0);
+							#endif
 
 							// build silhouette needed for sewing sides in the second pass
 							a->sew = s;
@@ -706,13 +878,15 @@ struct CDelaBella : IDelaBella
 							if (n->f[0] == f)
 								n->f[0] = 0;
 							else
-								if (n->f[1] == f)
-									n->f[1] = 0;
-								else
-									if (n->f[2] == f)
-										n->f[2] = 0;
-									else
-										assert(0);
+							if (n->f[1] == f)
+								n->f[1] = 0;
+							else
+							if (n->f[2] == f)
+								n->f[2] = 0;
+							#ifdef DELABELLA_AUTOTEST
+							else
+								assert(0);
+							#endif
 
 							// push neighbor face, it's visible and requires processing
 							n->next = stack ? stack : n;
@@ -722,14 +896,16 @@ struct CDelaBella : IDelaBella
 				}
 			}
 
+			#ifdef DELABELLA_AUTOTEST
 			// if add<del+2 hungry hull has consumed some point
 			// that means we can't do delaunay for some under precission reasons
 			// althought convex hull would be fine with it
 			assert(add == del + 2);
+			#endif
 
 			// 3. SEW SIDES OF CONE BUILT ON SLIHOUTTE SEGMENTS
 
-			hull = face_alloc + 2 * i - 4 + 1; // last added face
+			hull = face_alloc + (intptr_t)2 * i - 4 + 1; // last added face
 
 										  // last face must contain part of the silhouette
 										  // (edge between its v[0] and v[1])
@@ -746,8 +922,9 @@ struct CDelaBella : IDelaBella
 			} while (pr != entry);
 		}
 
+		#ifdef DELABELLA_AUTOTEST
 		assert(2 * i - 4 == hull_faces);
-		//ValidateHull(alloc, hull_faces);
+		#endif
 
 		for (int j = 0; j < points; j++)
 		{
@@ -770,7 +947,7 @@ struct CDelaBella : IDelaBella
 			((Vert*)f->v[1])->sew = f;
 			((Vert*)f->v[2])->sew = f;
 
-			if (f->n.z < 0)
+			if (f->signN())
 			{
 				f->index = i;  // store index in dela list
 				*prev_dela = f;
@@ -779,7 +956,7 @@ struct CDelaBella : IDelaBella
 			}
 			else
 			{
-				f->index = others; // store index in hull list
+				f->index = ~others; // store index in hull list (~ to mark it is not dela)
 				*prev_hull = f;
 				prev_hull = (Face**)&f->next;
 				others++;
@@ -794,36 +971,39 @@ struct CDelaBella : IDelaBella
 
 		// let's trace boudary contour, at least one vertex of first_hull_face
 		// must be shared with dela face, find that dela face
-		DelaBella_Iterator it;
-		DelaBella_Vertex* v = first_hull_face->v[0];
-		const DelaBella_Triangle* t = v->StartIterator(&it);
-		const DelaBella_Triangle* e = t; // end
+		Iter it;
+		Vert* v = (Vert*)first_hull_face->v[0];
+		Face* t = (Face*)v->StartIterator(&it);
+		Face* e = t; // end
 		
 		first_boundary_vert = (Vert*)v;
 		out_boundary_verts = 1;
 
 		while (1)
 		{
-			if (t->n.z < 0)
+			if (t->index >= 0)
 			{
 				int pr = it.around-1; if (pr<0) pr = 2;
 				int nx = it.around+1; if (nx>2) nx = 0;
 
-				if (t->f[pr]->n.z >= 0)
+				if (t->f[pr]->index < 0)
 				{
 					// let's move from: v to t->v[nx]
 					v->next = t->v[nx];
-					v = v->next;
+					v = (Vert*)v->next;
 					if (v == first_boundary_vert)
 						break; // lap finished
 					out_boundary_verts++;
-					t = t->StartIterator(&it,nx);
+					t = (Face*)t->StartIterator(&it,nx);
 					e = t;
 					continue;
 				}
 			}
-			t = it.Next();
+			t = (Face*)it.Next();
+
+			#ifdef DELABELLA_AUTOTEST
 			assert(t!=e);
+			#endif
 		}
 
 		// link all other verts into internal list
@@ -839,6 +1019,8 @@ struct CDelaBella : IDelaBella
 			}
 		}
 
+		if (errlog_proc)
+			errlog_proc(errlog_file, "\r[100] convex hull triangulation (%lld ms)\n", (uSec() - sort_stamp) / 1000);
 
 		return 3*i;
 	}
@@ -847,6 +1029,7 @@ struct CDelaBella : IDelaBella
 	{
 		inp_verts = points;
 		out_verts = 0;
+		polygons = 0;
 
 		first_dela_face = 0;
 		first_hull_face = 0;
@@ -856,13 +1039,17 @@ struct CDelaBella : IDelaBella
 		{
 			if (max_verts)
 			{
+				free(vert_map);
+				vert_map = 0;
+
 				//free(vert_alloc);
 				delete [] vert_alloc;
 				vert_alloc = 0;
 				max_verts = 0;
 			}
 
-			//vert_alloc = (Vert*)malloc(sizeof(Vert)*points);
+			vert_map = (int*)malloc(sizeof(int) * points);
+
 			vert_alloc = new Vert[points];
 			if (vert_alloc)
 				max_verts = points;
@@ -877,65 +1064,854 @@ struct CDelaBella : IDelaBella
 		return true;
 	}
 
-	virtual int Triangulate(int points, const float* x, const float* y = 0, int advance_bytes = 0)
+	// private
+	Face* FindConstraintOffenders(Vert* va, Vert* vb, Face*** ptail, Vert** restart)
 	{
-		if (!x)
-			return 0;
+		static const int rotate[3][3] = { {0,1,2},{1,2,0},{2,0,1} };
+		static const int other_vert[3][2] = { {1,2},{2,0},{0,1} };
 
-		if (!y)
-			y = x + 1;
+		// returns list of faces!
+		// with Face::index replaced with vertex indice opposite to the offending edge
+		// (we are about to change triangulation after all so indexes will change as well)
+		// and it's safe for detrimination of dela/hull (sign is preserved)
 
-		if (advance_bytes < static_cast<int>(sizeof(float) * 2))
-			advance_bytes = sizeof(float) * 2;
+		Face* list = 0;
+		Face** tail = &list;
 
-		if (!ReallocVerts(points))
-			return 0;
+		Iter it;
 
-		for (int i = 0; i < points; i++)
+		Face* first = (Face*)va->StartIterator(&it);
+		Face* face = first;
+
+		// find first face around va, containing offending edge
+		Vert* v0;
+		Vert* v1;
+		Face* N = 0;
+		int a, b, c;
+
+		while (1)
 		{
-			Vert* v = vert_alloc + i;
-			v->i = i;
-			v->x = (Signed14)*(const float*)((const char*)x + i*advance_bytes);
-			v->y = (Signed14)*(const float*)((const char*)y + i*advance_bytes);
-			v->z = s14sqr(v->x) + s14sqr(v->y);
+			if (face->index < 0)
+			{
+				face = (Face*)it.Next();
+				#ifdef DELABELLA_AUTOTEST
+				assert(face != first);
+				#endif
+				continue;
+			}
+
+			a = it.around;
+			b = other_vert[a][0];
+			v0 = (Vert*)(face->v[b]);
+			if (v0 == vb)
+			{
+				*tail = 0;
+				*ptail = list ? tail : 0;
+				return list; // ab is already there
+			}
+
+			c = other_vert[a][1];
+			v1 = (Vert*)(face->v[c]);
+			if (v1 == vb)
+			{
+				*tail = 0;
+				*ptail = list ? tail : 0;
+				return list; // ab is already there
+			}
+
+			T a0b = predicates::adaptive::orient2d(va->x,va->y, v0->x,v0->y, vb->x,vb->y);
+			T a1b = predicates::adaptive::orient2d(va->x,va->y, v1->x,v1->y, vb->x,vb->y);
+			
+			if (a0b <= 0 && a1b >= 0)
+			{
+				// note: 
+				// check co-linearity only if v0,v1 are pointing
+				// to the right direction (from va to vb)
+
+				if (a0b == 0)
+				{
+					*restart = v0;
+					*tail = 0;
+					*ptail = list ? tail : 0;
+					return list;
+				}
+
+				if (a1b == 0)
+				{
+					*restart = v1;
+					*tail = 0;
+					*ptail = list ? tail : 0;
+					return list;
+				}
+
+				// offending edge!
+				N = (Face*)face;
+				break;
+			}
+
+			face = (Face*)it.Next();
+
+			#ifdef DELABELLA_AUTOTEST
+			assert(face != first);
+			#endif
 		}
-		
-		out_hull_faces = 0;
-		unique_points = 0;
-		out_verts = Triangulate(&out_hull_faces);
-		return out_verts;
+
+		while (1)
+		{
+			if (a)
+			{
+				// rotate N->v[] and N->f 'a' times 'backward' such offending edge appears opposite to v[0]
+				const int* r = rotate[a];
+
+				Vert* v[3] = { (Vert*)N->v[0], (Vert*)N->v[1], (Vert*)N->v[2] };
+				N->v[0] = v[r[0]];
+				N->v[1] = v[r[1]];
+				N->v[2] = v[r[2]];
+
+				Face* f[3] = { (Face*)N->f[0], (Face*)N->f[1], (Face*)N->f[2] };
+				N->f[0] = f[r[0]];
+				N->f[1] = f[r[1]];
+				N->f[2] = f[r[2]];
+			}
+
+			// add edge
+			*tail = N;
+			tail = (Face**)&N->next;
+
+			// what is our next face?
+			Face* F = (Face*)(N->f[0]);
+			int d, e, f;
+
+			if (F->f[0] == N)
+			{
+				d = 0;
+				e = 1;
+				f = 2;
+			}
+			else
+			if (F->f[1] == N)
+			{
+				d = 1;
+				e = 2;
+				f = 0;
+			}
+			else
+			{
+				d = 2;
+				e = 0;
+				f = 1;
+			}
+
+			Vert* vr = (Vert*)(F->v[d]);
+
+			if (vr == vb)
+			{
+				*restart = 0;
+				*tail = 0;
+				*ptail = list ? tail : 0;
+				return list;
+			}
+
+			// is vr above or below ab ?
+			T abr = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, vr->x, vr->y);
+			
+			if (abr == 0)
+			{
+				*restart = vr;
+				*tail = 0;
+				*ptail = list ? tail : 0;
+				return list;
+			}
+
+			if (abr > 0)
+			{
+				// above: de edge (a' = f vert)
+				a = f;
+				v0 = (Vert*)F->v[d];
+				v1 = (Vert*)F->v[e];
+				N = F;
+			}
+			else
+			{
+				// below: fd edge (a' = e vert)
+				a = e;
+				v0 = (Vert*)F->v[f];
+				v1 = (Vert*)F->v[d];
+				N = F;
+			}
+		}
+
+		#ifdef DELABELLA_AUTOTEST
+		assert(0);
+		#endif
+		*restart = 0;
+		*ptail = 0;
+		return 0;
 	}
 
-	virtual int Triangulate(int points, const double* x, const double* y, int advance_bytes)
+	virtual int ConstrainEdges(int edges, const int* pa, const int* pb, int advance_bytes, bool classify)
 	{
-		if (!x)
-			return 0;
-		
-		if (!y)
-			y = x + 1;
-		
-		if (advance_bytes < static_cast<int>(sizeof(double) * 2))
-			advance_bytes = sizeof(double) * 2;
+		if (advance_bytes <= 0)
+			advance_bytes = 2*sizeof(int);
 
-		if (!ReallocVerts(points))
-			return 0;
+		uint64_t time0 = uSec();
 
-		for (int i = 0; i < points; i++)
+		int flips = 0;
+
+		int pro = 0;
+		for (int con = 0; con < edges; con++)
 		{
-			Vert* v = vert_alloc + i;
-			v->i = i;
-			v->x = (Signed14)*(const double*)((const char*)x + i*advance_bytes);
-			v->y = (Signed14)*(const double*)((const char*)y + i*advance_bytes);
-			v->z = s14sqr(v->x) + s14sqr(v->y);
+			if (con >= pro)
+			{
+				uint64_t p = (int)((uint64_t)100 * con / edges);
+				pro = (int)((p + 1) * edges / 100);
+				if (pro >= edges)
+					pro = edges - 1;
+				if (con == edges - 1)
+					p = 100;
+				if (errlog_proc)
+					errlog_proc(errlog_file, "\r[%2d%s] constraining ", p, p >= 100 ? "" : "%");
+			}
+
+			int a = *(const int*)((const char*)pa + (intptr_t)con * advance_bytes);
+			int b = *(const int*)((const char*)pb + (intptr_t)con * advance_bytes);
+
+			if (!first_dela_face || a == b)
+				continue;
+
+			// current
+			Vert* va = (Vert*)GetVertexByIndex(a);
+			if (!va)
+				continue;
+
+			// destination
+			Vert* vc = (Vert*)GetVertexByIndex(b);
+			if (!vc)
+				continue;
+
+			do {
+			// 1. Make list of offenders
+			Face** tail = 0;
+			Vert* restart = 0;
+			Face* list = FindConstraintOffenders(va, vc, &tail, &restart);
+			if (!list && restart)
+			{
+				va = restart;
+				continue;
+			}
+
+			Face* flipped = 0;
+
+			Vert* vb = restart ? restart : vc;
+
+			// will we relink'em back to dela and replace indexes?
+
+			// 2. Repeatedly until there are no offenders on the list
+			// - remove first edge from the list of offenders
+			// - if it forms concave quad diagonal, push it back to the list of offenders
+			// - otherwise do flip then:
+			//   - if flipped diagonal still intersects ab, push it back to the list of offenders
+			//   - otherwise push it to the list of flipped edges
+			while (list)
+			{
+				const int a = 0, b = 1, c = 2;
+
+				Face* N = list;
+				list = (Face*)N->next;
+				N->next = 0;
+
+				Vert* v0 = (Vert*)(N->v[b]);
+				Vert* v1 = (Vert*)(N->v[c]);
+
+				Face* F = (Face*)(N->f[a]);
+				int d, e, f;
+
+				if (F->f[0] == N)
+				{
+					d = 0;
+					e = 1;
+					f = 2;
+				}
+				else
+				if (F->f[1] == N)
+				{
+					d = 1;
+					e = 2;
+					f = 0;
+				}
+				else
+				{
+					d = 2;
+					e = 0;
+					f = 1;
+				}
+
+				Vert* v = (Vert*)N->v[0]; // may be not same as global va (if we have had a skip)
+				Vert* vr = (Vert*)(F->v[d]);
+
+				// is v,v0,vr,v1 a convex quad?
+				T v0r = predicates::adaptive::orient2d(v->x, v->y, v0->x, v0->y, vr->x, vr->y);
+				T v1r = predicates::adaptive::orient2d(v->x, v->y, v1->x, v1->y, vr->x, vr->y);
+				
+				if (v0r >= 0 || v1r <= 0)
+				{
+					// CONCAVE CUNT!
+					*tail = N;
+					tail = (Face**)&N->next;
+					continue;
+				}
+
+				#ifdef DELABELLA_AUTOTEST
+				assert(v0r < 0 && v1r > 0);
+				#endif
+
+				// it's convex, xa already checked
+				// if (l_a0r < r_a0r && l_a1r > r_a1r)
+				{
+					if (f == 0)
+					{
+						/*           *                             *
+							   va*  / \                      va*  / \
+								  \/   \                        \/   \
+								  /\ O  \                       /\ O  \
+							   v /  \    \v0                 v /  \    \v0
+								*----\----*---------*	      *----\----*---------*
+							   / \a   \ b/f\      q/	     / \'-,c\   a\      q/
+							  /   \  N \/   \  Q  /   -->   /   \f '-, N  \  Q  /
+							 /  P  \   /\ F  \   /		   /  P  \  F '-, b\   /
+							/p      \c/e \   d\ /		  /p      \e   \d'-,\ /
+						   *---------*----+----*		 *---------*----\----*
+									v1     \     vr		           v1    \    vr
+											*vb                           *vb
+						*/
+
+						Face* O = (Face*)N->f[c];
+
+						Face* P = (Face*)(N->f[b]);
+						int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
+
+						Face* Q = (Face*)(F->f[e]);
+						int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
+
+						// do flip
+						N->v[a] = v0;
+						N->v[b] = vr;
+						N->v[c] = v;
+						N->f[a] = F;
+						N->f[b] = O;
+						N->f[c] = Q;
+						F->v[f] = v;  // from v0
+						F->f[d] = P;  // from N
+						F->f[e] = N;  // from Q
+						P->f[p] = F;  // from N
+						Q->f[q] = N;  // from F
+
+						v0->sew = N;
+						v1->sew = F;
+					}
+					else // e==0, (or d==0 but we don't care about it)
+					{
+						/*           *						       *
+									/p\						      /p\
+								   /   \					     /   \
+								  /  P  \					    /  P  \
+							   v /       \ v0                v /       \ v0
+								*---------*          	      *---------*
+							   / \a  N  b/f\         	     / \'-,e    f\
+						 va*__/___\_____/___\__*vb --> va*__/___\b '-, F__\__*vb
+							 /     \   /  F  \             /     \  N '-, d\
+							/   O   \c/e     d\  		  /   O   \a    c'-,\
+						   *---------*---------*		 *---------*---------*
+								   v1 \       / vr		         v1 \       / vr
+									   \  Q  /                       \  Q  /
+										\   /						  \   /
+										 \q/						   \q/
+										  *							    *
+						*/
+
+						Face* O = (Face*)N->f[b];
+
+						Face* P = (Face*)(N->f[c]);
+						int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
+
+						Face* Q = (Face*)(F->f[f]);
+						int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
+
+						// do flip
+						N->v[a] = v1;
+						N->v[b] = v;
+						N->v[c] = vr;
+						N->f[a] = F;
+						N->f[b] = Q;
+						N->f[c] = O;
+						F->v[e] = v;  // from v1
+						F->f[d] = P;  // from N
+						F->f[f] = N;  // from Q
+						P->f[p] = F;  // from N
+						Q->f[q] = N;  // from F
+
+						v0->sew = F;
+						v1->sew = N;
+					}
+
+					flips++;
+
+					// if v and vr are on strongly opposite sides of the edge
+					// push N's edge back to offenders otherwise push to the new edges
+
+					if (va == v || vr == vb)
+					{
+
+						// resolved!
+						N->next = flipped;
+						flipped = N;
+					}
+					else
+					{
+						// check if v and vr are on the same side of a--b
+						T abv = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, v->x, v->y);
+						T abr = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, vr->x, vr->y);
+						
+						if (abv >= 0 && abr >= 0 || abv <= 0 && abr <= 0)
+						{
+							// resolved
+							N->next = flipped;
+							flipped = N;
+						}
+						else
+						{
+							// unresolved
+							*tail = N;
+							tail = (Face**)&N->next;
+						}
+					}
+				}
+			}
+
+			// 3. Repeatedly until no flip occurs
+			// for every edge from new edges list,
+			// if 2 triangles sharing the edge violates delaunay criterion
+			// do diagonal flip
+
+			while (1)
+			{
+				bool no_flips = true;
+				Face* N = flipped;
+				while (N)
+				{
+					if (N->v[1] == va && N->v[2] == vb || N->v[1] == vb && N->v[2] == va)
+					{
+						N = (Face*)N->next;
+						continue;
+					}
+
+					const int a = 0, b = 1, c = 2;
+
+					Vert* v0 = (Vert*)(N->v[b]);
+					Vert* v1 = (Vert*)(N->v[c]);
+
+					Face* F = (Face*)(N->f[a]);
+					int d, e, f;
+
+					if (F->f[0] == N)
+					{
+						d = 0;
+						e = 1;
+						f = 2;
+					}
+					else
+					if (F->f[1] == N)
+					{
+						d = 1;
+						e = 2;
+						f = 0;
+					}
+					else
+					{
+						d = 2;
+						e = 0;
+						f = 1;
+					}
+
+					Vert* v = (Vert*)N->v[0];
+					Vert* vr = (Vert*)(F->v[d]);
+
+					// fixed by calling F->cross()
+					// bool np = N->dotP(*vr);
+					// bool fp = F->dotP(*v);
+					// assert(np && fp || !np && !fp);
+
+					// can we check if it was flipped last time?
+					// if ((N->index & 0x40000000) == 0)
+					if (N->dotP(*vr) /* || F->dotP(*v)*/) 
+					{
+						no_flips = false;
+						flips++;
+
+						if (f == 0)
+						{
+							Face* O = (Face*)N->f[c];
+							Face* P = (Face*)(N->f[b]);
+							int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
+							Face* Q = (Face*)(F->f[e]);
+							int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
+
+							// do flip
+							N->v[a] = v0;
+							N->v[b] = vr;
+							N->v[c] = v;
+							N->f[a] = F;
+							N->f[b] = O;
+							N->f[c] = Q;
+							F->v[f] = v;  // from v0
+							F->f[d] = P;  // from N
+							F->f[e] = N;  // from Q
+							P->f[p] = F;  // from N
+							Q->f[q] = N;  // from F
+
+							v0->sew = N;
+							v1->sew = F;
+						}
+						else
+						{
+							Face* O = (Face*)N->f[b];
+							Face* P = (Face*)(N->f[c]);
+							int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
+							Face* Q = (Face*)(F->f[f]);
+							int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
+
+							// do flip
+							N->v[a] = v1;
+							N->v[b] = v;
+							N->v[c] = vr;
+							N->f[a] = F;
+							N->f[b] = Q;
+							N->f[c] = O;
+							F->v[e] = v;  // from v1
+							F->f[d] = P;  // from N
+							F->f[f] = N;  // from Q
+							P->f[p] = F;  // from N
+							Q->f[q] = N;  // from F
+
+							v0->sew = F;
+							v1->sew = N;
+						}
+
+						// can we un-mark not flipped somehow?
+						// N->index &= 0x3fffffff;
+						// F->index &= 0x3fffffff;
+					}
+					else
+					{
+						// can we mark it as not flipped somehow?
+						// N->index |= 0x40000000;
+					}
+
+					N = (Face*)N->next;
+				}
+
+				if (no_flips)
+					break;
+			}
+
+			va = restart;
+			} while (va);
 		}
 
-		out_hull_faces = 0;
-		unique_points = 0;
-		out_verts = Triangulate(&out_hull_faces);
-		return out_verts;
+		// clean up the mess we've made with dela faces list !!!
+		int hull_faces = 2 * unique_points - 4;
+		Face** tail = &first_dela_face;
+		int index = 0;
+		for (int i = 0; i < hull_faces; i++)
+		{
+			if (face_alloc[i].index >= 0)
+			{
+				*tail = face_alloc + i;
+				tail = (Face**)&face_alloc[i].next;
+				face_alloc[i].index = index++;
+			}
+		}
+		*tail = 0;
+
+		polygons = index;
+
+		if (errlog_proc)
+			errlog_proc(errlog_file, "\r[100] constraining (%lld ms)\n", (uSec() - time0) / 1000);
+
+		return flips;
 	}
 
-	virtual int Triangulate(int points, const long double* x, const long double* y, int advance_bytes)
+	virtual int Polygonize(const typename IDelaBella2<T>::Simplex* poly[])
+	{
+		uint64_t time0 = uSec();
+		Face** buf = 0;
+		if (!poly)
+		{
+			buf = (Face**)malloc(sizeof(Face*) * out_verts / 3);
+			poly = (const typename IDelaBella2<T>::Simplex**)buf;
+			if (!poly)
+				return -1;
+		}
+
+		// clear poly indices;
+		Face* f = first_dela_face;
+		while (f)
+		{
+			f->index = 0x40000000;
+			f = (Face*)f->next;
+		}
+
+		int num = 0;
+		f = first_dela_face;
+		int pro = 0, i=0, faces = out_verts / 3;
+		while (f)
+		{
+			if (i >= pro)
+			{
+				uint64_t p = (int)((uint64_t)100 * i / faces);
+				pro = (int)((p + 1) * faces / 100);
+				if (pro >= faces)
+					pro = faces - 1;
+				if (i == faces - 1)
+					p = 100;
+				if (errlog_proc)
+					errlog_proc(errlog_file, "\r[%2d%s] polygonizing ", p, p >= 100 ? "" : "%");
+			}
+			i++;
+
+			bool new_poly = true;
+			Face* next = (Face*)f->next;
+			for (int i = 0; i < 3; i++)
+			{
+				Face* a = (Face*)f->f[i];
+				int index = a->index;
+
+				if (index >= 0 && index < 0x40000000)
+				{
+					int j = 0;
+					for (; j < 3; j++)
+					{
+						Vert* v = (Vert*)a->v[j];
+						if (v!=f->v[0] && v!=f->v[1] && v!=f->v[2] && !f->dot0(*v))
+							break;
+					}
+
+					if (j == 3)
+					{
+						int dest = f->index;
+						if (dest < 0x40000000)
+						{
+							// merging polys !!!
+							Face* m = (Face*)poly[index];
+							while (m)
+							{
+								Face* n = (Face*)m->next;
+								m->index = dest;
+								m->next = (Face*)poly[dest];
+								poly[dest] = m;
+								m = n;
+							}
+
+							// fill the gap
+							if (index < num - 1)
+							{
+								dest = index;
+								index = num - 1;
+								poly[dest] = 0;
+
+								m = (Face*)poly[index];
+								while (m)
+								{
+									Face* n = (Face*)m->next;
+									m->index = dest;
+									m->next = (Face*)poly[dest];
+									poly[dest] = m;
+									m = n;
+								}
+							}
+
+							num--;
+						}
+						else
+						{
+							new_poly = false;
+							// merge f with existing poly
+							f->index = index;
+							f->next = (Face*)poly[index];
+							poly[index] = f;
+						}
+					}
+				}
+			}
+
+			if (new_poly)
+			{
+				// start new poly
+				f->next = 0;
+				f->index = num;
+				poly[num++] = f;
+			}
+
+			f = next;
+		}
+
+		polygons = num;
+
+		#if 1
+		// ALTER POST PROC:
+		// re-order triangles in every polygon and re-order indices in faces:
+		// - first face defines first 3 verts in contour with v[0],v[1],v[2]
+		// - every next face define just 1 additional vertex at v[0]
+		// thay can form fan or strip or arbitraty mix of both
+		// without changing existing edges!
+
+		for (int p = num-1; p >= 0; p--)
+		{
+			Face* f = (Face*)(poly[p]);
+			if (!f->next)
+			{
+				// single triangle
+				// just link into list of polys
+				if (p < num - 1)
+					f->next = (Face*)poly[p + 1];
+				continue;
+			}
+
+			Face* first = 0;
+			// break list appart
+			// so we can unmark all poly faces
+
+			while (f)
+			{
+				Face* n = (Face*)f->next;
+
+				if (!first)
+				{
+					// lookup good starting face (it will appear as last in the poly after all)
+					// having exactly 2 poly boundary edges, exactly 1 inner edge
+
+					int inner_edges =
+						(f->f[0]->index == p) +
+						(f->f[1]->index == p) +
+						(f->f[2]->index == p);
+
+					if (inner_edges == 1)
+						first = f;
+				}
+
+				f->next = 0; // unmark
+				f = n;
+			}
+
+			#ifdef DELABELLA_AUTOTEST
+			assert(first);
+			#endif
+
+			Face* list = first; // here list is empty, first is used as sentinel
+
+			f = first; // current face
+
+			Face* last = 0; // will be one inserted right after first
+			
+			bool step_on = false; // is current vertex inserted
+
+			Iter it;
+			f->StartIterator(&it, f->f[0]->index == p ? 2 : f->f[1]->index == p ? 0 : 1);
+
+			int dbg = 0;
+
+			while (1)
+			{
+				if (!step_on && !f->next)
+				{
+					if (list == first)
+						last = f;
+					step_on = true;
+					f->next = list;
+					list = f;
+					dbg++;
+
+					// rotate such it.around becomes 0
+					if (it.around != 0)
+					{
+						Face* fr = (Face*)f->f[0];
+						Vert* vr = (Vert*)f->v[0];
+
+						if (it.around == 1)
+						{
+							f->f[0] = f->f[1];
+							f->f[1] = f->f[2];
+							f->f[2] = fr;
+							f->v[0] = f->v[1];
+							f->v[1] = f->v[2];
+							f->v[2] = vr;
+						}
+						else // it.around == 2
+						{
+							f->f[0] = f->f[2];
+							f->f[2] = f->f[1];
+							f->f[1] = fr;
+							f->v[0] = f->v[2];
+							f->v[2] = f->v[1];
+							f->v[1] = vr;
+						}
+
+						// adjust iterator after rot
+						it.around = 0;
+					}
+				}
+
+				static const int next_probe[] = { 1,2,0 };
+				if (f->f[next_probe[it.around]]->index != p)
+				{
+					// step on other leg:
+					// and restart iterator
+					static const int other_leg[3] = { 2,0,1 };
+					f->StartIterator(&it, other_leg[it.around]);
+					step_on = false;
+					continue;
+				}
+
+				f = (Face*)it.Next();
+				if (f == first)
+					break;
+			}
+
+			// rotate list so first will be wrapped back to head of the face list
+			first->next = list;
+			list = first;
+
+			// link last face with first face in next poly
+			last->next = (p < num - 1) ? (Face*)poly[p + 1] : 0;
+
+			// store ordered list in poly
+			poly[p] = list;
+		}
+
+		#else
+		// merge polys into single list
+		// they are separated by indexes
+		for (int i = 0; i < num-1; i++)
+		{
+			f = (Face*)poly[i];
+			while (f->next)
+				f = (Face*)f->next;
+			f->next = (Face*)poly[i + 1];
+		}
+		#endif
+
+		first_dela_face = (Face*)poly[0];
+
+		if (buf)
+			free(buf);
+
+		if (errlog_proc)
+			errlog_proc(errlog_file, "\r[100] polygonizing (%lld ms)\n", (uSec() - time0) / 1000);
+
+		return num;
+	}
+
+	virtual int Triangulate(int points, const T* x, const T* y, int advance_bytes)
 	{
 		if (!x)
 			return 0;
@@ -943,8 +1919,8 @@ struct CDelaBella : IDelaBella
 		if (!y)
 			y = x + 1;
 		
-		if (advance_bytes < static_cast<int>(sizeof(double) * 2))
-			advance_bytes = sizeof(long double) * 2;
+		if (advance_bytes < (int)(sizeof(T) * 2))
+			advance_bytes = sizeof(T) * 2;
 
 		if (!ReallocVerts(points))
 			return 0;
@@ -953,29 +1929,32 @@ struct CDelaBella : IDelaBella
 		{
 			Vert* v = vert_alloc + i;
 			v->i = i;
-			v->x = (Signed14)*(const long double*)((const char*)x + i*advance_bytes);
-			v->y = (Signed14)*(const long double*)((const char*)y + i*advance_bytes);
-			v->z = s14sqr(v->x) + s14sqr(v->y);
+			v->x = *(const T*)((const char*)x + (intptr_t)i*advance_bytes);
+			v->y = *(const T*)((const char*)y + (intptr_t)i*advance_bytes);
 		}
 
 		out_hull_faces = 0;
 		unique_points = 0;
 		out_verts = Triangulate(&out_hull_faces);
+		polygons = out_verts / 3;
 		return out_verts;
-	}	
+	}
 
 	virtual void Destroy()
 	{
+		if (vert_map)
+			free(vert_map);
+
 		if (face_alloc)
 		{
-			//free(face_alloc);
 			delete [] face_alloc;
 		}
+
 		if (vert_alloc)
 		{
-			//free(vert_alloc);
 			delete [] vert_alloc;
 		}
+
 		delete this;
 	}
 
@@ -1006,24 +1985,37 @@ struct CDelaBella : IDelaBella
 		return out_verts < 0 ? 0 : unique_points - out_boundary_verts;
 	}
 
-	virtual const DelaBella_Triangle* GetFirstDelaunayTriangle() const
+	// num of polygons
+	virtual int GetNumPolygons() const
+	{
+		return polygons;
+	}
+
+	virtual const typename IDelaBella2<T>::Simplex* GetFirstDelaunaySimplex() const
 	{
 		return first_dela_face;
 	}
 
-	virtual const DelaBella_Triangle* GetFirstHullTriangle() const
+	virtual const typename IDelaBella2<T>::Simplex* GetFirstHullSimplex() const
 	{
 		return first_hull_face;
 	}
 
-	virtual const DelaBella_Vertex* GetFirstBoundaryVertex() const
+	virtual const typename IDelaBella2<T>::Vertex* GetFirstBoundaryVertex() const
 	{
 		return first_boundary_vert;
 	}
 
-	virtual const DelaBella_Vertex* GetFirstInternalVertex() const
+	virtual const typename IDelaBella2<T>::Vertex* GetFirstInternalVertex() const
 	{
 		return first_internal_vert;
+	}
+
+	virtual const typename IDelaBella2<T>::Vertex* GetVertexByIndex(int i) const
+	{
+		if (i < 0 || i >= inp_verts)
+			return 0;
+		return vert_alloc + vert_map[i];
 	}
 
 	virtual void SetErrLog(int(*proc)(void* stream, const char* fmt, ...), void* stream)
@@ -1031,94 +2023,306 @@ struct CDelaBella : IDelaBella
 		errlog_proc = proc;
 		errlog_file = stream;
 	}
+
+	virtual int GenVoronoiDiagramVerts(T* x, T* y, int advance_bytes) const
+	{
+		if (!first_dela_face)
+			return 0;
+
+		const int polys = polygons;
+		const int contour = out_boundary_verts;
+		int ret = polys + contour;
+
+		if (!x || !y)
+			return ret;
+
+		if (advance_bytes < (int)(sizeof(T) * 2))
+			advance_bytes = sizeof(T) * 2;
+
+		const Face* f = first_dela_face;
+		while (f)
+		{
+			const T v1x = f->v[1]->x - f->v[0]->x;
+			const T v1y = f->v[1]->y - f->v[0]->y;
+			const T v2x = f->v[2]->x - f->v[0]->x;
+			const T v2y = f->v[2]->y - f->v[0]->y;
+
+			const T v11 = v1x * v1x + v1y * v1y;
+			const T v22 = v2x * v2x + v2y * v2y;
+			const T v12 = (v1x * v2y - v1y * v2x) * 2;
+
+			T cx = f->v[0]->x + (v2y * v11 - v1y * v22) / v12;
+			T cy = f->v[0]->y + (v1x * v22 - v2x * v11) / v12;
+
+			// yes, for polys < tris
+			// we possibly calc it multiple times
+			// and overwrite already calculated centers
+			int offs = advance_bytes * f->index; 
+			*(T*)((char*)x + offs) = cx;
+			*(T*)((char*)y + offs) = cy;
+
+			f = (Face*)f->next;
+		}
+
+		{
+			int offs = advance_bytes * polys;
+			x = (T*)((char*)x + offs);
+			y = (T*)((char*)y + offs);
+		}
+
+		Vert* prev = first_boundary_vert;
+		Vert* vert = (Vert*)prev->next;
+		for (int i = 0; i < contour; i++)
+		{
+			T nx = prev->y - vert->y;
+			T ny = vert->x - prev->x;
+
+			T nn = 1/sqrt(nx * nx + ny * ny);
+			nx *= nn;
+			ny *= nn;
+
+			int offs = advance_bytes * i;
+			*(T*)((char*)x + offs) = nx;
+			*(T*)((char*)y + offs) = ny;
+
+			prev = vert;
+			vert = (Vert*)vert->next;
+		}
+
+		return ret;
+	}
+
+	virtual int GenVoronoiDiagramEdges(int* indices, int advance_bytes) const
+	{
+		if (!first_dela_face)
+			return 0;
+
+		const int polys = polygons;
+		const int verts = unique_points;
+		int ret = 2 * (verts + polys - 1);
+
+		if (!indices)
+			return ret;
+
+		if (advance_bytes < sizeof(int))
+			advance_bytes = sizeof(int);
+
+		const int contour = out_boundary_verts;
+		const int inter = verts - contour;
+
+		int* idx = indices;
+
+		Vert* vert = first_internal_vert;
+		for (int i = 0; i < inter; i++)
+		{
+			Iter it;
+			Face* t = (Face*)vert->StartIterator(&it);
+			Face* e = t;
+
+			int a = t->index; // begin
+			do
+			{
+				int b = t->index;
+				if (a < b)
+				{
+					*idx = a;
+					idx = (int*)((char*)idx + advance_bytes);
+					*idx = b;
+					idx = (int*)((char*)idx + advance_bytes);
+				}
+				a = b;
+				t = (Face*)it.Next();
+			} while (t != e);
+
+			// loop closing seg
+			int b = t->index;
+			if (a < b)
+			{
+				*idx = a;
+				idx = (int*)((char*)idx + advance_bytes);
+				*idx = b;
+				idx = (int*)((char*)idx + advance_bytes);
+			}
+			a = b;
+
+			vert = (Vert*)vert->next;
+		}
+
+		Vert* prev = first_boundary_vert;
+		vert = (Vert*)prev->next;
+		for (int i = 0; i < contour; i++)
+		{
+			int a = i + polys; // begin
+
+			// iterate all dela faces around prev
+			// add their voro-vert index == dela face index
+			Iter it;
+			Face* t = (Face*)prev->StartIterator(&it);
+
+			// it starts at random face, so lookup the prev->vert edge
+			while (1)
+			{
+				if (t->index >= 0)
+				{
+					if (t->v[0] == prev && t->v[1] == vert ||
+						t->v[1] == prev && t->v[2] == vert ||
+						t->v[2] == prev && t->v[0] == vert)
+						break;
+				}
+				t = (Face*)it.Next();
+			}
+
+			// now iterate around, till we're inside the boundary
+			while (t->index >= 0)
+			{
+				int b = t->index;
+
+				if (a<b)
+				{
+					*idx = a;
+					idx = (int*)((char*)idx + advance_bytes);
+					*idx = b;
+					idx = (int*)((char*)idx + advance_bytes);
+				}
+				a = b;
+
+				t = (Face*)it.Next();
+			}
+
+			int b = (i == 0 ? contour - 1 : i - 1) + polys; // loop-wrapping!
+			if (a < b)
+			{
+				*idx = a;
+				idx = (int*)((char*)idx + advance_bytes);
+				*idx = b;
+				idx = (int*)((char*)idx + advance_bytes);
+			}
+			a = b;
+
+			prev = vert;
+			vert = (Vert*)vert->next;
+		}
+
+		#ifdef DELABELLA_AUTOTEST
+		assert(((char*)idx-(char*)indices) / advance_bytes == ret);
+		#endif
+
+		return ret;
+	}
+
+	virtual int GenVoronoiDiagramPolys(int* indices, int advance_bytes, int* closed_indices) const
+	{
+		if (!first_dela_face)
+			return 0;
+
+		const int polys = polygons;
+		const int contour = out_boundary_verts;
+		const int verts = unique_points;
+		int ret = 3 * verts + 2 * (polys - 1) + contour;
+
+		if (!indices)
+			return ret;
+
+		if (advance_bytes < sizeof(int))
+			advance_bytes = sizeof(int);
+
+		const int inter = verts - contour;
+		const int poly_ending = ~0;
+
+		int* idx = indices;
+		
+		int closed = 0;
+		Vert* vert = first_internal_vert;
+		for (int i = 0; i < inter; i++)
+		{
+			Iter it;
+			Face* t = (Face*)vert->StartIterator(&it);
+			Face* e = t;
+
+			do
+			{
+				int a = t->index;
+				*idx = a;
+				idx = (int*)((char*)idx + advance_bytes);
+				closed++;
+
+				t = (Face*)it.Next();
+			} while (t != e);
+
+			// loop closing seg
+			int a = poly_ending;
+			*idx = a;
+			idx = (int*)((char*)idx + advance_bytes);
+			closed++;
+
+			vert = (Vert*)vert->next;
+		}
+
+		if (closed_indices)
+			*closed_indices = closed;
+
+		Vert* prev = first_boundary_vert;
+		vert = (Vert*)prev->next;
+		for (int i = 0; i < contour; i++)
+		{
+			int a = i + polys; // begin
+			*idx = a;
+			idx = (int*)((char*)idx + advance_bytes);
+
+			// iterate all dela faces around prev
+			// add their voro-vert index == dela face index
+			Iter it;
+			Face* t = (Face*)prev->StartIterator(&it);
+
+			// it starts at random face, so lookup the prev->vert edge
+			while (1)
+			{
+				if (t->index >= 0)
+				{
+					if (t->v[0] == prev && t->v[1] == vert ||
+						t->v[1] == prev && t->v[2] == vert ||
+						t->v[2] == prev && t->v[0] == vert)
+						break;
+				}
+				t = (Face*)it.Next();
+			}
+
+			// now iterate around, till we're inside the boundary
+			while (t->index >= 0)
+			{
+				int a = t->index;
+				*idx = a;
+				idx = (int*)((char*)idx + advance_bytes);
+
+				t = (Face*)it.Next();
+			}
+
+			a = (i == 0 ? contour - 1 : i - 1) + polys; // loop-wrapping!
+			*idx = a;
+			idx = (int*)((char*)idx + advance_bytes);
+
+			a = poly_ending;
+			*idx = a;
+			idx = (int*)((char*)idx + advance_bytes);
+
+			prev = vert;
+			vert = (Vert*)vert->next;
+		}
+
+		#ifdef DELABELLA_AUTOTEST
+		assert(((char*)idx - (char*)indices) / advance_bytes == ret);
+		#endif
+
+		return verts;
+	}
 };
 
-IDelaBella* IDelaBella::Create()
+template <typename T>
+IDelaBella2<T>* IDelaBella2<T>::Create()
 {
-	CDelaBella* db = new CDelaBella;
-	if (!db)
-		return 0;
-
-	db->vert_alloc = 0;
-	db->face_alloc = 0;
-	db->max_verts = 0;
-	db->max_faces = 0;
-
-	db->first_dela_face = 0;
-	db->first_hull_face = 0;
-	db->first_boundary_vert = 0;
-
-	db->inp_verts = 0;
-	db->out_verts = 0;
-	db->out_hull_faces = 0;
-	db->unique_points = 0;
-
-	db->errlog_proc = 0;
-	db->errlog_file = 0;
-
-	return db;
+	return new CDelaBella3<T>;
 }
 
-#ifndef __cplusplus
-void* DelaBella_Create()
-{
-	return IDelaBella::Create();
-}
-
-void  DelaBella_Destroy(void* db)
-{
-	((IDelaBella*)db)->Destroy();
-}
-
-void  DelaBella_SetErrLog(void* db, int(*proc)(void* stream, const char* fmt, ...), void* stream)
-{
-	((IDelaBella*)db)->SetErrLog(proc, stream);
-}
-
-int   DelaBella_TriangulateFloat(void* db, int points, float* x, float* y, int advance_bytes)
-{
-	return ((IDelaBella*)db)->Triangulate(points, x, y, advance_bytes);
-}
-
-int   DelaBella_TriangulateDouble(void* db, int points, double* x, double* y, int advance_bytes)
-{
-	return ((IDelaBella*)db)->Triangulate(points, x, y, advance_bytes);
-}
-
-int   DelaBella_TriangulateLongDouble(void* db, int points, long double* x, long double* y, int advance_bytes)
-{
-	return ((IDelaBella*)db)->Triangulate(points, x, y, advance_bytes);
-}
-
-
-int   DelaBella_GetNumInputPoints(void* db)
-{
-	return ((IDelaBella*)db)->GetNumInputPoints();
-}
-
-int   DelaBella_GetNumOutputIndices(void* db)
-{
-	return ((IDelaBella*)db)->GetNumOutputIndices();
-}
-
-int   Delabella_GetNumOutputHullFaces(void* db);
-{
-	return ((IDelaBella*)db)->GetNumOutputHullFaces();
-}
-
-
-const DelaBella_Triangle* GetFirstDelaunayTriangle(void* db)
-{
-	return ((IDelaBella*)db)->GetFirstDelaunayTriangle();
-}
-
-const DelaBella_Triangle* GetFirstHullTriangle(void* db)
-{
-	return ((IDelaBella*)db)->GetFirstHullTriangle();
-}
-
-const DelaBella_Vertex*   GetFirstHullVertex(void* db)
-{
-	return ((IDelaBella*)db)->GetFirstHullVertex();
-}
-#endif
+template IDelaBella2<float>* IDelaBella2<float>::Create();
+template IDelaBella2<double>* IDelaBella2<double>::Create();
+template IDelaBella2<long double>* IDelaBella2<long double>::Create();
