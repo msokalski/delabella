@@ -9,6 +9,8 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 #include "predicates.h"
 
+#define CULLING
+
 #define VORONOI
 //#define VORONOI_POLYS
 // otherwise EDGES
@@ -534,6 +536,88 @@ struct GfxStuffer
     #endif
     MyCoord box[4];
 
+    #ifdef CULLING
+    MyCoord* max_tri_len;
+    MyCoord* max_vor_len;
+    MyCoord* max_con_len;
+
+
+    int ConsByScale(int num, double scale)
+    {
+        const double thr = 6;
+        if (num < 2)
+            return num;
+        MyCoord* len = max_con_len;
+        if (len[num - 1] * scale > thr)
+            return num;
+        if (len[0] * scale <= thr)
+            return 0;
+
+        int lo = 1, hi = num - 2;
+
+        while (lo < hi)
+        {
+            int med = (lo + hi) / 2;
+            if (len[med] * scale > thr)
+                lo = med + 1;
+            else
+                hi = med - 1;
+        }
+
+        return lo + 1;
+    }
+
+    int VoroByScale(int num, double scale)
+    {
+        const double thr = 6;
+        if (num < 2)
+            return num;
+        MyCoord* len = max_vor_len;
+        if (len[num - 1] * scale > thr)
+            return num;
+        if (len[0] * scale <= thr)
+            return 0;
+
+        int lo = 1, hi = num - 2;
+
+        while (lo < hi)
+        {
+            int med = (lo + hi) / 2;
+            if (len[med] * scale > thr)
+                lo = med + 1;
+            else
+                hi = med - 1;
+        }
+
+        return lo + 1;
+    }
+
+    int TrisByScale(int num, double scale)
+    {
+        const double thr = 6;
+        if (num < 2)
+            return num;
+        MyCoord* len = max_tri_len;
+        if (len[num-1] * scale > thr)
+            return num;
+        if (len[0] * scale <= thr)
+            return 0;
+
+        int lo = 1, hi = num - 2;
+
+        while (lo < hi)
+        {
+            int med = (lo + hi) / 2;
+            if (len[med] * scale > thr)
+                lo = med + 1;
+            else
+                hi = med - 1;
+        }
+
+        return lo + 1;
+    }
+    #endif
+
     struct Vao
     {
         Vao() : vao(0) {}
@@ -614,6 +698,16 @@ struct GfxStuffer
 
     void Destroy()
     {
+        #ifdef CULLING
+        if (max_tri_len)
+            free(max_tri_len);
+
+        #ifdef VORONOI
+        if (max_vor_len)
+            free(max_vor_len);
+        #endif
+        #endif
+
         vao_main.Del();
         vao_constraint.Del();
         vao_voronoi.Del();
@@ -675,8 +769,7 @@ struct GfxStuffer
                 layout (location = 0) in dvec3 v;
                 void main()
                 {
-                    dvec4 p = dvec4(v.xy + tfm.zw * v.z + low.xy * v.z, 0.0lf, v.z);
-                    gl_Position = vec4(p*tfm.xy);
+                    gl_Position = vec4(dvec4(tfm.xy*(v.xy + tfm.zw * v.z + low.xy * v.z), 0.0lf, v.z));
                 }
             )};
 
@@ -738,11 +831,55 @@ struct GfxStuffer
 
             ibo_constraint.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[2]) * constrain_edges);
             GLuint* map = (GLuint*)ibo_constraint.Map();
+
+            #ifdef CULLING
+            struct ConSort
+            {
+                int e;
+                MyCoord weight;
+                bool operator < (const ConSort& b) const
+                {
+                    return weight > b.weight;
+                }
+            };
+
+            ConSort* consort = (ConSort*)malloc(sizeof(ConSort) * constrain_edges);
+            assert(consort);
+
+            for (int i = 0; i < constrain_edges; i++)
+            {
+                consort[i].e = i;
+                int i0 = force[i].a;
+                int i1 = force[i].b;
+                MyCoord v01[2] = { cloud[i1].x - cloud[i0].x, cloud[i1].y - cloud[i0].y };
+                MyCoord sqr = v01[0] * v01[0] + v01[1] * v01[1];
+                consort[i].weight = sqrt(sqr);
+            }
+
+            std::sort(consort, consort + constrain_edges);
+
+            max_con_len = (MyCoord*)malloc(sizeof(MyCoord) * constrain_edges);
+            assert(max_con_len);
+
+            for (int i = 0; i < constrain_edges; i++)
+            {
+                int e = consort[i].e;
+                map[2 * i + 0] = (GLuint)force[e].a;
+                map[2 * i + 1] = (GLuint)force[e].b;
+               
+                max_con_len[i] = consort[i].weight;
+            }
+
+            free(consort);
+
+            #else
+
             for (int i = 0; i < constrain_edges; i++)
             {
                 map[2 * i + 0] = (GLuint)force[i].a;
                 map[2 * i + 1] = (GLuint)force[i].b;
             }
+            #endif
             ibo_constraint.Unmap();
         }
 
@@ -763,7 +900,7 @@ struct GfxStuffer
         MyCoord vbo_x = (box[0]+box[2]) / 2;
         MyCoord vbo_y = (box[1]+box[3]) / 2;
 
-        #if 0 // vbo centering?
+        #if 0 // vbo centering? it's lossy!
         box[0] -= vbo_x;
         box[1] -= vbo_y;
         box[2] -= vbo_x;
@@ -795,21 +932,80 @@ struct GfxStuffer
         }
         vbo.Unmap();
 
-        ibo_delabella.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delabella + sizeof(GLuint) * contour);	
-        GLuint* ibo_ptr = (GLuint*)ibo_delabella.Map();
-        const DelaBella_Triangle* dela = idb->GetFirstDelaunaySimplex();
-        for (int i = 0; i<tris_delabella; i++)
+        GLuint* ibo_ptr = 0;
+        #ifdef CULLING
         {
-            int v0 = dela->v[0]->i;
-            int v1 = dela->v[1]->i;
-            int v2 = dela->v[2]->i;
+            struct TriSort
+            {
+                const DelaBella_Triangle* tri;
+                MyCoord weight;
+                bool operator < (const TriSort& b) const
+                {
+                    return weight > b.weight;
+                }
+            };
+            TriSort* trisort = (TriSort*)malloc(sizeof(TriSort) * tris_delabella);
+            assert(trisort);
+            const DelaBella_Triangle* dela = idb->GetFirstDelaunaySimplex();
+            for (int i = 0; i < tris_delabella; i++)
+            {
+                trisort[i].tri = dela;
+                MyCoord v01[2] = { dela->v[1]->x - dela->v[0]->x, dela->v[1]->y - dela->v[0]->y };
+                MyCoord v12[2] = { dela->v[2]->x - dela->v[1]->x, dela->v[2]->y - dela->v[1]->y };
+                MyCoord v20[2] = { dela->v[0]->x - dela->v[2]->x, dela->v[0]->y - dela->v[2]->y };
 
-            ibo_ptr[3*i+0] = (GLuint)v0;
-            ibo_ptr[3*i+1] = (GLuint)v1;
-            ibo_ptr[3*i+2] = (GLuint)v2;
+                MyCoord sqr = v01[0] * v01[0] + v01[1] * v01[1];
+                sqr = std::max(sqr, v12[0] * v12[0] + v12[1] * v12[1]);
+                sqr = std::max(sqr, v20[0] * v20[0] + v20[1] * v20[1]);
 
-            dela = dela->next;
+                trisort[i].weight = sqrt(sqr);
+                dela = dela->next;
+            }
+
+            std::sort(trisort, trisort + tris_delabella);
+
+            max_tri_len = (MyCoord*)malloc(sizeof(MyCoord) * tris_delabella);
+            assert(max_tri_len);
+
+            ibo_delabella.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3])* tris_delabella + sizeof(GLuint) * contour);
+            ibo_ptr = (GLuint*)ibo_delabella.Map();
+            for (int i = 0; i < tris_delabella; i++)
+            {
+                dela = trisort[i].tri;
+                int v0 = dela->v[0]->i;
+                int v1 = dela->v[1]->i;
+                int v2 = dela->v[2]->i;
+
+                ibo_ptr[3 * i + 0] = (GLuint)v0;
+                ibo_ptr[3 * i + 1] = (GLuint)v1;
+                ibo_ptr[3 * i + 2] = (GLuint)v2;
+
+                max_tri_len[i] = trisort[i].weight;
+            }
+
+            free(trisort);
         }
+        #else
+        {
+            ibo_delabella.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_delabella + sizeof(GLuint) * contour);
+            ibo_ptr = (GLuint*)ibo_delabella.Map();
+            const DelaBella_Triangle* dela = idb->GetFirstDelaunaySimplex();
+            for (int i = 0; i < tris_delabella; i++)
+            {
+                int v0 = dela->v[0]->i;
+                int v1 = dela->v[1]->i;
+                int v2 = dela->v[2]->i;
+
+                ibo_ptr[3 * i + 0] = (GLuint)v0;
+                ibo_ptr[3 * i + 1] = (GLuint)v1;
+                ibo_ptr[3 * i + 2] = (GLuint)v2;
+
+                dela = dela->next;
+            }
+        }
+        #endif
+
+        typedef GLuint tri_in_ibo[3];
 
         const DelaBella_Vertex* vert = idb->GetFirstBoundaryVertex();
         for (int i = 0; i<contour; i++)    
@@ -867,8 +1063,69 @@ struct GfxStuffer
             }
         }
 
-        for (int i = 0; i < voronoi_indices; i++)
-            ibo_voronoi_ptr[i] = (GLuint)(voronoi_idx_buf[i]);
+        #ifdef CULLING
+        {
+            #ifdef VORONOI_POLYS
+            // todo
+            for (int i = 0; i < voronoi_indices; i++)
+                ibo_voronoi_ptr[i] = (GLuint)(voronoi_idx_buf[i]);
+            max_vor_len = 0;
+            #else
+            int edges = voronoi_indices / 2;
+            struct VorSort
+            {
+                int e;
+                MyCoord weight;
+                bool operator < (const VorSort& b) const
+                {
+                    return weight > b.weight;
+                }
+            };
+            VorSort* vorsort = (VorSort*)malloc(sizeof(VorSort) * edges);
+            assert(vorsort);
+            for (int i = 0; i < edges; i++)
+            {
+                vorsort[i].e = i;
+                int i0 = voronoi_idx_buf[2 * i];
+                int i1 = voronoi_idx_buf[2 * i + 1];
+
+                if (i0 >= tris_delabella || i1 >= tris_delabella)
+                {
+                    // inf edge
+                    vorsort[i].weight = INFINITY; // -1
+                }
+                else
+                {
+                    MyCoord v01[2] = { voronoi_vtx_buf[i1].x - voronoi_vtx_buf[i0].x, voronoi_vtx_buf[i1].y - voronoi_vtx_buf[i0].y };
+                    MyCoord sqr = v01[0] * v01[0] + v01[1] * v01[1];
+                    vorsort[i].weight = sqrt(sqr);
+                }
+            }
+
+            std::sort(vorsort, vorsort + edges);
+
+            max_vor_len = (MyCoord*)malloc(sizeof(MyCoord)*edges);
+            assert(max_vor_len);
+
+            for (int i = 0; i < edges; i++)
+            {
+                int e = vorsort[i].e;
+                ibo_voronoi_ptr[2*i] = (GLuint)(voronoi_idx_buf[2*e+0]);
+                ibo_voronoi_ptr[2*i+1] = (GLuint)(voronoi_idx_buf[2*e+1]);
+
+                max_vor_len[i] = vorsort[i].weight;
+            }
+
+            free(vorsort);
+
+            #endif
+        }
+        #else
+        {
+            for (int i = 0; i < voronoi_indices; i++)
+                ibo_voronoi_ptr[i] = (GLuint)(voronoi_idx_buf[i]);
+        }
+        #endif
 
         vbo_voronoi.Unmap();
         ibo_voronoi.Unmap();
@@ -991,8 +1248,8 @@ int main(int argc, char* argv[])
 
         for (int i = 0; i < n; i++)
         {
-            MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
-            //MyPoint p = { d(gen), d(gen) };
+            //MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
+            MyPoint p = { d(gen), d(gen) };
             
             //p.x *= 0x1.p250;
             //p.y *= 0x1.p250;
@@ -1545,8 +1802,8 @@ int main(int argc, char* argv[])
 
     glPrimitiveRestartIndex((GLuint)~0);
     glEnable(GL_PRIMITIVE_RESTART);
-    glEnable(GL_LINE_SMOOTH);
-    glEnable(GL_POINT_SMOOTH);
+//    glEnable(GL_LINE_SMOOTH);
+//    glEnable(GL_POINT_SMOOTH);
     glEnable(GL_BLEND);
 
 	printf("going interactive.\n");
@@ -1662,7 +1919,7 @@ int main(int argc, char* argv[])
                         SDL_GL_GetDrawableSize(window, &vpw, &vph);
 
                         cx = (drag_cx - 2.0 * (drag_x - vpw*0.5) / scale);
-                        cy = (drag_cy - 2.0 * (vph*0.5 - drag_y) / scale);                        
+                        cy = (drag_cy - 2.0 * (vph*0.5 - drag_y) / scale);           
                     }
                     break;
                 }
@@ -1767,16 +2024,29 @@ int main(int argc, char* argv[])
 
         gfx.vao_main.Bind();
 
+        #ifdef CULLING
+        int cull = gfx.TrisByScale(tris_delabella, scale);
+        int voro_cull = 2 * gfx.VoroByScale(voronoi_indices / 2, scale);
+        int cons_cull = gfx.ConsByScale((int)force.size(), scale);
+
+        // printf("tris:%d/%d, edges:%d/%d, cons:%d/%d\n", cull,tris_delabella, voro_cull / 2, voronoi_indices / 2, cons_cull,(int)force.size());
+        #else
+        int cull = tris_delabella;
+        int voro_cull = voronoi_indices;
+        int cons_cull = (int)force.size();
+        #endif
+
         // grey fill
+        // TODO: switch to trifan using contour indices
         if (show_f)
         {
             gfx.SetColor(0.2f, 0.2f, 0.2f, 1.0f);
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-            glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_delabella * 3, GL_UNSIGNED_INT, 0);
+            glDrawElements(GL_TRIANGLES, cull/*tris_delabella*/ * 3, GL_UNSIGNED_INT, 0);
         }
 
         // paint constraints
-        int constrain_indices = 2*(int)force.size();
+        int constrain_indices = 2*(int)cons_cull;
         if (constrain_indices && show_c)
         {
             gfx.vao_constraint.Bind();
@@ -1795,7 +2065,7 @@ int main(int argc, char* argv[])
         {
             gfx.SetColor(1.0f, 0.0f, 0.0f, 1.0f);
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-            glDrawElements(GL_TRIANGLES, tris_delabella * 3, GL_UNSIGNED_INT, 0);
+            glDrawElements(GL_TRIANGLES, cull/*tris_delabella*/ * 3, GL_UNSIGNED_INT, 0);
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         }
 
@@ -1852,7 +2122,7 @@ int main(int argc, char* argv[])
             glDrawElements(GL_LINE_STRIP, voronoi_indices - voronoi_closed_indices, GL_UNSIGNED_INT, (GLuint*)0 + (intptr_t)voronoi_closed_indices);
             #else
             // draw edge soup
-            glDrawElements(GL_LINES, voronoi_indices, GL_UNSIGNED_INT, (GLuint*)0);
+            glDrawElements(GL_LINES, voro_cull, GL_UNSIGNED_INT, (GLuint*)0);
             #endif
         }
         #endif
