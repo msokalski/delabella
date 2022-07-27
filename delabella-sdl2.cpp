@@ -15,11 +15,11 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 // override build define
 #undef WITH_DELAUNATOR 
-//#define WITH_DELAUNATOR
+#define WITH_DELAUNATOR
 
 // override build define
 #undef WITH_CDT
-//#define WITH_CDT
+#define WITH_CDT
 
 #include <math.h>
 #include <stdlib.h>
@@ -502,7 +502,7 @@ struct Buf
 typedef double MyCoord;
 //typedef intptr_t MyIndex;
 //#define IDXF "%zd"
-typedef int32_t MyIndex;
+typedef int MyIndex;
 #define IDXF "%d"
 
 typedef IDelaBella2<MyCoord, MyIndex> IDelaBella;
@@ -1292,9 +1292,9 @@ int main(int argc, char* argv[])
         std::random_device rd{};
         std::mt19937_64 gen{ 0x12345678 /*rd()*/};
 
-        std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
-        //std::normal_distribution<double> d{0.0,2.0};
-        //std::gamma_distribution<double> d(0.1,2.0);
+        std::uniform_real_distribution<MyCoord> d((MyCoord)-2.503515625, (MyCoord)+2.503515625);
+        //std::normal_distribution<MyCoord> d{(MyCoord)0.0,(MyCoord)2.0};
+        //std::gamma_distribution<MyCoord> d((MyCoord)0.1,(MyCoord)2.0);
 
         MyCoord max_coord = sizeof(MyCoord) < 8 ? /*float*/0x1.p31 : /*double*/0x1.p255;
 
@@ -1457,7 +1457,7 @@ int main(int argc, char* argv[])
         std::vector<CDT::V2d<MyCoord>> nodups;
         for (size_t i = 0; i < cloud.size(); i++)
         {
-            CDT::V2d<double> v;
+            CDT::V2d<MyCoord> v;
             v.x = cloud[i].x;
             v.y = cloud[i].y;
             nodups.push_back(v);

@@ -30,6 +30,7 @@ struct IDelaBella2
 		Simplex* sew; // one of triangles sharing this vertex
 		T x, y; // coordinates (input copy)
 		I i; // index of original point
+		I pad;
 
 		inline const Simplex* StartIterator(Iterator* it/*not_null*/) const;
 	};
@@ -41,6 +42,7 @@ struct IDelaBella2
 		Simplex* next; // next triangle (of delaunay set or hull set)
 
 		I index; // list index, if negative it is ~index'th in hull set 
+		I pad;
 
 		inline const Simplex* StartIterator(Iterator* it/*not_null*/, int around/*0,1,2*/) const;
 	};

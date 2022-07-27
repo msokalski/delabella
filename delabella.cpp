@@ -171,6 +171,33 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		bool dotNP(const Vert& p) const
 		{
+			static const T epsilon = std::exp2(-(T)std::numeric_limits<T>::digits);
+			static const T iccerrboundA = (T(10) + T(96) * epsilon) * epsilon;
+
+			const T adx = p.x - this->v[2]->x;
+			const T bdx = this->v[0]->x - this->v[2]->x;
+			const T cdx = this->v[1]->x - this->v[2]->x;
+			const T ady = p.y - this->v[2]->y;
+			const T bdy = this->v[0]->y - this->v[2]->y;
+			const T cdy = this->v[1]->y - this->v[2]->y;
+
+			const T bdxcdy = bdx * cdy;
+			const T cdxbdy = cdx * bdy;
+			const T cdxady = cdx * ady;
+			const T adxcdy = adx * cdy;
+			const T adxbdy = adx * bdy;
+			const T bdxady = bdx * ady;
+			const T alift = adx * adx + ady * ady;
+			const T blift = bdx * bdx + bdy * bdy;
+			const T clift = cdx * cdx + cdy * cdy;
+			T det = alift * (bdxcdy - cdxbdy) + blift * (cdxady - adxcdy) + clift * (adxbdy - bdxady);
+			const T permanent = (std::abs(bdxcdy) + std::abs(cdxbdy)) * alift
+				+ (std::abs(cdxady) + std::abs(adxcdy)) * blift
+				+ (std::abs(adxbdy) + std::abs(bdxady)) * clift;
+			T errbound = iccerrboundA * permanent;
+			if (std::abs(det) >= std::abs(errbound)) 
+				return det <=0;
+
 			return
 				predicates::adaptive::incircle(
 					p.x,p.y, 
