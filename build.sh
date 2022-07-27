@@ -1,5 +1,5 @@
-CPP=clang++
-#CPP=g++
+#CPP=clang++
+CPP=g++
 
 # fp-math must conform to strict IEEE behaviour, ie: don't use -ffast-math
 # adding -I for clang

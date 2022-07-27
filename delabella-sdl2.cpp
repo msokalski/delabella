@@ -309,7 +309,8 @@ PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = 0;
 PFNGLUNIFORM4FPROC glUniform4f = 0;
 //PFNGLUNIFORMMATRIX4DVPROC glUniformMatrix4dv = 0;
 PFNGLUNIFORM4DVPROC glUniform4dv = 0;
-//PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = 0;
+PFNGLUNIFORM4FVPROC glUniform4fv = 0;
+PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = 0;
 PFNGLVERTEXATTRIBLPOINTERPROC glVertexAttribLPointer = 0;
 PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = 0;
 PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = 0;
@@ -344,8 +345,9 @@ bool BindGL()
     BINDGL(glGetProgramInfoLog);
     //BINDGL(glUniformMatrix4dv); // packed proj to vec4 
     BINDGL(glUniform4dv);
+    BINDGL(glUniform4fv);
     BINDGL(glUniform4f);
-    //BINDGL(glVertexAttribPointer); // everything is double
+    BINDGL(glVertexAttribPointer);
     BINDGL(glVertexAttribLPointer);
     BINDGL(glEnableVertexAttribArray);
     BINDGL(glDisableVertexAttribArray);
@@ -672,28 +674,25 @@ struct GfxStuffer
         }
         else
         {
-            glMatrixMode(GL_PROJECTION);
-            glLoadIdentity();
-            glOrtho(cx - vpw/scale, cx + vpw/scale, cy - vph/scale, cy + vph/scale, -1, +1);
+            glUseProgram(prg);
 
-            const static GLfloat z2w[16] =
-            {
-                1,0,0,0,
-                0,1,0,0,
-                0,0,0,1,
-                0,0,0,0
-            };
+            GLfloat mat[4];
 
-            glMultMatrixf(z2w);
+            mat[0] = (GLfloat)(scale / vpw);
+            mat[1] = (GLfloat)(scale / vph);
+            mat[2] = (GLfloat)(-cx);
+            mat[3] = (GLfloat)(-cy);
+
+            glUniform4fv(tfm, 1, mat);
+
+            GLfloat lxy[4] = { -(GLfloat)lx, -(GLfloat)ly, 0.0f, 0.0f }; // zw-spare
+            glUniform4fv(low, 1, lxy);
         }
     }
 
     void SetColor(float r, float g, float b, float a)
     {
-        if (type == GL_DOUBLE)
-            glUniform4f(clr, r,g,b,a);
-        else
-            glColor4f(r,g,b,a);
+        glUniform4f(clr, r,g,b,a);
     }
 
     void Destroy()
@@ -713,12 +712,9 @@ struct GfxStuffer
         vao_voronoi.Del();
         vao_cdt.Del();
 
-        if (type == GL_DOUBLE)
-        {
-            glUseProgram(0);
-            if (prg)
-                glDeleteProgram(prg);
-        }
+        glUseProgram(0);
+        if (prg)
+            glDeleteProgram(prg);
 
         vbo.Del();
         ibo_delabella.Del();
@@ -759,11 +755,23 @@ struct GfxStuffer
 
         type = gl_e;
 
-        if (gl_e == GL_DOUBLE)
-        {
-            #define CODE(...) #__VA_ARGS__
+        static const char* vs_src[1] = { 0 };
+        static const char* fs_src[1] = { 0 };
 
-            static const char* vs_src[] = {CODE(#version 410\n
+        #define CODE(...) #__VA_ARGS__
+
+        fs_src[0] = CODE(#version 410\n
+            uniform vec4 clr;
+            layout (location = 0) out vec4 c;
+            void main()
+            {
+                c = clr;
+            }
+        );
+
+        if (type == GL_DOUBLE)
+        {
+            vs_src[0] = CODE(#version 410\n
                 uniform dvec4 tfm;
                 uniform dvec4 low;
                 layout (location = 0) in dvec3 v;
@@ -771,57 +779,60 @@ struct GfxStuffer
                 {
                     gl_Position = vec4(dvec4(tfm.xy*(v.xy + tfm.zw * v.z + low.xy * v.z), 0.0lf, v.z));
                 }
-            )};
-
-            static const char* fs_src[] = {CODE(#version 410\n
-                uniform vec4 clr;
-                layout (location = 0) out vec4 c;
+            );
+        }
+        else
+        {
+            vs_src[0] = CODE(#version 330\n
+                uniform vec4 tfm;
+                uniform vec4 low;
+                layout (location = 0) in vec3 v;
                 void main()
                 {
-                    c = clr;
+                    gl_Position = vec4(tfm.xy*(v.xy + tfm.zw * v.z + low.xy * v.z), 0.0, v.z);
                 }
-            )};
-
-            #undef CODE
-
-            //char nfolog[1025];
-            //int nfolen;
-
-            prg = glCreateProgram();
-            
-            GLuint vs = glCreateShader(GL_VERTEX_SHADER);
-            glShaderSource(vs, 1, vs_src, 0);
-            glCompileShader(vs);
-            glAttachShader(prg,vs);
-
-            /*
-            glGetShaderInfoLog(vs,1024,&nfolen,nfolog);
-            nfolog[nfolen]=0;
-            printf("VS:\n%s\n\n",nfolog);
-            */
-
-            GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
-            glShaderSource(fs, 1, fs_src, 0);
-            glCompileShader(fs);
-            glAttachShader(prg,fs);
-
-            /*
-            glGetShaderInfoLog(vs,1024,&nfolen,nfolog);
-            nfolog[nfolen]=0;
-            printf("FS:\n%s\n\n",nfolog);
-            */
-
-            glLinkProgram(prg);
-
-            glDeleteShader(vs);
-            glDeleteShader(fs);
-
-            tfm = glGetUniformLocation(prg, "tfm");
-            low = glGetUniformLocation(prg, "low");
-            clr = glGetUniformLocation(prg, "clr");
+            );
         }
 
-        int gl_s = gl_e == GL_DOUBLE ? sizeof(GLdouble) : sizeof(GLfloat);
+        #undef CODE
+
+        //char nfolog[1025];
+        //int nfolen;
+
+        prg = glCreateProgram();
+            
+        GLuint vs = glCreateShader(GL_VERTEX_SHADER);
+        glShaderSource(vs, 1, vs_src, 0);
+        glCompileShader(vs);
+        glAttachShader(prg,vs);
+
+        /*
+        glGetShaderInfoLog(vs,1024,&nfolen,nfolog);
+        nfolog[nfolen]=0;
+        printf("VS:\n%s\n\n",nfolog);
+        */
+
+        GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
+        glShaderSource(fs, 1, fs_src, 0);
+        glCompileShader(fs);
+        glAttachShader(prg,fs);
+
+        /*
+        glGetShaderInfoLog(vs,1024,&nfolen,nfolog);
+        nfolog[nfolen]=0;
+        printf("FS:\n%s\n\n",nfolog);
+        */
+
+        glLinkProgram(prg);
+
+        glDeleteShader(vs);
+        glDeleteShader(fs);
+
+        tfm = glGetUniformLocation(prg, "tfm");
+        low = glGetUniformLocation(prg, "low");
+        clr = glGetUniformLocation(prg, "clr");
+
+        int gl_s = type == GL_DOUBLE ? sizeof(GLdouble) : sizeof(GLfloat);
         int tris_delabella = idb->GetNumOutputIndices() / 3;
         int contour = idb->GetNumBoundaryVerts();
 
@@ -910,7 +921,7 @@ struct GfxStuffer
         vbo_y = 0;
         #endif
 
-        if (gl_e == GL_DOUBLE)
+        if (type == GL_DOUBLE)
         {
             GLdouble* p = (GLdouble*)vbo_ptr;
             for (int i = 0; i<points; i++)
@@ -1024,7 +1035,7 @@ struct GfxStuffer
         void* vbo_voronoi_ptr = vbo_voronoi.Map();
         GLuint* ibo_voronoi_ptr = (GLuint*)ibo_voronoi.Map();
 
-        if (gl_e == GL_DOUBLE)
+        if (type == GL_DOUBLE)
         {
             GLdouble* p = (GLdouble*)vbo_voronoi_ptr;
             for (int i = 0; i < voronoi_vertices; i++)
@@ -1182,20 +1193,29 @@ struct GfxStuffer
         vao_main.Bind();
         vbo.Bind();
         ibo_delabella.Bind();
-        glVertexAttribLPointer(0, 3, GL_DOUBLE, 0, 0);
+        if (type == GL_DOUBLE)
+            glVertexAttribLPointer(0, 3, GL_DOUBLE, 0, 0);
+        else
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
         glEnableVertexAttribArray(0);
 
         vao_constraint.Bind();
         vbo.Bind();
         ibo_constraint.Bind();
-        glVertexAttribLPointer(0, 3, GL_DOUBLE, 0, 0);
+        if (type == GL_DOUBLE)
+            glVertexAttribLPointer(0, 3, GL_DOUBLE, 0, 0);
+        else
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
         glEnableVertexAttribArray(0);
 
         #ifdef VORONOI
         vao_voronoi.Bind();
         vbo_voronoi.Bind();
         ibo_voronoi.Bind();
-        glVertexAttribLPointer(0, 3, GL_DOUBLE, 0, 0);
+        if (type == GL_DOUBLE)
+            glVertexAttribLPointer(0, 3, GL_DOUBLE, 0, 0);
+        else
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
         glEnableVertexAttribArray(0);
         #endif
 
@@ -1203,7 +1223,10 @@ struct GfxStuffer
         vao_cdt.Bind();
         vbo.Bind();
         ibo_cdt.Bind();
-        glVertexAttribLPointer(0, 3, GL_DOUBLE, 0, 0);
+        if (type == GL_DOUBLE)
+            glVertexAttribLPointer(0, 3, GL_DOUBLE, 0, 0);
+        else
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
         glEnableVertexAttribArray(0);
         #endif
 
@@ -1248,8 +1271,8 @@ int main(int argc, char* argv[])
 
         for (int i = 0; i < n; i++)
         {
-            //MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
-            MyPoint p = { d(gen), d(gen) };
+            MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
+            //MyPoint p = { d(gen), d(gen) };
             
             //p.x *= 0x1.p250;
             //p.y *= 0x1.p250;
@@ -1728,8 +1751,9 @@ int main(int argc, char* argv[])
     SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
     SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
 
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+// we want it at least 3.3 but would be nice to have 4.1 or above
+//    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+//    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
 	// create viewer wnd
@@ -1751,6 +1775,34 @@ int main(int argc, char* argv[])
         return -1;
     }
 
+    int glsl_ver = 0;
+    const char* glsl_str = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
+    if (glsl_str && glGetError() == GL_NO_ERROR)
+    {
+        int v[2];
+        int from, to;
+        if (2 == sscanf(glsl_str, "%d.%n%d%n", v + 0, &from, v + 1, &to))
+        {
+            int num = to - from;
+            if (num == 1)
+                v[1] *= 10;
+            else
+            while (num > 2)
+            {
+                v[1] /= 10;
+                num--;
+            }
+            glsl_ver = v[0] * 100 + v[1];
+        }
+    }
+
+    if (glsl_ver < 330)
+    {
+        printf("GLSL %d is too weak - terminating!", glsl_ver);
+        idb->Destroy();
+        return -1;
+    }
+
 	if (!BindGL())
 	{
 		printf("Can't bind to necessary GL functions, terminating!\n");
@@ -1758,11 +1810,12 @@ int main(int argc, char* argv[])
 		return -1;
 	}
 
-	printf("preparing graphics...\n");
-
     GfxStuffer gfx;
 
-    gfx.Upload( GL_DOUBLE,
+    //glsl_ver = 330;
+    printf("preparing graphics for GLSL %d...\n", glsl_ver);
+
+    gfx.Upload( glsl_ver >= 410 ? GL_DOUBLE : GL_FLOAT,
                 idb,
                 (int)cloud.size(),
                 cloud.data(),
@@ -1887,24 +1940,43 @@ int main(int argc, char* argv[])
                         int dy = event.motion.y - drag_y;
 
                         double scale = pow(1.01, zoom);
-                        //cx = drag_cx - 2.0*dx/scale;
-                        //cy = drag_cy + 2.0*dy/scale;
 
-                        predicates::detail::Expansion<MyCoord, 1> adx,ady;
-                        adx.push_back(-2.0 * dx / scale);
-                        ady.push_back(2.0 * dy / scale);
+                        if (gfx.type == GL_DOUBLE)
+                        {
+                            predicates::detail::Expansion<GLdouble, 1> adx, ady;
+                            adx.push_back((GLdouble)(-2.0 * dx / scale));
+                            ady.push_back((GLdouble)(2.0 * dy / scale));
 
-                        auto edx =
-                            predicates::detail::ExpansionBase<MyCoord>::Plus(drag_cx, drag_lx) + adx;
+                            auto edx =
+                                predicates::detail::ExpansionBase<GLdouble>::Plus((GLdouble)drag_cx, (GLdouble)drag_lx) + adx;
 
-                        auto edy =
-                            predicates::detail::ExpansionBase<MyCoord>::Plus(drag_cy, drag_ly) + ady;
+                            auto edy =
+                                predicates::detail::ExpansionBase<GLdouble>::Plus((GLdouble)drag_cy, (GLdouble)drag_ly) + ady;
 
-                        cx = edx.m_size > 0 ? edx[edx.m_size - 1] : 0.0;
-                        lx = edx.m_size > 1 ? edx[edx.m_size - 2] : 0.0;
+                            cx = edx.m_size > 0 ? (double)edx[edx.m_size - 1] : 0.0;
+                            lx = edx.m_size > 1 ? (double)edx[edx.m_size - 2] : 0.0;
 
-                        cy = edy.m_size > 0 ? edy[edy.m_size - 1] : 0.0;
-                        ly = edy.m_size > 1 ? edy[edy.m_size - 2] : 0.0;
+                            cy = edy.m_size > 0 ? (double)edy[edy.m_size - 1] : 0.0;
+                            ly = edy.m_size > 1 ? (double)edy[edy.m_size - 2] : 0.0;
+                        }
+                        else
+                        {
+                            predicates::detail::Expansion<GLfloat, 1> adx, ady;
+                            adx.push_back((GLfloat)( - 2.0 * dx / scale));
+                            ady.push_back((GLfloat)(2.0 * dy / scale));
+
+                            auto edx =
+                                predicates::detail::ExpansionBase<GLfloat>::Plus((GLfloat)drag_cx, (GLfloat)drag_lx) + adx;
+
+                            auto edy =
+                                predicates::detail::ExpansionBase<GLfloat>::Plus((GLfloat)drag_cy, (GLfloat)drag_ly) + ady;
+
+                            cx = edx.m_size > 0 ? (double)edx[edx.m_size - 1] : 0.0;
+                            lx = edx.m_size > 1 ? (double)edx[edx.m_size - 2] : 0.0;
+
+                            cy = edy.m_size > 0 ? (double)edy[edy.m_size - 1] : 0.0;
+                            ly = edy.m_size > 1 ? (double)edy[edy.m_size - 2] : 0.0;
+                        }
                     }
 
                     if (drag == 2)
