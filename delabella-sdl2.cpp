@@ -5,8 +5,6 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 #define _CRT_SECURE_NO_WARNINGS
 
-#define DELABELLA_LEGACY double
-
 #include "predicates.h"
 
 #define CULLING
@@ -402,13 +400,13 @@ struct Buf
 {
     GLuint buf;
     GLenum target;
-    GLsizei size;
+    GLsizeiptr size;
     void* map;
     bool mapped;
 
     Buf() : buf(0),target(0),size(0),map(0),mapped(false) {}
 
-    GLuint Gen(GLenum t, GLsizei s)
+    GLuint Gen(GLenum t, GLsizeiptr s)
     {
         target = t;
         size = s;
@@ -459,6 +457,7 @@ struct Buf
             mapped = false;
         }
 
+        assert(map);
         glBindBuffer(target, push);
         return map;
     }
@@ -477,7 +476,10 @@ struct Buf
 
         glBindBuffer(target, buf);
         if (mapped)
-            glUnmapBuffer(target);
+        {
+            GLboolean buf_unmap_ok = glUnmapBuffer(target);
+            assert(buf_unmap_ok);
+        }
         else
         {
             glBufferSubData(target, 0, size, map);
@@ -496,7 +498,16 @@ struct Buf
     }
 };
 
-typedef DELABELLA_LEGACY MyCoord;
+
+typedef double MyCoord;
+//typedef intptr_t MyIndex;
+//#define IDXF "%zd"
+typedef int32_t MyIndex;
+#define IDXF "%d"
+
+typedef IDelaBella2<MyCoord, MyIndex> IDelaBella;
+typedef IDelaBella::Vertex DelaBella_Vertex;
+typedef IDelaBella::Simplex DelaBella_Triangle;
 
 struct MyPoint
 {
@@ -522,8 +533,8 @@ struct MyPoint
 
 struct MyEdge
 {
-    MyEdge(int a, int b) : a(a), b(b) {}
-    int a, b;
+    MyEdge(MyIndex a, MyIndex b) : a(a), b(b) {}
+    MyIndex a, b;
 };
 
 struct GfxStuffer
@@ -544,7 +555,7 @@ struct GfxStuffer
     MyCoord* max_con_len;
 
 
-    int ConsByScale(int num, double scale)
+    MyIndex ConsByScale(MyIndex num, double scale)
     {
         const double thr = 6;
         if (num < 2)
@@ -555,11 +566,11 @@ struct GfxStuffer
         if (len[0] * scale <= thr)
             return 0;
 
-        int lo = 1, hi = num - 2;
+        MyIndex lo = 1, hi = num - 2;
 
         while (lo < hi)
         {
-            int med = (lo + hi) / 2;
+            MyIndex med = (lo + hi) / 2;
             if (len[med] * scale > thr)
                 lo = med + 1;
             else
@@ -569,7 +580,7 @@ struct GfxStuffer
         return lo + 1;
     }
 
-    int VoroByScale(int num, double scale)
+    MyIndex VoroByScale(MyIndex num, double scale)
     {
         const double thr = 6;
         if (num < 2)
@@ -580,11 +591,11 @@ struct GfxStuffer
         if (len[0] * scale <= thr)
             return 0;
 
-        int lo = 1, hi = num - 2;
+        MyIndex lo = 1, hi = num - 2;
 
         while (lo < hi)
         {
-            int med = (lo + hi) / 2;
+            MyIndex med = (lo + hi) / 2;
             if (len[med] * scale > thr)
                 lo = med + 1;
             else
@@ -594,7 +605,7 @@ struct GfxStuffer
         return lo + 1;
     }
 
-    int TrisByScale(int num, double scale)
+    MyIndex TrisByScale(MyIndex num, double scale)
     {
         const double thr = 6;
         if (num < 2)
@@ -605,11 +616,11 @@ struct GfxStuffer
         if (len[0] * scale <= thr)
             return 0;
 
-        int lo = 1, hi = num - 2;
+        MyIndex lo = 1, hi = num - 2;
 
         while (lo < hi)
         {
-            int med = (lo + hi) / 2;
+            MyIndex med = (lo + hi) / 2;
             if (len[med] * scale > thr)
                 lo = med + 1;
             else
@@ -733,15 +744,15 @@ struct GfxStuffer
     void Upload(
         GLenum gl_e,
         const IDelaBella* idb,
-        int points,
+        MyIndex points,
         const MyPoint* cloud,
-        int constrain_edges,
+        MyIndex constrain_edges,
         const MyEdge* force
         #ifdef VORONOI
-        , int voronoi_vertices,
+        , MyIndex voronoi_vertices,
         const MyPoint* voronoi_vtx_buf,
-        int voronoi_indices,
-        const int* voronoi_idx_buf
+        MyIndex voronoi_indices,
+        const MyIndex* voronoi_idx_buf
         #endif
         #ifdef WITH_CDT
         , const CDT::Triangulation<MyCoord>& cdt,
@@ -750,6 +761,13 @@ struct GfxStuffer
     )
     {
         Destroy();
+
+        assert(points >= 0);
+        assert(constrain_edges >= 0);
+        #ifdef VORONOI
+        assert(voronoi_vertices >= 0);
+        assert(voronoi_indices >= 0);
+        #endif
 
         vao_main.Gen();
 
@@ -832,21 +850,20 @@ struct GfxStuffer
         low = glGetUniformLocation(prg, "low");
         clr = glGetUniformLocation(prg, "clr");
 
-        int gl_s = type == GL_DOUBLE ? sizeof(GLdouble) : sizeof(GLfloat);
-        int tris_delabella = idb->GetNumOutputIndices() / 3;
-        int contour = idb->GetNumBoundaryVerts();
+        size_t gl_s = type == GL_DOUBLE ? sizeof(GLdouble) : sizeof(GLfloat);
+        MyIndex tris_delabella = idb->GetNumOutputIndices() / 3;
+        MyIndex contour = idb->GetNumBoundaryVerts();
 
         if (constrain_edges)
         {
             vao_constraint.Gen();
-
-            ibo_constraint.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[2]) * constrain_edges);
+            ibo_constraint.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[2]) * (size_t)constrain_edges);
             GLuint* map = (GLuint*)ibo_constraint.Map();
 
             #ifdef CULLING
             struct ConSort
             {
-                int e;
+                MyIndex e;
                 MyCoord weight;
                 bool operator < (const ConSort& b) const
                 {
@@ -854,14 +871,14 @@ struct GfxStuffer
                 }
             };
 
-            ConSort* consort = (ConSort*)malloc(sizeof(ConSort) * constrain_edges);
+            ConSort* consort = (ConSort*)malloc(sizeof(ConSort) * (size_t)constrain_edges);
             assert(consort);
 
-            for (int i = 0; i < constrain_edges; i++)
+            for (MyIndex i = 0; i < constrain_edges; i++)
             {
                 consort[i].e = i;
-                int i0 = force[i].a;
-                int i1 = force[i].b;
+                MyIndex i0 = force[i].a;
+                MyIndex i1 = force[i].b;
                 MyCoord v01[2] = { cloud[i1].x - cloud[i0].x, cloud[i1].y - cloud[i0].y };
                 MyCoord sqr = v01[0] * v01[0] + v01[1] * v01[1];
                 consort[i].weight = sqrt(sqr);
@@ -869,12 +886,12 @@ struct GfxStuffer
 
             std::sort(consort, consort + constrain_edges);
 
-            max_con_len = (MyCoord*)malloc(sizeof(MyCoord) * constrain_edges);
+            max_con_len = (MyCoord*)malloc(sizeof(MyCoord) * (size_t)constrain_edges);
             assert(max_con_len);
 
             for (int i = 0; i < constrain_edges; i++)
             {
-                int e = consort[i].e;
+                MyIndex e = consort[i].e;
                 map[2 * i + 0] = (GLuint)force[e].a;
                 map[2 * i + 1] = (GLuint)force[e].b;
                
@@ -894,7 +911,7 @@ struct GfxStuffer
             ibo_constraint.Unmap();
         }
 
-        vbo.Gen(GL_ARRAY_BUFFER, gl_s * 3 * points);
+        vbo.Gen(GL_ARRAY_BUFFER, gl_s * 3 * (size_t)points);
         void* vbo_ptr = vbo.Map();
 
         // let's give a hand to gpu by centering vertices around 0,0
@@ -955,7 +972,7 @@ struct GfxStuffer
                     return weight > b.weight;
                 }
             };
-            TriSort* trisort = (TriSort*)malloc(sizeof(TriSort) * tris_delabella);
+            TriSort* trisort = (TriSort*)malloc(sizeof(TriSort) * (size_t)tris_delabella);
             assert(trisort);
             const DelaBella_Triangle* dela = idb->GetFirstDelaunaySimplex();
             for (int i = 0; i < tris_delabella; i++)
@@ -975,17 +992,17 @@ struct GfxStuffer
 
             std::sort(trisort, trisort + tris_delabella);
 
-            max_tri_len = (MyCoord*)malloc(sizeof(MyCoord) * tris_delabella);
+            max_tri_len = (MyCoord*)malloc(sizeof(MyCoord) * (size_t)tris_delabella);
             assert(max_tri_len);
 
-            ibo_delabella.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3])* tris_delabella + sizeof(GLuint) * contour);
+            ibo_delabella.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3])* (size_t)tris_delabella + sizeof(GLuint) * (size_t)contour);
             ibo_ptr = (GLuint*)ibo_delabella.Map();
             for (int i = 0; i < tris_delabella; i++)
             {
                 dela = trisort[i].tri;
-                int v0 = dela->v[0]->i;
-                int v1 = dela->v[1]->i;
-                int v2 = dela->v[2]->i;
+                MyIndex v0 = dela->v[0]->i;
+                MyIndex v1 = dela->v[1]->i;
+                MyIndex v2 = dela->v[2]->i;
 
                 ibo_ptr[3 * i + 0] = (GLuint)v0;
                 ibo_ptr[3 * i + 1] = (GLuint)v1;
@@ -1003,9 +1020,9 @@ struct GfxStuffer
             const DelaBella_Triangle* dela = idb->GetFirstDelaunaySimplex();
             for (int i = 0; i < tris_delabella; i++)
             {
-                int v0 = dela->v[0]->i;
-                int v1 = dela->v[1]->i;
-                int v2 = dela->v[2]->i;
+                MyIndex v0 = dela->v[0]->i;
+                MyIndex v1 = dela->v[1]->i;
+                MyIndex v2 = dela->v[2]->i;
 
                 ibo_ptr[3 * i + 0] = (GLuint)v0;
                 ibo_ptr[3 * i + 1] = (GLuint)v1;
@@ -1019,7 +1036,7 @@ struct GfxStuffer
         typedef GLuint tri_in_ibo[3];
 
         const DelaBella_Vertex* vert = idb->GetFirstBoundaryVertex();
-        for (int i = 0; i<contour; i++)    
+        for (MyIndex i = 0; i<contour; i++)
         {
             ibo_ptr[i + 3*tris_delabella] = (GLuint)vert->i;
             vert = vert->next;
@@ -1030,8 +1047,8 @@ struct GfxStuffer
         #ifdef VORONOI
         vao_voronoi.Gen();
 
-        vbo_voronoi.Gen(GL_ARRAY_BUFFER, gl_s * 3 * voronoi_vertices);
-        ibo_voronoi.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint)* voronoi_indices);
+        vbo_voronoi.Gen(GL_ARRAY_BUFFER, gl_s * 3 * (size_t)voronoi_vertices);
+        ibo_voronoi.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint) * (size_t)voronoi_indices);
         void* vbo_voronoi_ptr = vbo_voronoi.Map();
         GLuint* ibo_voronoi_ptr = (GLuint*)ibo_voronoi.Map();
 
@@ -1082,23 +1099,23 @@ struct GfxStuffer
                 ibo_voronoi_ptr[i] = (GLuint)(voronoi_idx_buf[i]);
             max_vor_len = 0;
             #else
-            int edges = voronoi_indices / 2;
+            MyIndex edges = voronoi_indices / 2;
             struct VorSort
             {
-                int e;
+                MyIndex e;
                 MyCoord weight;
                 bool operator < (const VorSort& b) const
                 {
                     return weight > b.weight;
                 }
             };
-            VorSort* vorsort = (VorSort*)malloc(sizeof(VorSort) * edges);
+            VorSort* vorsort = (VorSort*)malloc(sizeof(VorSort) * (size_t)edges);
             assert(vorsort);
-            for (int i = 0; i < edges; i++)
+            for (MyIndex i = 0; i < edges; i++)
             {
                 vorsort[i].e = i;
-                int i0 = voronoi_idx_buf[2 * i];
-                int i1 = voronoi_idx_buf[2 * i + 1];
+                MyIndex i0 = voronoi_idx_buf[2 * i];
+                MyIndex i1 = voronoi_idx_buf[2 * i + 1];
 
                 if (i0 >= tris_delabella || i1 >= tris_delabella)
                 {
@@ -1115,12 +1132,12 @@ struct GfxStuffer
 
             std::sort(vorsort, vorsort + edges);
 
-            max_vor_len = (MyCoord*)malloc(sizeof(MyCoord)*edges);
+            max_vor_len = (MyCoord*)malloc(sizeof(MyCoord)* (size_t)edges);
             assert(max_vor_len);
 
-            for (int i = 0; i < edges; i++)
+            for (MyIndex i = 0; i < edges; i++)
             {
-                int e = vorsort[i].e;
+                MyIndex e = vorsort[i].e;
                 ibo_voronoi_ptr[2*i] = (GLuint)(voronoi_idx_buf[2*e+0]);
                 ibo_voronoi_ptr[2*i+1] = (GLuint)(voronoi_idx_buf[2*e+1]);
 
@@ -1145,7 +1162,7 @@ struct GfxStuffer
         #ifdef WITH_CDT
         vao_cdt.Gen();
 
-        int tris_cdt = (int)cdt.triangles.size();
+        MyIndex tris_cdt = (MyIndex)cdt.triangles.size();
         ibo_cdt.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3]) * tris_cdt);
         {
             ibo_ptr = (GLuint*)ibo_cdt.Map();
@@ -1153,12 +1170,12 @@ struct GfxStuffer
             if (dups.duplicates.size())
             {
                 // let's make inverse mapping first
-                int* invmap = 0;
-                int invmap_size = (int)dups.mapping.size() - (int)dups.duplicates.size();
-                invmap = (int*)malloc(sizeof(int) * invmap_size);
+                MyIndex* invmap = 0;
+                MyIndex invmap_size = (MyIndex)dups.mapping.size() - (MyIndex)dups.duplicates.size();
+                invmap = (MyIndex*)malloc(sizeof(MyIndex) * invmap_size);
                 assert(invmap);
 
-                for (int i = 0; i < (int)dups.mapping.size(); i++)
+                for (int i = 0; i < (MyIndex)dups.mapping.size(); i++)
                     invmap[dups.mapping[i]] = i;
 
                 for (int i = 0; i < tris_cdt; i++)
@@ -1238,7 +1255,19 @@ int main(int argc, char* argv[])
 {
 	#ifdef _WIN32
 	SetProcessDPIAware();
-	#endif
+    struct handler
+    {
+        static BOOL WINAPI routine(DWORD CtrlType)
+        {
+            printf("\nterminating!\n");
+            exit(-1);
+            return TRUE;
+        }
+    };
+    SetConsoleCtrlHandler(handler::routine, TRUE);
+	#else
+    // ...
+    #endif
 
 	if (argc<2)
 	{
@@ -1251,7 +1280,7 @@ int main(int argc, char* argv[])
     std::vector<MyEdge> force;
 
 	FILE* f = fopen(argv[1],"r");
-    int n = atoi(argv[1]);
+    MyIndex n = atoi(argv[1]);
     if (!f)
     {
         if (n <= 2)
@@ -1259,20 +1288,20 @@ int main(int argc, char* argv[])
             printf("can't open %s file, terminating!\n", argv[1]);
             return -1;
         }
-        printf("generating random %d points\n", n);
+        printf("generating random " IDXF " points\n", n);
         std::random_device rd{};
         std::mt19937_64 gen{ 0x12345678 /*rd()*/};
 
-        //std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
+        std::uniform_real_distribution<double> d(-2.503515625, +2.503515625);
         //std::normal_distribution<double> d{0.0,2.0};
-        std::gamma_distribution<double> d(0.1,2.0);
+        //std::gamma_distribution<double> d(0.1,2.0);
 
         MyCoord max_coord = sizeof(MyCoord) < 8 ? /*float*/0x1.p31 : /*double*/0x1.p255;
 
         for (int i = 0; i < n; i++)
         {
-            MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
-            //MyPoint p = { d(gen), d(gen) };
+            //MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
+            MyPoint p = { d(gen), d(gen) };
             
             //p.x *= 0x1.p250;
             //p.y *= 0x1.p250;
@@ -1325,26 +1354,26 @@ int main(int argc, char* argv[])
         
         if (1)
         {
-            int m = n / 10;
+            MyIndex m = n / 10;
 
             // init sub[] with all n point indices
-            int* sub = (int*)malloc(sizeof(int) * n);
-            for (int i = 0; i < n; i++)
+            MyIndex* sub = (MyIndex*)malloc(sizeof(MyIndex) * (size_t)n);
+            for (MyIndex i = 0; i < n; i++)
                 sub[i] = i;
 
             // pick m random ones from n
             // place them as first m items of sub[]
-            for (int i = 0; i < m; i++)
+            for (MyIndex i = 0; i < m; i++)
             {
-                int j = i + gen() % ((size_t)n - i);
-                int r = sub[j];
+                MyIndex j = i + gen() % ((size_t)n - i);
+                MyIndex r = sub[j];
                 sub[j] = sub[i];
                 sub[i] = r;
             }
 
             std::vector<MyPoint> xxx;
-            for (int i = 0; i < m; i++)
-                xxx.push_back(cloud[sub[i]]);
+            for (MyIndex i = 0; i < m; i++)
+                xxx.push_back(cloud[(size_t)sub[i]]);
 
             IDelaBella* helper = IDelaBella::Create();
             helper->Triangulate(m, &xxx.data()->x, &xxx.data()->y, sizeof(MyPoint));
@@ -1353,7 +1382,7 @@ int main(int argc, char* argv[])
             // traverse all faces but use edges with 
             // ascending y or in case of flat y use only if ascending x
 
-            const IDelaBella2<MyCoord>::Simplex* dela = helper->GetFirstDelaunaySimplex();
+            const DelaBella_Triangle* dela = helper->GetFirstDelaunaySimplex();
             while (dela)
             {
                 for (int a = 0, b = 1, c = 2; a < 3; b = c, c = a, a++)
@@ -1372,16 +1401,16 @@ int main(int argc, char* argv[])
 
 
         /*
-        int a = gen() % n;
-        for (int i = 0; i < 1000; i++)
+        MyIndex a = gen() % n;
+        for (MyIndex i = 0; i < 1000; i++)
         {
-            int b = (a + gen() % (n-1)) % n;
+            MyIndex b = (a + gen() % (n-1)) % n;
             force.push_back(MyEdge(a, b));
         }
         */
      
         /*
-        for (int i = 0; i < n; i++)
+        for (MyIndex i = 0; i < n; i++)
         {
             MyPoint p = { d(gen), 0 };
             //p.y = p.x;
@@ -1412,8 +1441,8 @@ int main(int argc, char* argv[])
 
         for (int i = 0; i < c; i++)
         {
-            int a, b;
-            r = fscanf(f, "%d %d", &a, &b);
+            MyIndex a, b;
+            r = fscanf(f, "" IDXF " " IDXF "", &a, &b);
             MyEdge e = {a, b};
             force.push_back(e);
         }
@@ -1421,7 +1450,7 @@ int main(int argc, char* argv[])
         fclose(f);
     }
 
-    int points = (int)cloud.size();
+    MyIndex points = (MyIndex)cloud.size();
 
     #ifdef WITH_CDT
 
@@ -1481,7 +1510,7 @@ int main(int argc, char* argv[])
         std::vector<CDT::Poly> cdt_polys = CDT::Polygonize(cdt);
         uint64_t t_p1 = uSec();
 
-        printf("CDT POLYS = %d (in %d ms)\n", (int)cdt_polys.size(), (int)((t_p1 - t_p0) / 1000));
+        printf("CDT POLYS = " IDXF " (in %d ms)\n", (MyIndex)cdt_polys.size(), (int)((t_p1 - t_p0) / 1000));
 
     #endif
 
@@ -1506,10 +1535,10 @@ int main(int argc, char* argv[])
             printf("delaunator threw an exception!\n");
             d = 0;
         }
-        int tris_delaunator = d ? (int)d->triangles.size() / 3 : 0;
+        MyIndex tris_delaunator = d ? (MyIndex)d->triangles.size() / 3 : 0;
         uint64_t t1 = uSec();
         printf("elapsed %d ms\n", (int)((t1-t0)/1000));
-        printf("delaunator triangles: %d\n", tris_delaunator);
+        printf("delaunator triangles: " IDXF "\n", tris_delaunator);
     }
     #endif
 
@@ -1518,50 +1547,50 @@ int main(int argc, char* argv[])
 	
     printf("running delabella...\n");
     uint64_t t6 = uSec();
-	int verts = idb->Triangulate(points, &cloud.data()->x, &cloud.data()->y, sizeof(MyPoint));
-	int tris_delabella = verts > 0 ? verts / 3 : 0;
-    int contour = idb->GetNumBoundaryVerts();
-    int non_contour = idb->GetNumInternalVerts();
-	int vert_num = contour + non_contour;
+    MyIndex verts = idb->Triangulate(points, &cloud.data()->x, &cloud.data()->y, sizeof(MyPoint));
+    MyIndex tris_delabella = verts > 0 ? verts / 3 : 0;
+    MyIndex contour = idb->GetNumBoundaryVerts();
+    MyIndex non_contour = idb->GetNumInternalVerts();
+    MyIndex vert_num = contour + non_contour;
 
     #ifdef VORONOI
     printf("Polygonizing for VD\n");
     //idb->Polygonize(); // optional
 
     printf("Generating VD vertices\n");
-    int voronoi_vertices = idb->GenVoronoiDiagramVerts(0, 0, 0);
-    MyPoint* voronoi_vtx_buf = (MyPoint*)malloc(voronoi_vertices * sizeof(MyPoint));
+    MyIndex voronoi_vertices = idb->GenVoronoiDiagramVerts(0, 0, 0);
+    MyPoint* voronoi_vtx_buf = (MyPoint*)malloc((size_t)voronoi_vertices * sizeof(MyPoint));
     assert(voronoi_vtx_buf);
     idb->GenVoronoiDiagramVerts(&voronoi_vtx_buf->x, &voronoi_vtx_buf->y, sizeof(MyPoint));
 
     printf("Generating VD indices\n");
     #ifdef VORONOI_POLYS
     // testing... will remove
-    int voronoi_closed_indices;
-    int voronoi_indices = idb->GenVoronoiDiagramPolys(0, 0, 0);
-    int* voronoi_idx_buf = (int*)malloc(voronoi_indices * sizeof(int));
+    MyIndex voronoi_closed_indices;
+    MyIndex voronoi_indices = idb->GenVoronoiDiagramPolys(0, 0, 0);
+    MyIndex* voronoi_idx_buf = (MyIndex*)malloc(voronoi_indices * sizeof(MyIndex));
     assert(voronoi_idx_buf);
-    idb->GenVoronoiDiagramPolys(voronoi_idx_buf, sizeof(int), &voronoi_closed_indices);
+    idb->GenVoronoiDiagramPolys(voronoi_idx_buf, sizeof(MyIndex), &voronoi_closed_indices);
     #else
-    int voronoi_closed_indices = 0;
-    int voronoi_indices = idb->GenVoronoiDiagramEdges(0, 0);
-    int* voronoi_idx_buf = (int*)malloc(voronoi_indices * sizeof(int));
+    MyIndex voronoi_closed_indices = 0;
+    MyIndex voronoi_indices = idb->GenVoronoiDiagramEdges(0, 0);
+    MyIndex* voronoi_idx_buf = (MyIndex*)malloc((size_t)voronoi_indices * sizeof(MyIndex));
     assert(voronoi_idx_buf);
-    idb->GenVoronoiDiagramEdges(voronoi_idx_buf, sizeof(int));
+    idb->GenVoronoiDiagramEdges(voronoi_idx_buf, sizeof(MyIndex));
     #endif
 
-    printf("VD vertices = %d, indices = %d\n", voronoi_vertices, voronoi_indices);
+    printf("VD vertices = " IDXF ", indices = " IDXF "\n", voronoi_vertices, voronoi_indices);
     #endif
 
     if (force.size()>0)
-        idb->ConstrainEdges((int)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge), false);
+        idb->ConstrainEdges((MyIndex)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge), false);
 
-    const DelaBella_Triangle** dela_polys = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * tris_delabella);
-    int polys_delabella = idb->Polygonize(dela_polys);
+    const DelaBella_Triangle** dela_polys = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * (size_t)tris_delabella);
+    MyIndex polys_delabella = idb->Polygonize(dela_polys);
 
-    printf("delabella triangles: %d\n", tris_delabella);
-    printf("delabella contour: %d\n", contour);
-    printf("delabella polygons: %d\n", polys_delabella);
+    printf("delabella triangles: " IDXF "\n", tris_delabella);
+    printf("delabella contour: " IDXF "\n", contour);
+    printf("delabella polygons: " IDXF "\n", polys_delabella);
 
     //return 0;
 
@@ -1580,7 +1609,7 @@ int main(int argc, char* argv[])
     {
         #ifdef WITH_CDT
 
-        int tris_cdt = (int)cdt.triangles.size();
+        MyIndex tris_cdt = (MyIndex)cdt.triangles.size();
 
         if (tris_delabella != tris_cdt || polys_delabella != cdt_polys.size())
             printf("WARNING! Results are not comparable - different number of tris or polys\n");
@@ -1590,12 +1619,12 @@ int main(int argc, char* argv[])
             // currently, any difference between constrained edges passing 
             // internal edge of a polygon won't be detected !!!
 
-            int poly_indices = 2 * polys_delabella + tris_delabella;
+            MyIndex poly_indices = 2 * polys_delabella + tris_delabella;
 
             struct MyPoly
             {
-                int size;
-                int offs;
+                MyIndex size;
+                MyIndex offs;
             };
 
             struct PolyPred
@@ -1607,7 +1636,7 @@ int main(int argc, char* argv[])
                         return true;
                     if (p.size == q.size)
                     {
-                        for (size_t i = 0; i < (size_t)p.size; i++)
+                        for (MyIndex i = 0; i < p.size; i++)
                         {
                             if (v[i + p.offs] == v[i + q.offs])
                                 continue;
@@ -1622,23 +1651,23 @@ int main(int argc, char* argv[])
             printf("preping cdt for cmp ...\n");
             std::vector<MyPoint> cdt_v(poly_indices);
             std::vector<MyPoly> cdt_p(cdt_polys.size());
-            for (int p = 0, n = 0; p < (int)cdt_polys.size(); p++)
+            for (MyIndex p = 0, n = 0; p < (MyIndex)cdt_polys.size(); p++)
             {
-                int s = 0;
+                MyIndex s = 0;
 
                 for (int i = 0; i < 3; i++)
                 {
-                    int j = n + s;
-                    int k = cdt.triangles[cdt_polys[p][0]].vertices[i];
+                    MyIndex j = n + s;
+                    MyIndex k = cdt.triangles[cdt_polys[p][0]].vertices[i];
                     cdt_v[j].x = cdt.vertices[k].x;
                     cdt_v[j].y = cdt.vertices[k].y;
                     s++;
                 }
 
-                for (int i = 1; i < (int)cdt_polys[p].size(); i++)
+                for (MyIndex i = 1; i < (MyIndex)cdt_polys[p].size(); i++)
                 {
-                    int j = n + s;
-                    int k = cdt.triangles[cdt_polys[p][i]].vertices[0];
+                    MyIndex j = n + s;
+                    MyIndex k = cdt.triangles[cdt_polys[p][i]].vertices[0];
                     cdt_v[j].x = cdt.vertices[k].x;
                     cdt_v[j].y = cdt.vertices[k].y;
                     s++;
@@ -1732,7 +1761,7 @@ int main(int argc, char* argv[])
             for (int i=0; i<tris_delabella; i++)
             {
                 const DelaBella_Triangle* dela = idb->GetFirstDelaunaySimplex();
-                fprintf(f,"%d %d %d\n", 
+                fprintf(f,"" IDXF " " IDXF " " IDXF "\n",
                     dela->v[0]->i,
                     dela->v[1]->i,
                     dela->v[2]->i);
@@ -1817,9 +1846,9 @@ int main(int argc, char* argv[])
 
     gfx.Upload( glsl_ver >= 410 ? GL_DOUBLE : GL_FLOAT,
                 idb,
-                (int)cloud.size(),
+                (MyIndex)cloud.size(),
                 cloud.data(),
-                (int)force.size(),
+                (MyIndex)force.size(),
                 force.data()
                 #ifdef VORONOI
                 , voronoi_vertices,
@@ -1853,10 +1882,9 @@ int main(int argc, char* argv[])
     double drag_lx, drag_ly;
     int drag = 0;
 
-    glPrimitiveRestartIndex((GLuint)~0);
+    glPrimitiveRestartIndex(~(GLuint)0);
     glEnable(GL_PRIMITIVE_RESTART);
-//    glEnable(GL_LINE_SMOOTH);
-//    glEnable(GL_POINT_SMOOTH);
+
     glEnable(GL_BLEND);
 
 	printf("going interactive.\n");
@@ -2097,15 +2125,17 @@ int main(int argc, char* argv[])
         gfx.vao_main.Bind();
 
         #ifdef CULLING
-        int cull = gfx.TrisByScale(tris_delabella, scale);
-        int voro_cull = 2 * gfx.VoroByScale(voronoi_indices / 2, scale);
-        int cons_cull = gfx.ConsByScale((int)force.size(), scale);
-
-        // printf("tris:%d/%d, edges:%d/%d, cons:%d/%d\n", cull,tris_delabella, voro_cull / 2, voronoi_indices / 2, cons_cull,(int)force.size());
+            MyIndex cull = gfx.TrisByScale(tris_delabella, scale);
+            MyIndex cons_cull = gfx.ConsByScale((MyIndex)force.size(), scale);
+            #ifdef VORONOI
+            MyIndex voro_cull = 2 * gfx.VoroByScale(voronoi_indices / 2, scale);
+            #endif
         #else
-        int cull = tris_delabella;
-        int voro_cull = voronoi_indices;
-        int cons_cull = (int)force.size();
+            MyIndex cull = tris_delabella;
+            MyIndex cons_cull = (MyIndex)force.size();
+            #ifdef VORONOI
+            MyIndex voro_cull = voronoi_indices;
+            #endif
         #endif
 
         // grey fill
@@ -2114,18 +2144,18 @@ int main(int argc, char* argv[])
         {
             gfx.SetColor(0.2f, 0.2f, 0.2f, 1.0f);
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-            glDrawElements(GL_TRIANGLES, cull/*tris_delabella*/ * 3, GL_UNSIGNED_INT, 0);
+            glDrawElements(GL_TRIANGLES, (GLsizei)cull/*tris_delabella*/ * 3, GL_UNSIGNED_INT, 0);
         }
 
         // paint constraints
-        int constrain_indices = 2*(int)cons_cull;
+        MyIndex constrain_indices = 2*cons_cull;
         if (constrain_indices && show_c)
         {
             gfx.vao_constraint.Bind();
 
             glLineWidth(thick);
             gfx.SetColor(.9f, .9f, .9f, 1.0f);
-            glDrawElements(GL_LINES, constrain_indices, GL_UNSIGNED_INT, (GLuint*)0);
+            glDrawElements(GL_LINES, (GLsizei)constrain_indices, GL_UNSIGNED_INT, (GLuint*)0);
             glLineWidth(thin);
 
             // oops
@@ -2137,7 +2167,7 @@ int main(int argc, char* argv[])
         {
             gfx.SetColor(1.0f, 0.0f, 0.0f, 1.0f);
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-            glDrawElements(GL_TRIANGLES, cull/*tris_delabella*/ * 3, GL_UNSIGNED_INT, 0);
+            glDrawElements(GL_TRIANGLES, (GLsizei)cull/*tris_delabella*/ * 3, GL_UNSIGNED_INT, 0);
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         }
 
@@ -2145,7 +2175,7 @@ int main(int argc, char* argv[])
         {
             gfx.SetColor(0.0f, 0.0f, 1.0f, 1.0f);
             glLineWidth(thick);
-            glDrawElements(GL_LINE_LOOP, contour, GL_UNSIGNED_INT, (GLuint*)0 + (intptr_t)tris_delabella * 3);
+            glDrawElements(GL_LINE_LOOP, (GLsizei)contour, GL_UNSIGNED_INT, (GLuint*)0 + (intptr_t)tris_delabella * 3);
             glLineWidth(thin);
         }
 
@@ -2155,7 +2185,7 @@ int main(int argc, char* argv[])
         {
             gfx.vao_cdt.Bind();
 
-            int tris_cdt = (int)cdt.triangles.size();
+            MyIndex tris_cdt = (MyIndex)cdt.triangles.size();
 
             //glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE);
@@ -2163,7 +2193,7 @@ int main(int argc, char* argv[])
             gfx.SetColor(0.0f,0.0f,1.0f,1.0f);
             glLineWidth(thin);
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-            glDrawElements(GL_TRIANGLES, /*0,points-1,*/ tris_cdt * 3, GL_UNSIGNED_INT, 0);
+            glDrawElements(GL_TRIANGLES, /*0,points-1,*/ (GLsizei)tris_cdt * 3, GL_UNSIGNED_INT, 0);
 
             //glDisable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -2179,7 +2209,7 @@ int main(int argc, char* argv[])
             // voro-verts in back
             gfx.SetColor(1.0f, 1.0f, 0.0f, 1.0f);
             glPointSize(blob);
-            glDrawArrays(GL_POINTS, 0, voronoi_vertices - contour);
+            glDrawArrays(GL_POINTS, 0, (GLsizei)(voronoi_vertices - contour));
             glPointSize(dot);
             gfx.ibo_voronoi.Bind();
 
@@ -2190,11 +2220,11 @@ int main(int argc, char* argv[])
             // glDrawElements(GL_LINE_LOOP, voronoi_indices, GL_UNSIGNED_INT, (GLuint*)0);
             // if you wanna be a ganan: after first M closed polys switch from line_loops to line_strips
             // and draw remaining N open polygons
-            glDrawElements(GL_LINE_LOOP, voronoi_closed_indices, GL_UNSIGNED_INT, (GLuint*)0);
-            glDrawElements(GL_LINE_STRIP, voronoi_indices - voronoi_closed_indices, GL_UNSIGNED_INT, (GLuint*)0 + (intptr_t)voronoi_closed_indices);
+            glDrawElements(GL_LINE_LOOP, (GLsizei)voronoi_closed_indices, GL_UNSIGNED_INT, (GLuint*)0);
+            glDrawElements(GL_LINE_STRIP, (GLsizei)(voronoi_indices - voronoi_closed_indices), GL_UNSIGNED_INT, (GLuint*)0 + (intptr_t)voronoi_closed_indices);
             #else
             // draw edge soup
-            glDrawElements(GL_LINES, voro_cull, GL_UNSIGNED_INT, (GLuint*)0);
+            glDrawElements(GL_LINES, (GLsizei)voro_cull/*voronoi_indices*/, GL_UNSIGNED_INT, (GLuint*)0);
             #endif
         }
         #endif
@@ -2203,7 +2233,7 @@ int main(int argc, char* argv[])
         gfx.vao_main.Bind();
         gfx.SetColor(1.0f, 1.0f, 0.0f, 1.0f);
         glPointSize(blob);
-        glDrawArrays(GL_POINTS, 0, points);
+        glDrawArrays(GL_POINTS, 0, (GLsizei)points);
         glPointSize(dot);
 
         SDL_GL_SwapWindow(window);

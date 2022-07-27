@@ -15,6 +15,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #include "predicates.h"
 
 #ifdef _WIN32
+#define NOMINMAX
 #include <windows.h>
 #endif
 
@@ -41,15 +42,15 @@ static uint64_t uSec()
 }
 
 
-template <typename T>
-IDelaBella2<T>::~IDelaBella2()
+template <typename T, typename I>
+IDelaBella2<T,I>::~IDelaBella2()
 {
 }
 
-template <typename T>
-struct CDelaBella3 : IDelaBella2<T>
+template <typename T, typename I>
+struct CDelaBella2 : IDelaBella2<T,I>
 {
-	CDelaBella3() : 
+	CDelaBella2() : 
 		vert_map(0),
 		vert_alloc(0),
 		face_alloc(0),
@@ -72,9 +73,9 @@ struct CDelaBella3 : IDelaBella2<T>
 
 	struct Face;
 
-	struct Iter : IDelaBella2<T>::Iterator {};
+	struct Iter : IDelaBella2<T,I>::Iterator {};
 
-	struct Vert : IDelaBella2<T>::Vertex
+	struct Vert : IDelaBella2<T,I>::Vertex
 	{
 		static bool overlap(const Vert* v1, const Vert* v2)
 		{
@@ -95,7 +96,7 @@ struct CDelaBella3 : IDelaBella2<T>
 		}
 	};
 
-	struct Face : IDelaBella2<T>::Simplex
+	struct Face : IDelaBella2<T,I>::Simplex
 	{
 		static Face* Alloc(Face** from)
 		{
@@ -181,32 +182,32 @@ struct CDelaBella3 : IDelaBella2<T>
 
 	Vert* vert_alloc;
 	Face* face_alloc;
-	int* vert_map;
-	int max_verts;
-	int max_faces;
+	I* vert_map;
+	I max_verts;
+	I max_faces;
 
 	Face* first_dela_face;
 	Face* first_hull_face;
 	Vert* first_boundary_vert;
 	Vert* first_internal_vert;
 
-	int inp_verts;
-	int out_verts;
-	int polygons;
-	int out_hull_faces;
-	int out_boundary_verts;
-	int unique_points;
+	I inp_verts;
+	I out_verts;
+	I polygons;
+	I out_hull_faces;
+	I out_boundary_verts;
+	I unique_points;
 
 	int(*errlog_proc)(void* file, const char* fmt, ...);
 	void* errlog_file;
 
-	int Prepare(int* start, Face** hull, int* out_hull_faces, Face** cache, uint64_t* sort_stamp)
+	I Prepare(I* start, Face** hull, I* out_hull_faces, Face** cache, uint64_t* sort_stamp)
 	{
 		uint64_t time0 = uSec();
 
 		if (errlog_proc)
 			errlog_proc(errlog_file, "[...] sorting vertices");
-		int points = inp_verts;
+		I points = inp_verts;
 
 		std::sort(vert_alloc, vert_alloc + points);
 
@@ -214,7 +215,7 @@ struct CDelaBella3 : IDelaBella2<T>
 		{
 			vert_map[vert_alloc[0].i] = 0;
 
-			int w = 0, r = 1; // skip initial no-dups block
+			I w = 0, r = 1; // skip initial no-dups block
 			while (r < points && !Vert::overlap(vert_alloc + r, vert_alloc + w))
 			{
 				vert_map[vert_alloc[r].i] = r;
@@ -222,7 +223,7 @@ struct CDelaBella3 : IDelaBella2<T>
 				r++;
 			}
 
-			int d = w; // dup map
+			I d = w; // dup map
 			w++;
 
 			while (r < points)
@@ -287,14 +288,14 @@ struct CDelaBella3 : IDelaBella2<T>
 			return -points;
 		}
 
-		int i;
+		I i;
 		Face f; // tmp
 		f.v[0] = vert_alloc + 0;
 
 		T lo_x = vert_alloc[0].x, hi_x = lo_x;
 		T lo_y = vert_alloc[0].y, hi_y = lo_y;
-		int lower_left = 0;
-		int upper_right = 0;
+		I lower_left = 0;
+		I upper_right = 0;
 		for (i = 1; i < 3; i++)
 		{
 			Vert* v = vert_alloc + i;
@@ -331,7 +332,7 @@ struct CDelaBella3 : IDelaBella2<T>
 				uint64_t p = (int)((uint64_t)100 * i / points);
 				pro = (int)((p + 1) * points / 100);
 				if (pro >= points)
-					pro = points - 1;
+					pro = (int)points - 1;
 				if (i == points - 1)
 				{
 					p = 100;
@@ -366,12 +367,12 @@ struct CDelaBella3 : IDelaBella2<T>
 			i++;
 		}
 
-		int* vert_sub = 0;
+		I* vert_sub = 0;
 
 		bool colinear = f.sign0(); // hybrid
 		if (colinear)
 		{
-			vert_sub = (int*)malloc(sizeof(int) * ((size_t)i+1));
+			vert_sub = (I*)malloc(sizeof(I) * ((size_t)i+1));
 			if (!vert_sub)
 			{
 				if (errlog_proc)
@@ -379,7 +380,7 @@ struct CDelaBella3 : IDelaBella2<T>
 				return 0;
 			}
 
-			for (int s = 0; s <= i; s++)
+			for (I s = 0; s <= i; s++)
 				vert_sub[s] = s;
 
 			// choose x or y axis to sort verts (no need to be exact)
@@ -387,7 +388,7 @@ struct CDelaBella3 : IDelaBella2<T>
 			{
 				struct 
 				{ 
-					bool operator() (const int& a, const int& b)
+					bool operator() (const I& a, const I& b)
 					{
 						return less(vert_alloc[a], vert_alloc[b]);
 					}
@@ -407,7 +408,7 @@ struct CDelaBella3 : IDelaBella2<T>
 			{
 				struct 
 				{ 
-					bool operator() (const int& a, const int& b)
+					bool operator() (const I& a, const I& b)
 					{
 						return less(vert_alloc[a], vert_alloc[b]);
 					}
@@ -430,7 +431,7 @@ struct CDelaBella3 : IDelaBella2<T>
 			// sort parts separately in opposite directions
 			// mark part with Vert::sew temporarily
 
-			for (int j = 0; j < i; j++)
+			for (I j = 0; j < i; j++)
 			{
 				if (j == lower_left)
 				{
@@ -468,7 +469,7 @@ struct CDelaBella3 : IDelaBella2<T>
 			{
 				// default to CW order (unlikely, if wrong, we will reverse using one=2 and two=1)
 				
-				bool operator()(const int& a, const int& b) const
+				bool operator()(const I& a, const I& b) const
 				{
 					return less(vert_alloc[a], vert_alloc[b]);
 				}
@@ -513,7 +514,7 @@ struct CDelaBella3 : IDelaBella2<T>
 				Vert* vert_alloc;
 			} c;
 
-			vert_sub = (int*)malloc(sizeof(int) * ((size_t)i+1));
+			vert_sub = (I*)malloc(sizeof(I) * ((size_t)i+1));
 			if (!vert_sub)
 			{
 				if (errlog_proc)
@@ -521,7 +522,7 @@ struct CDelaBella3 : IDelaBella2<T>
 				return 0;
 			}
 
-			for (int s = 0; s <= i; s++)
+			for (I s = 0; s <= i; s++)
 				vert_sub[s] = s;
 
 			c.vert_alloc = vert_alloc;
@@ -533,7 +534,7 @@ struct CDelaBella3 : IDelaBella2<T>
 		// alloc faces only if we're going to create them
 		if (i < points || !colinear)
 		{
-			int hull_faces = 2 * points - 4;
+			I hull_faces = 2 * points - 4;
 			*out_hull_faces = hull_faces;
 
 			if (max_faces < hull_faces)
@@ -544,7 +545,16 @@ struct CDelaBella3 : IDelaBella2<T>
 					delete[] face_alloc;
 				}
 				max_faces = 0;
-				face_alloc = new Face[hull_faces];
+
+				try 
+				{
+					face_alloc = new Face[(size_t)hull_faces];
+				}
+				catch (...)
+				{
+					face_alloc = 0;
+				}
+
 				if (face_alloc)
 					max_faces = hull_faces;
 				else
@@ -555,7 +565,7 @@ struct CDelaBella3 : IDelaBella2<T>
 				}
 			}
 
-			for (int i = 1; i < hull_faces; i++)
+			for (I i = 1; i < hull_faces; i++)
 				face_alloc[i - 1].next = face_alloc + i;
 			face_alloc[hull_faces - 1].next = 0;
 
@@ -579,7 +589,7 @@ struct CDelaBella3 : IDelaBella2<T>
 				first_internal_vert = 0;
 				out_boundary_verts = points;
 
-				for (int j = 1; j < points; j++)
+				for (I j = 1; j < points; j++)
 					vert_alloc[j - 1].next = vert_alloc + vert_sub[j];
 				vert_alloc[points - 1].next = 0;
 
@@ -594,7 +604,7 @@ struct CDelaBella3 : IDelaBella2<T>
 			Face* prev_p = 0;
 			Face* prev_q = 0;
 
-			for (int j = 2; j < i; j++)
+			for (I j = 2; j < i; j++)
 			{
 				Face* p = next_p;
 				p->v[0] = vert_alloc + vert_sub[0];
@@ -656,7 +666,7 @@ struct CDelaBella3 : IDelaBella2<T>
 			Face* next_q = Face::Alloc(cache);
 			Face* prev_q = 0;
 
-			for (int j = 2; j < i; j++)
+			for (I j = 2; j < i; j++)
 			{
 				Face* p = next_p;
 				p->v[0] = vert_alloc + vert_sub[0];
@@ -734,15 +744,15 @@ struct CDelaBella3 : IDelaBella2<T>
 		return points;
 	}
 
-	int Triangulate(int* other_faces)
+	I Triangulate(I* other_faces)
 	{
-		int i = 0;
+		I i = 0;
 		Face* hull = 0;
-		int hull_faces = 0;
+		I hull_faces = 0;
 		Face* cache = 0;
 
 		uint64_t sort_stamp;
-		int points = Prepare(&i, &hull, &hull_faces, &cache, &sort_stamp);
+		I points = Prepare(&i, &hull, &hull_faces, &cache, &sort_stamp);
 		unique_points = points < 0 ? -points : points;
 		if (points <= 0)
 		{
@@ -760,7 +770,7 @@ struct CDelaBella3 : IDelaBella2<T>
 				uint64_t p = (int)((uint64_t)100 * i / points);
 				pro = (int)((p+1) * points / 100);
 				if (pro >= points)
-					pro = points - 1;
+					pro = (int)points - 1;
 				if (i == points - 1)
 					p = 100;
 				if (errlog_proc)
@@ -801,8 +811,8 @@ struct CDelaBella3 : IDelaBella2<T>
 			// 2. DELETE VISIBLE FACES & ADD NEW ONES
 			//    (we also build silhouette (vertex loop) between visible & invisible faces)
 
-			int del = 0;
-			int add = 0;
+			I del = 0;
+			I add = 0;
 
 			// push first visible face onto stack (of visible faces)
 			Face* stack = f;
@@ -926,18 +936,18 @@ struct CDelaBella3 : IDelaBella2<T>
 		assert(2 * i - 4 == hull_faces);
 		#endif
 
-		for (int j = 0; j < points; j++)
+		for (I j = 0; j < points; j++)
 		{
 			vert_alloc[j].next = 0;
 			vert_alloc[j].sew = 0;
 		}
 
-		int others = 0;
+		I others = 0;
 
 		i = 0;
 		Face** prev_dela = &first_dela_face;
 		Face** prev_hull = &first_hull_face;
-		for (int j = 0; j < hull_faces; j++)
+		for (I j = 0; j < hull_faces; j++)
 		{
 			Face* f = face_alloc + j;
 
@@ -1009,7 +1019,7 @@ struct CDelaBella3 : IDelaBella2<T>
 		// link all other verts into internal list
 		first_internal_vert = 0;
 		Vert** prev_inter = &first_internal_vert;
-		for (int j=0; j<points; j++)
+		for (I j=0; j<points; j++)
 		{
 			if (!vert_alloc[j].next)
 			{
@@ -1025,7 +1035,7 @@ struct CDelaBella3 : IDelaBella2<T>
 		return 3*i;
 	}
 
-	bool ReallocVerts(int points)
+	bool ReallocVerts(I points)
 	{
 		inp_verts = points;
 		out_verts = 0;
@@ -1048,10 +1058,19 @@ struct CDelaBella3 : IDelaBella2<T>
 				max_verts = 0;
 			}
 
-			vert_map = (int*)malloc(sizeof(int) * points);
+			try
+			{
+				vert_alloc = new Vert[(size_t)points];
+			}
+			catch (...)
+			{
+				vert_alloc = 0;
+			}
 
-			vert_alloc = new Vert[points];
 			if (vert_alloc)
+				vert_map = (I*)malloc(sizeof(I) * (size_t)points);
+
+			if (vert_alloc && vert_map)
 				max_verts = points;
 			else
 			{
@@ -1249,32 +1268,32 @@ struct CDelaBella3 : IDelaBella2<T>
 		return 0;
 	}
 
-	virtual int ConstrainEdges(int edges, const int* pa, const int* pb, int advance_bytes, bool classify)
+	virtual I ConstrainEdges(I edges, const I* pa, const I* pb, size_t advance_bytes, bool classify)
 	{
-		if (advance_bytes <= 0)
-			advance_bytes = 2*sizeof(int);
+		if (advance_bytes == 0)
+			advance_bytes = 2*sizeof(I);
 
 		uint64_t time0 = uSec();
 
-		int flips = 0;
+		I flips = 0;
 
 		int pro = 0;
-		for (int con = 0; con < edges; con++)
+		for (I con = 0; con < edges; con++)
 		{
 			if (con >= pro)
 			{
 				uint64_t p = (int)((uint64_t)100 * con / edges);
 				pro = (int)((p + 1) * edges / 100);
 				if (pro >= edges)
-					pro = edges - 1;
+					pro = (int)edges - 1;
 				if (con == edges - 1)
 					p = 100;
 				if (errlog_proc)
 					errlog_proc(errlog_file, "\r[%2d%s] constraining ", p, p >= 100 ? "" : "%");
 			}
 
-			int a = *(const int*)((const char*)pa + (intptr_t)con * advance_bytes);
-			int b = *(const int*)((const char*)pb + (intptr_t)con * advance_bytes);
+			I a = *(const I*)((const char*)pa + (intptr_t)con * advance_bytes);
+			I b = *(const I*)((const char*)pb + (intptr_t)con * advance_bytes);
 
 			if (!first_dela_face || a == b)
 				continue;
@@ -1619,10 +1638,10 @@ struct CDelaBella3 : IDelaBella2<T>
 		}
 
 		// clean up the mess we've made with dela faces list !!!
-		int hull_faces = 2 * unique_points - 4;
+		I hull_faces = 2 * unique_points - 4;
 		Face** tail = &first_dela_face;
-		int index = 0;
-		for (int i = 0; i < hull_faces; i++)
+		I index = 0;
+		for (I i = 0; i < hull_faces; i++)
 		{
 			if (face_alloc[i].index >= 0)
 			{
@@ -1641,14 +1660,16 @@ struct CDelaBella3 : IDelaBella2<T>
 		return flips;
 	}
 
-	virtual int Polygonize(const typename IDelaBella2<T>::Simplex* poly[])
+	virtual I Polygonize(const typename IDelaBella2<T,I>::Simplex* poly[])
 	{
+		const I marker = (I)(-1);
+
 		uint64_t time0 = uSec();
 		Face** buf = 0;
 		if (!poly)
 		{
-			buf = (Face**)malloc(sizeof(Face*) * out_verts / 3);
-			poly = (const typename IDelaBella2<T>::Simplex**)buf;
+			buf = (Face**)malloc(sizeof(Face*) * (size_t)out_verts / 3);
+			poly = (const typename IDelaBella2<T,I>::Simplex**)buf;
 			if (!poly)
 				return -1;
 		}
@@ -1657,13 +1678,15 @@ struct CDelaBella3 : IDelaBella2<T>
 		Face* f = first_dela_face;
 		while (f)
 		{
-			f->index = 0x40000000;
+			f->index = marker;
 			f = (Face*)f->next;
 		}
 
-		int num = 0;
+		I num = 0;
 		f = first_dela_face;
-		int pro = 0, i=0, faces = out_verts / 3;
+		int pro = 0;
+		I faces = out_verts / 3;
+		I i = 0;
 		while (f)
 		{
 			if (i >= pro)
@@ -1671,7 +1694,7 @@ struct CDelaBella3 : IDelaBella2<T>
 				uint64_t p = (int)((uint64_t)100 * i / faces);
 				pro = (int)((p + 1) * faces / 100);
 				if (pro >= faces)
-					pro = faces - 1;
+					pro = (int)faces - 1;
 				if (i == faces - 1)
 					p = 100;
 				if (errlog_proc)
@@ -1684,9 +1707,9 @@ struct CDelaBella3 : IDelaBella2<T>
 			for (int i = 0; i < 3; i++)
 			{
 				Face* a = (Face*)f->f[i];
-				int index = a->index;
+				I index = a->index;
 
-				if (index >= 0 && index < 0x40000000)
+				if (index >= 0)
 				{
 					int j = 0;
 					for (; j < 3; j++)
@@ -1698,8 +1721,8 @@ struct CDelaBella3 : IDelaBella2<T>
 
 					if (j == 3)
 					{
-						int dest = f->index;
-						if (dest < 0x40000000)
+						I dest = f->index;
+						if (dest >= 0)
 						{
 							// merging polys !!!
 							Face* m = (Face*)poly[index];
@@ -1761,11 +1784,11 @@ struct CDelaBella3 : IDelaBella2<T>
 		// ALTER POST PROC:
 		// re-order triangles in every polygon and re-order indices in faces:
 		// - first face defines first 3 verts in contour with v[0],v[1],v[2]
-		// - every next face define just 1 additional vertex at v[0]
+		// - every next face define just 1 additional vertex at its v[0]
 		// thay can form fan or strip or arbitraty mix of both
 		// without changing existing edges!
 
-		for (int p = num-1; p >= 0; p--)
+		for (I p = num-1; p >= 0; p--)
 		{
 			Face* f = (Face*)(poly[p]);
 			if (!f->next)
@@ -1911,26 +1934,39 @@ struct CDelaBella3 : IDelaBella2<T>
 		return num;
 	}
 
-	virtual int Triangulate(int points, const T* x, const T* y, int advance_bytes)
+	virtual I Triangulate(I points, const T* x, const T* y, size_t advance_bytes)
 	{
+		// const size_t max_triangulate_indices = (size_t)points * 6 - 15;
+		// const size_t max_voronoi_edge_indices = (size_t)points * 6 - 12;
+		const size_t max_voronoi_poly_indices = (size_t)points * 7 - 9; // winner of shame!
+
+		// upcoming x16 - 40 (every triangle with 3 edge flags)
+
+		if (max_voronoi_poly_indices > (size_t)std::numeric_limits<I>::max())
+		{
+			if (errlog_proc)
+				errlog_proc(errlog_file, "[ERR] index type too small for provided number of points!\n");
+			return 0;
+		}
+
 		if (!x)
 			return 0;
 		
 		if (!y)
 			y = x + 1;
 		
-		if (advance_bytes < (int)(sizeof(T) * 2))
+		if (advance_bytes < sizeof(T) * 2)
 			advance_bytes = sizeof(T) * 2;
 
 		if (!ReallocVerts(points))
 			return 0;
 
-		for (int i = 0; i < points; i++)
+		for (I i = 0; i < points; i++)
 		{
 			Vert* v = vert_alloc + i;
 			v->i = i;
-			v->x = *(const T*)((const char*)x + (intptr_t)i*advance_bytes);
-			v->y = *(const T*)((const char*)y + (intptr_t)i*advance_bytes);
+			v->x = *(const T*)((const char*)x + i*advance_bytes);
+			v->y = *(const T*)((const char*)y + i*advance_bytes);
 		}
 
 		out_hull_faces = 0;
@@ -1959,59 +1995,59 @@ struct CDelaBella3 : IDelaBella2<T>
 	}
 
 	// num of points passed to last call to Triangulate()
-	virtual int GetNumInputPoints() const
+	virtual I GetNumInputPoints() const
 	{
 		return inp_verts;
 	}
 
 	// num of verts returned from last call to Triangulate()
-	virtual int GetNumOutputIndices() const
+	virtual I GetNumOutputIndices() const
 	{
 		return out_verts;
 	}
 
-	virtual int GetNumOutputHullFaces() const
+	virtual I GetNumOutputHullFaces() const
 	{
 		return out_hull_faces;
 	}
 
-	virtual int GetNumBoundaryVerts() const
+	virtual I GetNumBoundaryVerts() const
 	{
 		return out_verts < 0 ? -out_verts : out_boundary_verts;
 	}
 
-	virtual int GetNumInternalVerts() const
+	virtual I GetNumInternalVerts() const
 	{
 		return out_verts < 0 ? 0 : unique_points - out_boundary_verts;
 	}
 
 	// num of polygons
-	virtual int GetNumPolygons() const
+	virtual I GetNumPolygons() const
 	{
 		return polygons;
 	}
 
-	virtual const typename IDelaBella2<T>::Simplex* GetFirstDelaunaySimplex() const
+	virtual const typename IDelaBella2<T,I>::Simplex* GetFirstDelaunaySimplex() const
 	{
 		return first_dela_face;
 	}
 
-	virtual const typename IDelaBella2<T>::Simplex* GetFirstHullSimplex() const
+	virtual const typename IDelaBella2<T,I>::Simplex* GetFirstHullSimplex() const
 	{
 		return first_hull_face;
 	}
 
-	virtual const typename IDelaBella2<T>::Vertex* GetFirstBoundaryVertex() const
+	virtual const typename IDelaBella2<T,I>::Vertex* GetFirstBoundaryVertex() const
 	{
 		return first_boundary_vert;
 	}
 
-	virtual const typename IDelaBella2<T>::Vertex* GetFirstInternalVertex() const
+	virtual const typename IDelaBella2<T,I>::Vertex* GetFirstInternalVertex() const
 	{
 		return first_internal_vert;
 	}
 
-	virtual const typename IDelaBella2<T>::Vertex* GetVertexByIndex(int i) const
+	virtual const typename IDelaBella2<T,I>::Vertex* GetVertexByIndex(I i) const
 	{
 		if (i < 0 || i >= inp_verts)
 			return 0;
@@ -2024,19 +2060,19 @@ struct CDelaBella3 : IDelaBella2<T>
 		errlog_file = stream;
 	}
 
-	virtual int GenVoronoiDiagramVerts(T* x, T* y, int advance_bytes) const
+	virtual I GenVoronoiDiagramVerts(T* x, T* y, size_t advance_bytes) const
 	{
 		if (!first_dela_face)
 			return 0;
 
-		const int polys = polygons;
-		const int contour = out_boundary_verts;
-		int ret = polys + contour;
+		const I polys = polygons;
+		const I contour = out_boundary_verts;
+		I ret = polys + contour;
 
 		if (!x || !y)
 			return ret;
 
-		if (advance_bytes < (int)(sizeof(T) * 2))
+		if (advance_bytes < sizeof(T) * 2)
 			advance_bytes = sizeof(T) * 2;
 
 		const Face* f = first_dela_face;
@@ -2057,7 +2093,7 @@ struct CDelaBella3 : IDelaBella2<T>
 			// yes, for polys < tris
 			// we possibly calc it multiple times
 			// and overwrite already calculated centers
-			int offs = advance_bytes * f->index; 
+			size_t offs = advance_bytes * (size_t)f->index;
 			*(T*)((char*)x + offs) = cx;
 			*(T*)((char*)y + offs) = cy;
 
@@ -2065,14 +2101,14 @@ struct CDelaBella3 : IDelaBella2<T>
 		}
 
 		{
-			int offs = advance_bytes * polys;
+			size_t offs = advance_bytes * (size_t)polys;
 			x = (T*)((char*)x + offs);
 			y = (T*)((char*)y + offs);
 		}
 
 		Vert* prev = first_boundary_vert;
 		Vert* vert = (Vert*)prev->next;
-		for (int i = 0; i < contour; i++)
+		for (I i = 0; i < contour; i++)
 		{
 			T nx = prev->y - vert->y;
 			T ny = vert->x - prev->x;
@@ -2081,7 +2117,7 @@ struct CDelaBella3 : IDelaBella2<T>
 			nx *= nn;
 			ny *= nn;
 
-			int offs = advance_bytes * i;
+			size_t offs = advance_bytes * (size_t)i;
 			*(T*)((char*)x + offs) = nx;
 			*(T*)((char*)y + offs) = ny;
 
@@ -2092,56 +2128,56 @@ struct CDelaBella3 : IDelaBella2<T>
 		return ret;
 	}
 
-	virtual int GenVoronoiDiagramEdges(int* indices, int advance_bytes) const
+	virtual I GenVoronoiDiagramEdges(I* indices, size_t advance_bytes) const
 	{
 		if (!first_dela_face)
 			return 0;
 
-		const int polys = polygons;
-		const int verts = unique_points;
-		int ret = 2 * (verts + polys - 1);
+		const I polys = polygons;
+		const I verts = unique_points;
+		I ret = 2 * (verts + polys - 1);
 
 		if (!indices)
 			return ret;
 
-		if (advance_bytes < sizeof(int))
-			advance_bytes = sizeof(int);
+		if (advance_bytes < sizeof(I))
+			advance_bytes = sizeof(I);
 
-		const int contour = out_boundary_verts;
-		const int inter = verts - contour;
+		const I contour = out_boundary_verts;
+		const I inter = verts - contour;
 
-		int* idx = indices;
+		I* idx = indices;
 
 		Vert* vert = first_internal_vert;
-		for (int i = 0; i < inter; i++)
+		for (I i = 0; i < inter; i++)
 		{
 			Iter it;
 			Face* t = (Face*)vert->StartIterator(&it);
 			Face* e = t;
 
-			int a = t->index; // begin
+			I a = t->index; // begin
 			do
 			{
-				int b = t->index;
+				I b = t->index;
 				if (a < b)
 				{
 					*idx = a;
-					idx = (int*)((char*)idx + advance_bytes);
+					idx = (I*)((char*)idx + advance_bytes);
 					*idx = b;
-					idx = (int*)((char*)idx + advance_bytes);
+					idx = (I*)((char*)idx + advance_bytes);
 				}
 				a = b;
 				t = (Face*)it.Next();
 			} while (t != e);
 
 			// loop closing seg
-			int b = t->index;
+			I b = t->index;
 			if (a < b)
 			{
 				*idx = a;
-				idx = (int*)((char*)idx + advance_bytes);
+				idx = (I*)((char*)idx + advance_bytes);
 				*idx = b;
-				idx = (int*)((char*)idx + advance_bytes);
+				idx = (I*)((char*)idx + advance_bytes);
 			}
 			a = b;
 
@@ -2150,9 +2186,9 @@ struct CDelaBella3 : IDelaBella2<T>
 
 		Vert* prev = first_boundary_vert;
 		vert = (Vert*)prev->next;
-		for (int i = 0; i < contour; i++)
+		for (I i = 0; i < contour; i++)
 		{
-			int a = i + polys; // begin
+			I a = i + polys; // begin
 
 			// iterate all dela faces around prev
 			// add their voro-vert index == dela face index
@@ -2175,27 +2211,27 @@ struct CDelaBella3 : IDelaBella2<T>
 			// now iterate around, till we're inside the boundary
 			while (t->index >= 0)
 			{
-				int b = t->index;
+				I b = t->index;
 
 				if (a<b)
 				{
 					*idx = a;
-					idx = (int*)((char*)idx + advance_bytes);
+					idx = (I*)((char*)idx + advance_bytes);
 					*idx = b;
-					idx = (int*)((char*)idx + advance_bytes);
+					idx = (I*)((char*)idx + advance_bytes);
 				}
 				a = b;
 
 				t = (Face*)it.Next();
 			}
 
-			int b = (i == 0 ? contour - 1 : i - 1) + polys; // loop-wrapping!
+			I b = (i == 0 ? contour - 1 : i - 1) + polys; // loop-wrapping!
 			if (a < b)
 			{
 				*idx = a;
-				idx = (int*)((char*)idx + advance_bytes);
+				idx = (I*)((char*)idx + advance_bytes);
 				*idx = b;
-				idx = (int*)((char*)idx + advance_bytes);
+				idx = (I*)((char*)idx + advance_bytes);
 			}
 			a = b;
 
@@ -2210,30 +2246,30 @@ struct CDelaBella3 : IDelaBella2<T>
 		return ret;
 	}
 
-	virtual int GenVoronoiDiagramPolys(int* indices, int advance_bytes, int* closed_indices) const
+	virtual I GenVoronoiDiagramPolys(I* indices, size_t advance_bytes, I* closed_indices) const
 	{
 		if (!first_dela_face)
 			return 0;
 
-		const int polys = polygons;
-		const int contour = out_boundary_verts;
-		const int verts = unique_points;
-		int ret = 3 * verts + 2 * (polys - 1) + contour;
+		const I polys = polygons;
+		const I contour = out_boundary_verts;
+		const I verts = unique_points;
+		I ret = 3 * verts + 2 * (polys - 1) + contour;
 
 		if (!indices)
 			return ret;
 
-		if (advance_bytes < sizeof(int))
-			advance_bytes = sizeof(int);
+		if (advance_bytes < sizeof(I))
+			advance_bytes = sizeof(I);
 
-		const int inter = verts - contour;
-		const int poly_ending = ~0;
+		const I inter = verts - contour;
+		const I poly_ending = ~0;
 
-		int* idx = indices;
+		I* idx = indices;
 		
-		int closed = 0;
+		I closed = 0;
 		Vert* vert = first_internal_vert;
-		for (int i = 0; i < inter; i++)
+		for (I i = 0; i < inter; i++)
 		{
 			Iter it;
 			Face* t = (Face*)vert->StartIterator(&it);
@@ -2241,18 +2277,18 @@ struct CDelaBella3 : IDelaBella2<T>
 
 			do
 			{
-				int a = t->index;
+				I a = t->index;
 				*idx = a;
-				idx = (int*)((char*)idx + advance_bytes);
+				idx = (I*)((char*)idx + advance_bytes);
 				closed++;
 
 				t = (Face*)it.Next();
 			} while (t != e);
 
 			// loop closing seg
-			int a = poly_ending;
+			I a = poly_ending;
 			*idx = a;
-			idx = (int*)((char*)idx + advance_bytes);
+			idx = (I*)((char*)idx + advance_bytes);
 			closed++;
 
 			vert = (Vert*)vert->next;
@@ -2263,11 +2299,11 @@ struct CDelaBella3 : IDelaBella2<T>
 
 		Vert* prev = first_boundary_vert;
 		vert = (Vert*)prev->next;
-		for (int i = 0; i < contour; i++)
+		for (I i = 0; i < contour; i++)
 		{
-			int a = i + polys; // begin
+			I a = i + polys; // begin
 			*idx = a;
-			idx = (int*)((char*)idx + advance_bytes);
+			idx = (I*)((char*)idx + advance_bytes);
 
 			// iterate all dela faces around prev
 			// add their voro-vert index == dela face index
@@ -2290,20 +2326,20 @@ struct CDelaBella3 : IDelaBella2<T>
 			// now iterate around, till we're inside the boundary
 			while (t->index >= 0)
 			{
-				int a = t->index;
+				I a = t->index;
 				*idx = a;
-				idx = (int*)((char*)idx + advance_bytes);
+				idx = (I*)((char*)idx + advance_bytes);
 
 				t = (Face*)it.Next();
 			}
 
 			a = (i == 0 ? contour - 1 : i - 1) + polys; // loop-wrapping!
 			*idx = a;
-			idx = (int*)((char*)idx + advance_bytes);
+			idx = (I*)((char*)idx + advance_bytes);
 
 			a = poly_ending;
 			*idx = a;
-			idx = (int*)((char*)idx + advance_bytes);
+			idx = (I*)((char*)idx + advance_bytes);
 
 			prev = vert;
 			vert = (Vert*)vert->next;
@@ -2317,12 +2353,36 @@ struct CDelaBella3 : IDelaBella2<T>
 	}
 };
 
-template <typename T>
-IDelaBella2<T>* IDelaBella2<T>::Create()
+template <typename T, typename I>
+IDelaBella2<T,I>* IDelaBella2<T,I>::Create()
 {
-	return new CDelaBella3<T>;
+	IDelaBella2<T, I>* ret = 0;
+	try
+	{ 
+		ret = new CDelaBella2<T, I>;
+	}
+	catch (...)
+	{
+		ret = 0;
+	}
+	return ret;
 }
 
-template IDelaBella2<float>* IDelaBella2<float>::Create();
-template IDelaBella2<double>* IDelaBella2<double>::Create();
-template IDelaBella2<long double>* IDelaBella2<long double>::Create();
+// this should cover all malcontents
+
+template IDelaBella2<float, int8_t>* IDelaBella2<float, int8_t>::Create();
+template IDelaBella2<double, int8_t>* IDelaBella2<double, int8_t>::Create();
+template IDelaBella2<long double, int8_t>* IDelaBella2<long double, int8_t>::Create();
+
+template IDelaBella2<float, int16_t>* IDelaBella2<float, int16_t>::Create();
+template IDelaBella2<double, int16_t>* IDelaBella2<double, int16_t>::Create();
+template IDelaBella2<long double, int16_t>* IDelaBella2<long double, int16_t>::Create();
+
+template IDelaBella2<float, int32_t>* IDelaBella2<float, int32_t>::Create();
+template IDelaBella2<double, int32_t>* IDelaBella2<double, int32_t>::Create();
+template IDelaBella2<long double, int32_t>* IDelaBella2<long double, int32_t>::Create();
+
+template IDelaBella2<float, int64_t>* IDelaBella2<float, int64_t>::Create();
+template IDelaBella2<double, int64_t>* IDelaBella2<double, int64_t>::Create();
+template IDelaBella2<long double, int64_t>* IDelaBella2<long double, int64_t>::Create();
+

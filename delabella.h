@@ -11,7 +11,13 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 // you can use: float, double or long double
 // can be defined just prior to including this header
 
-template<typename T = double>
+// choose I wisely!
+// int8_t  -> max points = 19
+// int16_t -> max points = 4682
+// int32_t -> max points = 306783379
+// int64_t -> max points > 306783379 
+
+template<typename T = double, typename I = int>
 struct IDelaBella2
 {
 	struct Vertex;
@@ -23,7 +29,7 @@ struct IDelaBella2
 		Vertex* next; // next in internal / boundary set of vertices
 		Simplex* sew; // one of triangles sharing this vertex
 		T x, y; // coordinates (input copy)
-		int i; // index of original point
+		I i; // index of original point
 
 		inline const Simplex* StartIterator(Iterator* it/*not_null*/) const;
 	};
@@ -34,12 +40,12 @@ struct IDelaBella2
 		Simplex* f[3]; // 3 adjacent faces, f[i] is at the edge opposite to vertex v[i]
 		Simplex* next; // next triangle (of delaunay set or hull set)
 
-		int index; // list index, if negative it is ~index'th in hull set 
+		I index; // list index, if negative it is ~index'th in hull set 
 
 		inline const Simplex* StartIterator(Iterator* it/*not_null*/, int around/*0,1,2*/) const;
 	};
 
-	static IDelaBella2<T>* Create();
+	static IDelaBella2<T,I>* Create();
 	virtual ~IDelaBella2() = 0;
 
 	virtual void Destroy() = 0;
@@ -51,39 +57,39 @@ struct IDelaBella2
 	// positive: output hull vertices form counter-clockwise ordered segment contour, delaunay and hull triangles are available
 	// if 'y' pointer is null, y coords are treated to be located immediately after every x
 	// if advance_bytes is less than 2*sizeof coordinate type, it is treated as 2*sizeof coordinate type  
-	virtual int Triangulate(int points, const T* x, const T* y = 0, int advance_bytes = 0) = 0;
+	virtual I Triangulate(I points, const T* x, const T* y = 0, size_t advance_bytes = 0) = 0;
 
 	// num of points passed to last call to Triangulate()
-	virtual int GetNumInputPoints() const = 0;
+	virtual I GetNumInputPoints() const = 0;
 
 	// num of indices returned from last call to Triangulate()
-	virtual int GetNumOutputIndices() const = 0;
+	virtual I GetNumOutputIndices() const = 0;
 
 	// num of hull faces (non delaunay triangles)
-	virtual int GetNumOutputHullFaces() const = 0;
+	virtual I GetNumOutputHullFaces() const = 0;
 
 	// num of boundary vertices
-	virtual int GetNumBoundaryVerts() const = 0;
+	virtual I GetNumBoundaryVerts() const = 0;
 
 	// num of internal vertices
-	virtual int GetNumInternalVerts() const = 0;
+	virtual I GetNumInternalVerts() const = 0;
 
 	// called right after Triangulate() and/or Constrain() it returns number of triangles,
 	// but if called after Polygonize() it returns number of polygons
-	virtual int GetNumPolygons() const = 0;
+	virtual I GetNumPolygons() const = 0;
 
 	virtual const Simplex* GetFirstDelaunaySimplex() const = 0; // valid only if Triangulate() > 0
 	virtual const Simplex* GetFirstHullSimplex() const = 0; // valid only if Triangulate() > 0
 	virtual const Vertex*  GetFirstBoundaryVertex() const = 0; // if Triangulate() < 0 it is list, otherwise closed contour! 
 	virtual const Vertex*  GetFirstInternalVertex() const = 0;
-	virtual const Vertex*  GetVertexByIndex(int i) const = 0;
+	virtual const Vertex*  GetVertexByIndex(I i) const = 0;
 
 	// if classify=true return number of interior faces 
 	// and links these faces in front of delaunay simplex list,
 	// if classify=false all faces are classified as interior
-	virtual int ConstrainEdges(int edges, const int* pa, const int* pb, int advance_bytes, bool classify) = 0;
+	virtual I ConstrainEdges(I edges, const I* pa, const I* pb, size_t advance_bytes, bool classify) = 0;
 
-	virtual int Polygonize(const Simplex* poly[/*GetNumOutputIndices()/3*/] = 0) = 0; // valid only if Triangulate() > 0
+	virtual I Polygonize(const Simplex* poly[/*GetNumOutputIndices()/3*/] = 0) = 0; // valid only if Triangulate() > 0
 
 	// GenVoronoiDiagramVerts(), valid only if Triangulate() > 0
 	// it makes sense to call it prior to constraining only
@@ -98,7 +104,7 @@ struct IDelaBella2
 	// first P <x>,<y> elements will contain internal points (divisor W=1)
 	// next N <x>,<y> elements will contain edge normals (divisor W=0)
 	// function returns number vertices filled (V) on success, otherwise 0
-	virtual int GenVoronoiDiagramVerts(T* x, T* y, int advance_bytes = 0) const = 0;
+	virtual I GenVoronoiDiagramVerts(T* x, T* y, size_t advance_bytes = 0) const = 0;
 
 
 	// GenVoronoiDiagramEdges(), valid only if Triangulate() > 0
@@ -113,7 +119,7 @@ struct IDelaBella2
 	// every pair of consecutive values in <indices> represent VD edge
 	// there is no guaranteed correspondence between edges order and other data
 	// function returns number of indices filled (I) on success, otherwise 0
-	virtual int GenVoronoiDiagramEdges(int* indices, int advance_bytes = 0) const = 0;
+	virtual I GenVoronoiDiagramEdges(I* indices, size_t advance_bytes = 0) const = 0;
 
 	// GenVoronoiDiagramPolys() valid only if Triangulate() > 0
 	// it makes sense to call it prior to constraining only
@@ -132,7 +138,7 @@ struct IDelaBella2
 	// if both <indices> and <closed_indices> are not null, 
 	// number of closed VD cells indices is written to <closed_indices>
 	// function returns number of indices filled (I) on success, otherwise 0
-	virtual int GenVoronoiDiagramPolys(int* indices, int advance_bytes=0, int* closed_indices=0) const = 0;
+	virtual I GenVoronoiDiagramPolys(I* indices, size_t advance_bytes=0, I* closed_indices=0) const = 0;
 
 	#ifdef DELABELLA_LEGACY
 	inline const Simplex* GetFirstDelaunayTriangle() const
@@ -195,16 +201,16 @@ struct IDelaBella2
 	};
 };
 
-template <typename T>
-inline const typename IDelaBella2<T>::Simplex* IDelaBella2<T>::Simplex::StartIterator(IDelaBella2<T>::Iterator* it/*not_null*/, int around/*0,1,2*/) const
+template <typename T, typename I>
+inline const typename IDelaBella2<T,I>::Simplex* IDelaBella2<T,I>::Simplex::StartIterator(IDelaBella2<T,I>::Iterator* it/*not_null*/, int around/*0,1,2*/) const
 {
 	it->current = this;
 	it->around = around;
 	return this;
 }
 
-template <typename T>
-inline const typename IDelaBella2<T>::Simplex* IDelaBella2<T>::Vertex::StartIterator(IDelaBella2<T>::Iterator* it/*not_null*/) const
+template <typename T, typename I>
+inline const typename IDelaBella2<T,I>::Simplex* IDelaBella2<T,I>::Vertex::StartIterator(IDelaBella2<T,I>::Iterator* it/*not_null*/) const
 {
 	it->current = sew;
 	if (sew->v[0] == this)
@@ -218,7 +224,7 @@ inline const typename IDelaBella2<T>::Simplex* IDelaBella2<T>::Vertex::StartIter
 }
 
 #ifdef DELABELLA_LEGACY
-typedef IDelaBella2<DELABELLA_LEGACY>  IDelaBella;
+typedef IDelaBella2<DELABELLA_LEGACY,int>  IDelaBella;
 typedef IDelaBella::Simplex  DelaBella_Triangle;
 typedef IDelaBella::Vertex   DelaBella_Vertex;
 typedef IDelaBella::Iterator DelaBella_Iterator;
