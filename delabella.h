@@ -45,14 +45,21 @@ struct IDelaBella2
 		I index;       // list index
 		
 		uint8_t flags; 
-		// 0x01 : edge shared with f[0] is fixed at least once
-		// 0x02 : edge shared with f[1] is fixed at least once
-		// 0x04 : edge shared with f[2] is fixed at least once
-		// 0x08 : edge shared with f[0] is fixed odd numof times
-		// 0x10 : edge shared with f[1] is fixed odd numof times
-		// 0x20 : edge shared with f[2] is fixed odd numof times
-		// 0x40 : face belongs to interior (valid after classify)
-		// 0x80 : face belongs to hull (all other bits are meaningless)
+
+		bool IsDelaunay() const
+		{
+			return !(flags & 0b10000000);
+		}
+
+		bool IsInterior(int at) const
+		{
+			return flags & (1 << at);
+		}
+
+		bool IsEdgeFixed(int at) const
+		{
+			return flags & (1 << at);
+		}
 
 		inline const Simplex* StartIterator(Iterator* it/*not_null*/, int around/*0,1,2*/) const;
 	};

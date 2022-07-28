@@ -3,7 +3,8 @@ DELABELLA - Delaunay triangulation library
 Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 */
 
-#define DELABELLA_AUTOTEST
+// #define DELABELLA_AUTOTEST
+
 // in case of troubles, allows to see if any assert pops up.
 // define it globally (like with -DDELABELLA_AUTOTEST)
 
@@ -110,16 +111,6 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		{
 			uint8_t f = this->flags;
 			this->flags = ((f >> 1) & 0b00011011) | ((f << 2) & 0b00100100) | (f & 0b11000000);
-		}
-
-		bool IsDelaFace() const
-		{
-			return !(this->flags & 0b10000000);
-		}
-
-		bool IsEdgeFixed(int at) const
-		{
-			return this->flags & (1 << at);
 		}
 
 		void ToggleEdgeFixed(int at)
@@ -1043,13 +1034,13 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		while (1)
 		{
-			if (t->IsDelaFace())
+			if (t->IsDelaunay())
 			{
 				int pr = it.around-1; if (pr<0) pr = 2;
 				int nx = it.around+1; if (nx>2) nx = 0;
 
 				Face* fpr = (Face*)t->f[pr];
-				if (!fpr->IsDelaFace())
+				if (!fpr->IsDelaunay())
 				{
 					// let's move from: v to t->v[nx]
 					v->next = t->v[nx];
@@ -1167,7 +1158,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		while (1)
 		{
-			if (!face->IsDelaFace())
+			if (!face->IsDelaunay())
 			{
 				face = (Face*)it.Next();
 				#ifdef DELABELLA_AUTOTEST
@@ -1347,7 +1338,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			if (f->v[other[it.around]] == v2)
 			{
 				// at least one of them must be dela, it will appear as twin[0]
-				if (f->IsDelaFace())
+				if (f->IsDelaunay())
 				{
 					opposed[0] = other[it.around];
 					twin[0] = f;
@@ -1360,7 +1351,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				Face* tmp_f = f;
 				f = (Face*)it.Next();
 
-				if (f->IsDelaFace())
+				if (f->IsDelaunay())
 				{
 					opposed[0] = other[it.around];
 					twin[0] = f;
@@ -1904,7 +1895,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		I index = 0;
 		for (I i = 0; i < hull_faces; i++)
 		{
-			if (face_alloc[i].IsDelaFace())
+			if (face_alloc[i].IsDelaunay())
 			{
 				*tail = face_alloc + i;
 				tail = (Face**)&face_alloc[i].next;
@@ -1975,7 +1966,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 				I index = a->index;
 
-				if (index != marker && a->IsDelaFace())
+				if (index != marker && a->IsDelaunay())
 				{
 					int j = 0;
 					for (; j < 3; j++)
@@ -2472,7 +2463,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			// it starts at random face, so lookup the prev->vert edge
 			while (1)
 			{
-				if (t->IsDelaFace())
+				if (t->IsDelaunay())
 				{
 					if (t->v[0] == prev && t->v[1] == vert ||
 						t->v[1] == prev && t->v[2] == vert ||
@@ -2483,7 +2474,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			}
 
 			// now iterate around, till we're inside the boundary
-			while (t->IsDelaFace())
+			while (t->IsDelaunay())
 			{
 				I b = t->index;
 
@@ -2587,7 +2578,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			// it starts at random face, so lookup the prev->vert edge
 			while (1)
 			{
-				if (t->IsDelaFace())
+				if (t->IsDelaunay())
 				{
 					if (t->v[0] == prev && t->v[1] == vert ||
 						t->v[1] == prev && t->v[2] == vert ||
@@ -2598,7 +2589,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			}
 
 			// now iterate around, till we're inside the boundary
-			while (t->IsDelaFace())
+			while (t->IsDelaunay())
 			{
 				I a = t->index;
 				*idx = a;
