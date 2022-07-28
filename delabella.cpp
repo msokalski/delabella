@@ -3,7 +3,7 @@ DELABELLA - Delaunay triangulation library
 Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 */
 
-// #define DELABELLA_AUTOTEST
+#define DELABELLA_AUTOTEST
 
 // in case of troubles, allows to see if any assert pops up.
 // define it globally (like with -DDELABELLA_AUTOTEST)
@@ -125,6 +125,10 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		void SetEdgeBits(int at, uint8_t bits)
 		{
+			if (this->index == 142 || this->index == 119)
+			{
+				int a = 0;
+			}
 			this->flags = (bits << at) | (this->flags & ~(0b00001001 << at));
 		}
 
@@ -1227,6 +1231,31 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		{
 			if (a)
 			{
+				// before rot check fixed flags consistency
+				#ifdef DELABELLA_AUTOTEST
+				if (classify)
+				{
+					// check N edges
+					for (int j = 0; j < 3; j++)
+					{
+						uint8_t nf = N->GetEdgeBits(j);
+						Face* M = (Face*)N->f[j];
+						int k = 0;
+						if (M->f[1] == N)
+							k = 1;
+						else
+						if (M->f[2] == N)
+							k = 2;
+
+						assert(M->f[k] == N);
+						uint8_t mf = M->GetEdgeBits(k);
+
+						assert(nf == mf);
+					}
+				}
+				#endif
+
+
 				// rotate N->v[] and N->f 'a' times 'backward' such offending edge appears opposite to v[0]
 				const int* r = rotate[a];
 
@@ -1240,6 +1269,11 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				N->f[1] = f[r[1]];
 				N->f[2] = f[r[2]];
 
+				if (a == 2 && N->index == 179)
+				{
+					int aaa = 0;
+				}
+
 				if (classify)
 				{
 					// rotate face_bits!
@@ -1248,6 +1282,35 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					else // a==2
 						N->RotateEdgeFlagsCCW();
 				}
+
+				// after rot check fixed flags consistency
+				#ifdef DELABELLA_AUTOTEST
+				if (classify)
+				{
+					// check N edges
+					for (int j = 0; j < 3; j++)
+					{
+						uint8_t nf = N->GetEdgeBits(j);
+						Face* M = (Face*)N->f[j];
+						int k = 0;
+						if (M->f[1] == N)
+							k = 1;
+						else
+						if (M->f[2] == N)
+							k = 2;
+
+						assert(M->f[k] == N);
+						uint8_t mf = M->GetEdgeBits(k);
+
+						if (nf != mf)
+						{
+							int aaa = 0;
+						}
+
+						assert(nf == mf);
+					}
+				}
+				#endif
 			}
 
 			// add edge
@@ -1328,35 +1391,48 @@ struct CDelaBella2 : IDelaBella2<T,I>
 	// private:
 	bool FindEdgeFaces(const Vert* v1, const Vert* v2, Face* twin[2], int opposed[2])
 	{
-		static const int other[3] = { 2,0,1 };
+		static const int prev[3] = { 2,0,1 };
+		static const int next[3] = { 1,2,0 };
 
 		Iter it;
 		Face* f = (Face*)v1->StartIterator(&it);
 		Face* e = f;
 		do
 		{
-			if (f->v[other[it.around]] == v2)
+			if (f->v[prev[it.around]] == v2)
 			{
 				// at least one of them must be dela, it will appear as twin[0]
 				if (f->IsDelaunay())
 				{
-					opposed[0] = other[it.around];
 					twin[0] = f;
+					opposed[0] = next[it.around];
 					twin[1] = (Face*)it.Next();
-					opposed[1] = other[it.around];
+					opposed[1] = prev[it.around];
+
+					#ifdef DELABELLA_AUTOTEST
+					assert(twin[0]->f[opposed[0]] == twin[1]);
+					assert(twin[1]->f[opposed[1]] == twin[0]);
+					#endif
+
 					return true;
 				}
 
-				int tmp_op = other[it.around];
 				Face* tmp_f = f;
+				int tmp_op = next[it.around];
 				f = (Face*)it.Next();
 
 				if (f->IsDelaunay())
 				{
-					opposed[0] = other[it.around];
 					twin[0] = f;
-					opposed[1] = tmp_op;
+					opposed[0] = prev[it.around];
 					twin[1] = tmp_f;
+					opposed[1] = tmp_op;
+
+					#ifdef DELABELLA_AUTOTEST
+					assert(twin[0]->f[opposed[0]] == twin[1]);
+					assert(twin[1]->f[opposed[1]] == twin[0]);
+					#endif
+
 					return true;
 				}
 			}
@@ -1428,8 +1504,98 @@ struct CDelaBella2 : IDelaBella2<T,I>
 						FindEdgeFaces(va, restart, nf, op);
 						#endif
 
+						// before toggle check fixed flags consistency
+						#ifdef DELABELLA_AUTOTEST
+						if (classify)
+						{
+							Face* N = nf[0];
+							Face* F = nf[1];
+							// check N edges
+							for (int j = 0; j < 3; j++)
+							{
+								uint8_t nf = N->GetEdgeBits(j);
+								Face* M = (Face*)N->f[j];
+								int k = 0;
+								if (M->f[1] == N)
+									k = 1;
+								else
+								if (M->f[2] == N)
+									k = 2;
+
+								assert(M->f[k] == N);
+								uint8_t mf = M->GetEdgeBits(k);
+
+								assert(nf == mf);
+							}
+
+							// check F edges
+							for (int j = 0; j < 3; j++)
+							{
+								uint8_t ff = F->GetEdgeBits(j);
+								Face* M = (Face*)F->f[j];
+								int k = 0;
+								if (M->f[1] == F)
+									k = 1;
+								else
+								if (M->f[2] == F)
+									k = 2;
+
+								assert(M->f[k] == F);
+								uint8_t mf = M->GetEdgeBits(k);
+
+								assert(ff == mf);
+							}
+						}
+						#endif
+
+
 						nf[0]->ToggleEdgeFixed(op[0]);
 						nf[1]->ToggleEdgeFixed(op[1]);
+
+						// after toggle check fixed flags consistency
+						#ifdef DELABELLA_AUTOTEST
+						if (classify)
+						{
+							Face* N = nf[0];
+							Face* F = nf[1];
+							// check N edges
+							for (int j = 0; j < 3; j++)
+							{
+								uint8_t nf = N->GetEdgeBits(j);
+								Face* M = (Face*)N->f[j];
+								int k = 0;
+								if (M->f[1] == N)
+									k = 1;
+								else
+								if (M->f[2] == N)
+									k = 2;
+
+								assert(M->f[k] == N);
+								uint8_t mf = M->GetEdgeBits(k);
+
+								assert(nf == mf);
+							}
+
+							// check F edges
+							for (int j = 0; j < 3; j++)
+							{
+								uint8_t ff = F->GetEdgeBits(j);
+								Face* M = (Face*)F->f[j];
+								int k = 0;
+								if (M->f[1] == F)
+									k = 1;
+								else
+								if (M->f[2] == F)
+									k = 2;
+
+								assert(M->f[k] == F);
+								uint8_t mf = M->GetEdgeBits(k);
+
+								assert(ff == mf);
+							}
+						}
+						#endif
+
 					}
 
 					va = restart;
@@ -1447,8 +1613,99 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					FindEdgeFaces(va, vc, nf, op);
 					#endif
 
+
+					// before toggle check fixed flags consistency
+					#ifdef DELABELLA_AUTOTEST
+					if (classify)
+					{
+						Face* N = nf[0];
+						Face* F = nf[1];
+						// check N edges
+						for (int j = 0; j < 3; j++)
+						{
+							uint8_t nf = N->GetEdgeBits(j);
+							Face* M = (Face*)N->f[j];
+							int k = 0;
+							if (M->f[1] == N)
+								k = 1;
+							else
+							if (M->f[2] == N)
+								k = 2;
+
+							assert(M->f[k] == N);
+							uint8_t mf = M->GetEdgeBits(k);
+
+							assert(nf == mf);
+						}
+
+						// check F edges
+						for (int j = 0; j < 3; j++)
+						{
+							uint8_t ff = F->GetEdgeBits(j);
+							Face* M = (Face*)F->f[j];
+							int k = 0;
+							if (M->f[1] == F)
+								k = 1;
+							else
+							if (M->f[2] == F)
+								k = 2;
+
+							assert(M->f[k] == F);
+							uint8_t mf = M->GetEdgeBits(k);
+
+							assert(ff == mf);
+						}
+					}
+					#endif
+
+
 					nf[0]->ToggleEdgeFixed(op[0]);
 					nf[1]->ToggleEdgeFixed(op[1]);
+
+
+					// after toggle check fixed flags consistency
+					#ifdef DELABELLA_AUTOTEST
+					if (classify)
+					{
+						Face* N = nf[0];
+						Face* F = nf[1];
+						// check N edges
+						for (int j = 0; j < 3; j++)
+						{
+							uint8_t nf = N->GetEdgeBits(j);
+							Face* M = (Face*)N->f[j];
+							int k = 0;
+							if (M->f[1] == N)
+								k = 1;
+							else
+							if (M->f[2] == N)
+								k = 2;
+
+							assert(M->f[k] == N);
+							uint8_t mf = M->GetEdgeBits(k);
+
+							assert(nf == mf);
+						}
+
+						// check F edges
+						for (int j = 0; j < 3; j++)
+						{
+							uint8_t ff = F->GetEdgeBits(j);
+							Face* M = (Face*)F->f[j];
+							int k = 0;
+							if (M->f[1] == F)
+								k = 1;
+							else
+							if (M->f[2] == F)
+								k = 2;
+
+							assert(M->f[k] == F);
+							uint8_t mf = M->GetEdgeBits(k);
+
+							assert(ff == mf);
+						}
+					}
+					#endif
 				}
 			}
 
@@ -1516,6 +1773,50 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				#ifdef DELABELLA_AUTOTEST
 				assert(v0r < 0 && v1r > 0);
 				#endif
+
+
+				// before flip check fixed flags consistency
+				#ifdef DELABELLA_AUTOTEST
+				if (classify)
+				{
+					// check N edges
+					for (int j = 0; j < 3; j++)
+					{
+						uint8_t nf = N->GetEdgeBits(j);
+						Face* M = (Face*)N->f[j];
+						int k = 0;
+						if (M->f[1] == N)
+							k = 1;
+						else
+						if (M->f[2] == N)
+							k = 2;
+
+						assert(M->f[k] == N);
+						uint8_t mf = M->GetEdgeBits(k);
+
+						assert(nf == mf);
+					}
+
+					// check F edges
+					for (int j = 0; j < 3; j++)
+					{
+						uint8_t ff = F->GetEdgeBits(j);
+						Face* M = (Face*)F->f[j];
+						int k = 0;
+						if (M->f[1] == F)
+							k = 1;
+						else
+						if (M->f[2] == F)
+							k = 2;
+
+						assert(M->f[k] == F);
+						uint8_t mf = M->GetEdgeBits(k);
+
+						assert(ff == mf);
+					}
+				}
+				#endif
+
 
 				if (classify)
 				{
@@ -1701,6 +2002,49 @@ struct CDelaBella2 : IDelaBella2<T,I>
 						}
 					}
 				}
+
+				// after flip check fixed flags consistency
+				#ifdef DELABELLA_AUTOTEST
+				if (classify)
+				{
+					// check N edges
+					for (int j = 0; j < 3; j++)
+					{
+						uint8_t nf = N->GetEdgeBits(j);
+						Face* M = (Face*)N->f[j];
+						int k = 0;
+						if (M->f[1] == N)
+							k = 1;
+						else
+						if (M->f[2] == N)
+							k = 2;
+
+						assert(M->f[k] == N);
+						uint8_t mf = M->GetEdgeBits(k);
+
+						assert(nf == mf);
+					}
+
+					// check F edges
+					for (int j = 0; j < 3; j++)
+					{
+						uint8_t ff = F->GetEdgeBits(j);
+						Face* M = (Face*)F->f[j];
+						int k = 0;
+						if (M->f[1] == F)
+							k = 1;
+						else
+						if (M->f[2] == F)
+							k = 2;
+
+						assert(M->f[k] == F);
+						uint8_t mf = M->GetEdgeBits(k);
+
+						assert(ff == mf);
+					}
+				}
+				#endif
+
 			}
 
 			// 3. Repeatedly until no flip occurs
