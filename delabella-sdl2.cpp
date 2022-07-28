@@ -72,18 +72,34 @@ std::vector<Poly> Polygonize(Triangulation<T, L>& cdt)
         const auto& tri = cdt.triangles[iT];
         auto merged = false;
 
+        const auto& v1 = cdt.vertices[tri.vertices[0]];
+        const auto& v2 = cdt.vertices[tri.vertices[1]];
+        const auto& v3 = cdt.vertices[tri.vertices[2]];
+
         // compare i'th tri with its adjacent tris
+        int e_from = 0, e_to = 1;
         for (const auto adj : tri.neighbors)
         {
-            // but only if there's adjacent tri and it is processed already
+            // but only if there's adjacent tri and it is processed already ...
             if (adj == noNeighbor || adj > iT)
+            {
+                e_from = e_to;
+                e_to = e_to == 2 ? 0 : e_to + 1;
                 continue;
+            }
+
+            // ... and edge between these 2 faces is not marked as fixed!
+            auto fix_it = cdt.fixedEdges.find(Edge(tri.vertices[e_from], tri.vertices[e_to]));
+
+            e_from = e_to;
+            e_to = e_to == 2 ? 0 : e_to + 1;
+
+            if (fix_it != cdt.fixedEdges.end())
+                continue;
+
             // locate reflex vert in adj triangle
-            const auto& vr =
-                cdt.vertices[opposedVertex(cdt.triangles[adj], iT)];
-            const auto& v1 = cdt.vertices[tri.vertices[0]];
-            const auto& v2 = cdt.vertices[tri.vertices[1]];
-            const auto& v3 = cdt.vertices[tri.vertices[2]];
+            const auto& vr = cdt.vertices[opposedVertex(cdt.triangles[adj], iT)];
+
             using predicates::adaptive::incircle;
             if (!incircle(vr.x, vr.y, v1.x, v1.y, v2.x, v2.y, v3.x, v3.y))
             {
@@ -1387,8 +1403,8 @@ int main(int argc, char* argv[])
             {
                 for (int a = 0, b = 1, c = 2; a < 3; b = c, c = a, a++)
                 {
-                    //if (dela->f[c]->index < 0 || dela->v[a]->i < dela->v[b]->i)
-                    if (dela->f[c]->index >= 0 && dela->v[a]->i < dela->v[b]->i)
+                    //if ((dela->f[c]->flags & 0x80) || dela->v[a]->i < dela->v[b]->i)
+                    if (!(dela->f[c]->flags & 0x80) && dela->v[a]->i < dela->v[b]->i)
                         force.push_back(MyEdge(sub[dela->v[a]->i], sub[dela->v[b]->i]));
                 }
 
@@ -1583,7 +1599,7 @@ int main(int argc, char* argv[])
     #endif
 
     if (force.size()>0)
-        idb->ConstrainEdges((MyIndex)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge), false);
+        idb->ConstrainEdges((MyIndex)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge));
 
     const DelaBella_Triangle** dela_polys = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * (size_t)tris_delabella);
     MyIndex polys_delabella = idb->Polygonize(dela_polys);

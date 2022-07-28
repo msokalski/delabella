@@ -6,6 +6,9 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #ifndef DELABELLA_H
 #define DELABELLA_H
 
+#include <intrin.h>
+#include <xmmintrin.h>
+
 //#define DELABELLA_LEGACY double
 // define it to enable compatibility with older api
 // you can use: float, double or long double
@@ -30,19 +33,26 @@ struct IDelaBella2
 		Simplex* sew; // one of triangles sharing this vertex
 		T x, y; // coordinates (input copy)
 		I i; // index of original point
-		I pad;
 
 		inline const Simplex* StartIterator(Iterator* it/*not_null*/) const;
 	};
 
 	struct Simplex
 	{
-		Vertex* v[3]; // 3 vertices spanning this triangle
+		Vertex* v[3];  // 3 vertices spanning this triangle
 		Simplex* f[3]; // 3 adjacent faces, f[i] is at the edge opposite to vertex v[i]
 		Simplex* next; // next triangle (of delaunay set or hull set)
-
-		I index; // list index, if negative it is ~index'th in hull set 
-		I pad;
+		I index;       // list index
+		
+		uint8_t flags; 
+		// 0x01 : edge shared with f[0] is fixed at least once
+		// 0x02 : edge shared with f[1] is fixed at least once
+		// 0x04 : edge shared with f[2] is fixed at least once
+		// 0x08 : edge shared with f[0] is fixed odd numof times
+		// 0x10 : edge shared with f[1] is fixed odd numof times
+		// 0x20 : edge shared with f[2] is fixed odd numof times
+		// 0x40 : face belongs to interior (valid after classify)
+		// 0x80 : face belongs to hull (all other bits are meaningless)
 
 		inline const Simplex* StartIterator(Iterator* it/*not_null*/, int around/*0,1,2*/) const;
 	};
@@ -89,7 +99,7 @@ struct IDelaBella2
 	// if classify=true return number of interior faces 
 	// and links these faces in front of delaunay simplex list,
 	// if classify=false all faces are classified as interior
-	virtual I ConstrainEdges(I edges, const I* pa, const I* pb, size_t advance_bytes, bool classify) = 0;
+	virtual I ConstrainEdges(I edges, const I* pa, const I* pb, size_t advance_bytes) = 0;
 
 	virtual I Polygonize(const Simplex* poly[/*GetNumOutputIndices()/3*/] = 0) = 0; // valid only if Triangulate() > 0
 
