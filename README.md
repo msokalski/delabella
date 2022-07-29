@@ -27,6 +27,10 @@
 
   ![constraints](images/constraints.png)
 
+- Interior / exterior detection based on constraint edges
+
+  ![floodfill](images/floodfill.png)
+
 ## Minimalistic DelaBella usage:
 
 ```cpp

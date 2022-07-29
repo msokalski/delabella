@@ -53,7 +53,7 @@ struct IDelaBella2
 
 		bool IsInterior(int at) const
 		{
-			return flags & (1 << at);
+			return flags & 0b01000000;
 		}
 
 		bool IsEdgeFixed(int at) const
@@ -108,6 +108,12 @@ struct IDelaBella2
 	// if classify=false all faces are classified as interior
 	virtual I ConstrainEdges(I edges, const I* pa, const I* pb, size_t advance_bytes) = 0;
 
+	// returns number of 'land' faces (they start at GetFirstDelaunaySimplex)
+	// optionally <exterior> pointer is set to the first 'sea' face
+	// if invert is set, outer-most faces will become 'land' (instead of 'sea')
+	virtual I FloodFill(bool invert, const Simplex** exterior = 0) = 0;
+
+	// todo: add option to polygonize interior/exterior (2bits: 0-as_is, 1-inter, 2-extern, 3-both_but_separated)
 	virtual I Polygonize(const Simplex* poly[/*GetNumOutputIndices()/3*/] = 0) = 0; // valid only if Triangulate() > 0
 
 	// GenVoronoiDiagramVerts(), valid only if Triangulate() > 0

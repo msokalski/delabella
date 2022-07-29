@@ -15,11 +15,11 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 // override build define
 #undef WITH_DELAUNATOR 
-#define WITH_DELAUNATOR
+//#define WITH_DELAUNATOR
 
 // override build define
 #undef WITH_CDT
-#define WITH_CDT
+//#define WITH_CDT
 
 #include <math.h>
 #include <stdlib.h>
@@ -320,6 +320,7 @@ PFNGLGETSHADERINFOLOGPROC glGetShaderInfoLog = 0;
 PFNGLGETPROGRAMINFOLOGPROC glGetProgramInfoLog = 0;
 
 PFNGLGETUNIFORMLOCATIONPROC glGetUniformLocation = 0;
+PFNGLUNIFORM1IPROC glUniform1i = 0;
 PFNGLUNIFORM4FPROC glUniform4f = 0;
 //PFNGLUNIFORMMATRIX4DVPROC glUniformMatrix4dv = 0;
 PFNGLUNIFORM4DVPROC glUniform4dv = 0;
@@ -332,6 +333,8 @@ PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = 0;
 PFNGLGENVERTEXARRAYSPROC glGenVertexArrays = 0;
 PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = 0;
 PFNGLBINDVERTEXARRAYPROC glBindVertexArray = 0;
+
+PFNGLTEXBUFFERPROC glTexBuffer = 0;
 
 bool BindGL()
 {
@@ -361,6 +364,7 @@ bool BindGL()
     BINDGL(glUniform4dv);
     BINDGL(glUniform4fv);
     BINDGL(glUniform4f);
+    BINDGL(glUniform1i);
     BINDGL(glVertexAttribPointer);
     BINDGL(glVertexAttribLPointer);
     BINDGL(glEnableVertexAttribArray);
@@ -372,6 +376,8 @@ bool BindGL()
     BINDGL(glBindVertexArray);
 
     BINDGL(glPrimitiveRestartIndex);
+
+    BINDGL(glTexBuffer);
 
 	#undef BINDGL
 	return true;
@@ -433,6 +439,9 @@ struct Buf
         else
         if (target == GL_ELEMENT_ARRAY_BUFFER)
             glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &push);
+        else
+        if (target == GL_TEXTURE_BUFFER)
+            glGetIntegerv(GL_TEXTURE_BUFFER_BINDING, &push);
 
         glGenBuffers(1, &buf);
         glBindBuffer(target, buf);
@@ -463,6 +472,9 @@ struct Buf
         else
         if (target == GL_ELEMENT_ARRAY_BUFFER)
             glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &push);
+        else
+        if (target == GL_TEXTURE_BUFFER)
+            glGetIntegerv(GL_TEXTURE_BUFFER_BINDING, &push);
 
         glBindBuffer(target, buf);
         map = glMapBuffer(target, GL_WRITE_ONLY);
@@ -489,6 +501,9 @@ struct Buf
         else
         if (target == GL_ELEMENT_ARRAY_BUFFER)
             glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &push);
+        else
+        if (target == GL_TEXTURE_BUFFER)
+            glGetIntegerv(GL_TEXTURE_BUFFER_BINDING, &push);
 
         glBindBuffer(target, buf);
         if (mapped)
@@ -560,6 +575,10 @@ struct GfxStuffer
     GLenum type;
     Buf vbo, ibo_delabella, ibo_constraint;
     Buf vbo_voronoi, ibo_voronoi;
+
+    GLuint texbuf;
+    Buf tbo;
+
     #ifdef WITH_CDT
     Buf ibo_cdt;
     #endif
@@ -674,11 +693,11 @@ struct GfxStuffer
 
     Vao vao_main, vao_constraint, vao_voronoi, vao_cdt;
 
-    // for GLdouble only
     GLuint prg; 
     GLint tfm;
     GLint low;
     GLint clr;
+    GLint tex;
 
     void LoadProj(int vpw, int vph, double cx, double cy, double scale, double lx, double ly)
     {
@@ -724,6 +743,10 @@ struct GfxStuffer
 
     void Destroy()
     {
+        glBindTexture(GL_TEXTURE_BUFFER, 0);
+        glDeleteTextures(1,&texbuf);
+        tbo.Del();
+
         #ifdef CULLING
         if (max_tri_len)
             free(max_tri_len);
@@ -796,10 +819,15 @@ struct GfxStuffer
 
         fs_src[0] = CODE(#version 410\n
             uniform vec4 clr;
+            uniform usamplerBuffer tex;
             layout (location = 0) out vec4 c;
             void main()
             {
-                c = clr;
+                uint flags = texelFetch(tex, gl_PrimitiveID).r;
+                if ((flags & 0x40) != 0)
+                    c = clr + vec4(0.25);
+                else
+                    c = clr;
             }
         );
 
@@ -830,8 +858,10 @@ struct GfxStuffer
 
         #undef CODE
 
-        //char nfolog[1025];
-        //int nfolen;
+//        /*
+        char nfolog[1025];
+        int nfolen;
+//        */
 
         prg = glCreateProgram();
             
@@ -840,22 +870,22 @@ struct GfxStuffer
         glCompileShader(vs);
         glAttachShader(prg,vs);
 
-        /*
+//        /*
         glGetShaderInfoLog(vs,1024,&nfolen,nfolog);
         nfolog[nfolen]=0;
         printf("VS:\n%s\n\n",nfolog);
-        */
+//        */
 
         GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
         glShaderSource(fs, 1, fs_src, 0);
         glCompileShader(fs);
         glAttachShader(prg,fs);
 
-        /*
+//        /*
         glGetShaderInfoLog(vs,1024,&nfolen,nfolog);
         nfolog[nfolen]=0;
         printf("FS:\n%s\n\n",nfolog);
-        */
+//        */
 
         glLinkProgram(prg);
 
@@ -865,7 +895,8 @@ struct GfxStuffer
         tfm = glGetUniformLocation(prg, "tfm");
         low = glGetUniformLocation(prg, "low");
         clr = glGetUniformLocation(prg, "clr");
-
+        tex = glGetUniformLocation(prg, "tex");
+        
         size_t gl_s = type == GL_DOUBLE ? sizeof(GLdouble) : sizeof(GLfloat);
         MyIndex tris_delabella = idb->GetNumOutputIndices() / 3;
         MyIndex contour = idb->GetNumBoundaryVerts();
@@ -976,6 +1007,9 @@ struct GfxStuffer
         }
         vbo.Unmap();
 
+        tbo.Gen(GL_TEXTURE_BUFFER, tris_delabella);
+        uint8_t* tbo_ptr = (uint8_t*)tbo.Map();
+
         GLuint* ibo_ptr = 0;
         #ifdef CULLING
         {
@@ -1024,6 +1058,8 @@ struct GfxStuffer
                 ibo_ptr[3 * i + 1] = (GLuint)v1;
                 ibo_ptr[3 * i + 2] = (GLuint)v2;
 
+                tbo_ptr[i] = dela->flags;
+
                 max_tri_len[i] = trisort[i].weight;
             }
 
@@ -1044,10 +1080,19 @@ struct GfxStuffer
                 ibo_ptr[3 * i + 1] = (GLuint)v1;
                 ibo_ptr[3 * i + 2] = (GLuint)v2;
 
+                tbo_ptr[i] = dela->flags;
+
                 dela = dela->next;
             }
         }
         #endif
+
+        tbo.Unmap();
+        tbo_ptr = 0;
+
+        glGenTextures(1, &texbuf);
+        glBindTexture(GL_TEXTURE_BUFFER, texbuf);
+        glTexBuffer(GL_TEXTURE_BUFFER, GL_R8UI, tbo.buf);
 
         typedef GLuint tri_in_ibo[3];
 
@@ -1514,8 +1559,8 @@ int main(int argc, char* argv[])
         }
 
         uint64_t t4 = uSec();
-        printf("cdt erasing super... ");
-        cdt.eraseSuperTriangle();
+        //printf("cdt erasing super... ");
+        //cdt.eraseSuperTriangle();
         uint64_t t5 = uSec();
         printf("%d ms\n", (int)((t5 - t4) / 1000));
         printf("CDT TOTAL: %d\n", (int)((t5 - t0) / 1000));
@@ -1598,8 +1643,16 @@ int main(int argc, char* argv[])
     printf("VD vertices = " IDXF ", indices = " IDXF "\n", voronoi_vertices, voronoi_indices);
     #endif
 
-    if (force.size()>0)
+    if (force.size() > 0)
+    {
         idb->ConstrainEdges((MyIndex)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge));
+
+        uint64_t ff0 = uSec();
+        MyIndex num_interior = idb->FloodFill(false, 0);
+        uint64_t ff1 = uSec();
+
+        printf("interior %d faces in %d ms\n", num_interior, (int)((ff1 - ff0) / 1000));
+    }
 
     const DelaBella_Triangle** dela_polys = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * (size_t)tris_delabella);
     MyIndex polys_delabella = idb->Polygonize(dela_polys);
@@ -1883,6 +1936,24 @@ int main(int argc, char* argv[])
     free(voronoi_vtx_buf);
     #endif
 
+    #ifdef WITH_CDT
+    if (force.size())
+    {
+        // DO NOT CALL IT if eraseSuper() has been already called !!!
+        if (!cdt.isFinalized())
+        {
+            printf("cdt erasing outer and holes... ");
+
+            uint64_t t4 = uSec();
+            cdt.eraseOuterTrianglesAndHoles();
+            uint64_t t5 = uSec();
+
+            printf("%d ms\n", (int)((t5 - t4) / 1000));
+            printf("CDT has %d faces after eraseOuterTrianglesAndHoles()\n", (int)cdt.triangles.size());
+        }
+    }
+    #endif
+
     int vpw, vph;
     SDL_GL_GetDrawableSize(window, &vpw, &vph);
 
@@ -2133,6 +2204,7 @@ int main(int argc, char* argv[])
         glClear(GL_COLOR_BUFFER_BIT);
 
         gfx.LoadProj(vpw,vph, cx,cy, scale, lx,ly);
+        glUniform1i(gfx.tex, 1); // nothing is bound there
 
         glEnable(GL_CULL_FACE);
         glCullFace(GL_BACK);
@@ -2158,9 +2230,11 @@ int main(int argc, char* argv[])
         // TODO: switch to trifan using contour indices
         if (show_f)
         {
+            glUniform1i(gfx.tex, 0);
             gfx.SetColor(0.2f, 0.2f, 0.2f, 1.0f);
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             glDrawElements(GL_TRIANGLES, (GLsizei)cull/*tris_delabella*/ * 3, GL_UNSIGNED_INT, 0);
+            glUniform1i(gfx.tex, 1); // nothing is bound there
         }
 
         // paint constraints
