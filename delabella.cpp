@@ -1967,6 +1967,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		//    - iterate boundary verts, iterate faces around, check boundary and fixed edges
 
 		Face* seed = 0;
+		Face* flip = 0;
 
 		Vert* v = first_boundary_vert;
 		Vert* e = v;
@@ -2018,11 +2019,21 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			}
 			else
 			{
-				int aaa = 0;
+				dela->next = flip;
+				flip = dela;
 			}
 
 			v = (Vert*)v->next;
 		} while (v != e);
+
+		if (!seed)
+		{
+			// invert if boundary is fully 
+			// covered with odd-fixed edges
+			seed = flip;
+			flip = 0;
+			fill ^= 0b01000000;
+		}
 
 		while (seed)
 		{
@@ -2466,8 +2477,6 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		// const size_t max_triangulate_indices = (size_t)points * 6 - 15;
 		// const size_t max_voronoi_edge_indices = (size_t)points * 6 - 12;
 		const size_t max_voronoi_poly_indices = (size_t)points * 7 - 9; // winner of shame!
-
-		// upcoming x16 - 40 (every triangle with 3 edge flags)
 
 		if (max_voronoi_poly_indices > (size_t)std::numeric_limits<I>::max())
 		{
@@ -2913,4 +2922,3 @@ template IDelaBella2<long double, int32_t>* IDelaBella2<long double, int32_t>::C
 template IDelaBella2<float, int64_t>* IDelaBella2<float, int64_t>::Create();
 template IDelaBella2<double, int64_t>* IDelaBella2<double, int64_t>::Create();
 template IDelaBella2<long double, int64_t>* IDelaBella2<long double, int64_t>::Create();
-

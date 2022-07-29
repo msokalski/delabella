@@ -533,7 +533,7 @@ struct Buf
 typedef double MyCoord;
 //typedef intptr_t MyIndex;
 //#define IDXF "%zd"
-typedef int MyIndex;
+typedef int32_t MyIndex;
 #define IDXF "%d"
 
 typedef IDelaBella2<MyCoord, MyIndex> IDelaBella;
@@ -936,7 +936,7 @@ struct GfxStuffer
             max_con_len = (MyCoord*)malloc(sizeof(MyCoord) * (size_t)constrain_edges);
             assert(max_con_len);
 
-            for (int i = 0; i < constrain_edges; i++)
+            for (MyIndex i = 0; i < constrain_edges; i++)
             {
                 MyIndex e = consort[i].e;
                 map[2 * i + 0] = (GLuint)force[e].a;
@@ -964,7 +964,7 @@ struct GfxStuffer
         // let's give a hand to gpu by centering vertices around 0,0
         box[0] = box[2] = cloud[0].x;
         box[1] = box[3] = cloud[0].y;
-        for (int i = 0; i<points; i++)
+        for (MyIndex i = 0; i<points; i++)
         {
             box[0] = std::min(box[0], cloud[i].x);
             box[1] = std::min(box[1], cloud[i].y);
@@ -988,7 +988,7 @@ struct GfxStuffer
         if (type == GL_DOUBLE)
         {
             GLdouble* p = (GLdouble*)vbo_ptr;
-            for (int i = 0; i<points; i++)
+            for (MyIndex i = 0; i<points; i++)
             {
                 p[3*i+0] = (GLdouble)(cloud[i].x - vbo_x);
                 p[3*i+1] = (GLdouble)(cloud[i].y - vbo_y);
@@ -998,7 +998,7 @@ struct GfxStuffer
         else
         {
             GLfloat* p = (GLfloat*)vbo_ptr;
-            for (int i = 0; i<points; i++)
+            for (MyIndex i = 0; i<points; i++)
             {
                 p[3*i+0] = (GLfloat)(cloud[i].x - vbo_x);
                 p[3*i+1] = (GLfloat)(cloud[i].y - vbo_y);
@@ -1025,7 +1025,7 @@ struct GfxStuffer
             TriSort* trisort = (TriSort*)malloc(sizeof(TriSort) * (size_t)tris_delabella);
             assert(trisort);
             const DelaBella_Triangle* dela = idb->GetFirstDelaunaySimplex();
-            for (int i = 0; i < tris_delabella; i++)
+            for (MyIndex i = 0; i < tris_delabella; i++)
             {
                 trisort[i].tri = dela;
                 MyCoord v01[2] = { dela->v[1]->x - dela->v[0]->x, dela->v[1]->y - dela->v[0]->y };
@@ -1047,7 +1047,7 @@ struct GfxStuffer
 
             ibo_delabella.Gen(GL_ELEMENT_ARRAY_BUFFER, sizeof(GLuint[3])* (size_t)tris_delabella + sizeof(GLuint) * (size_t)contour);
             ibo_ptr = (GLuint*)ibo_delabella.Map();
-            for (int i = 0; i < tris_delabella; i++)
+            for (MyIndex i = 0; i < tris_delabella; i++)
             {
                 dela = trisort[i].tri;
                 MyIndex v0 = dela->v[0]->i;
@@ -1116,7 +1116,7 @@ struct GfxStuffer
         if (type == GL_DOUBLE)
         {
             GLdouble* p = (GLdouble*)vbo_voronoi_ptr;
-            for (int i = 0; i < voronoi_vertices; i++)
+            for (MyIndex i = 0; i < voronoi_vertices; i++)
             {
                 if (i < voronoi_vertices - contour)
                 {
@@ -1135,7 +1135,7 @@ struct GfxStuffer
         else
         {
             GLfloat* p = (GLfloat*)vbo_voronoi_ptr;
-            for (int i = 0; i < voronoi_vertices; i++)
+            for (MyIndex i = 0; i < voronoi_vertices; i++)
             {
                 if (i < voronoi_vertices - contour)
                 {
@@ -1236,10 +1236,10 @@ struct GfxStuffer
                 invmap = (MyIndex*)malloc(sizeof(MyIndex) * invmap_size);
                 assert(invmap);
 
-                for (int i = 0; i < (MyIndex)dups.mapping.size(); i++)
+                for (MyIndex i = 0; i < (MyIndex)dups.mapping.size(); i++)
                     invmap[dups.mapping[i]] = i;
 
-                for (int i = 0; i < tris_cdt; i++)
+                for (MyIndex i = 0; i < tris_cdt; i++)
                 {
                     int a = cdt.triangles[i].vertices[0];
                     int b = cdt.triangles[i].vertices[1];
@@ -1254,7 +1254,7 @@ struct GfxStuffer
             else
             {
                 // 1:1 mapping (no dups)
-                for (int i = 0; i < tris_cdt; i++)
+                for (MyIndex i = 0; i < tris_cdt; i++)
                 {
                     int a = cdt.triangles[i].vertices[0];
                     int b = cdt.triangles[i].vertices[1];
@@ -1359,7 +1359,7 @@ int main(int argc, char* argv[])
 
         MyCoord max_coord = sizeof(MyCoord) < 8 ? /*float*/0x1.p31 : /*double*/0x1.p255;
 
-        for (int i = 0; i < n; i++)
+        for (MyIndex i = 0; i < n; i++)
         {
             //MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
             MyPoint p = { d(gen), d(gen) };
@@ -1484,28 +1484,73 @@ int main(int argc, char* argv[])
 	}
     else
     {
-        int r,n,c;
+        int r=0,n=0,c=0;
         r = fscanf(f, "%d %d", &n, &c);
 
-        for (int i=0; i<n; i++)
+        if (n == -1 && c == -1)
         {
-            double dbl_x, dbl_y;
-            // allow variety of separators and extra fields till end of the line
-            int n = fscanf(f,"%lf%*[,; \v\t]%lf%*[^\n]", &dbl_x, &dbl_y);
+            // auto constraining flavour
+            int start = 0;
+            int current = 0;
+            while (1)
+            {
+                double dbl_x, dbl_y;
+                // allow variety of separators and extra fields till end of the line
+                int n = fscanf(f, "%lf%*[,; \v\t]%lf%*[^\n]", &dbl_x, &dbl_y);
 
-            MyCoord x = (MyCoord)dbl_x;
-            MyCoord y = (MyCoord)dbl_y;
+                if (n <= 0)
+                {
+                    char check[2];
+                    fgets(check,2,f);
+                    if (start == current)
+                        break; // eof?
 
-            MyPoint p = {x,y};
-            cloud.push_back(p);
+                    // end of contour
+                    // generate edges loop
+                    for (int i = start, p = current-1; i < current; p=i, i++)
+                    {
+                        MyEdge e = { p, i };
+                        force.push_back(e);
+                    }
+
+                    start = current;
+                }
+                else
+                if (n==2)
+                {
+                    MyCoord x = (MyCoord)dbl_x;
+                    MyCoord y = (MyCoord)dbl_y;
+
+                    MyPoint p = { x,y };
+                    cloud.push_back(p);
+                    current++;
+                }
+                else
+                    break;
+            }
         }
-
-        for (int i = 0; i < c; i++)
+        else
         {
-            MyIndex a, b;
-            r = fscanf(f, "" IDXF " " IDXF "", &a, &b);
-            MyEdge e = {a, b};
-            force.push_back(e);
+            for (int i = 0; n < 0 || i < n; i++)
+            {
+                double dbl_x, dbl_y;
+                // allow variety of separators and extra fields till end of the line
+                int n = fscanf(f, "%lf%*[,; \v\t]%lf%*[^\n]", &dbl_x, &dbl_y);
+
+                MyCoord x = (MyCoord)dbl_x;
+                MyCoord y = (MyCoord)dbl_y;
+
+                MyPoint p = { x,y };
+                cloud.push_back(p);
+            }
+
+            for (int i = 0; i < c; i++)
+            {
+                MyIndex a, b;
+                r = fscanf(f, "" IDXF " " IDXF "", &a, &b);
+                MyEdge e = { a, b };
+                force.push_back(e);
+            }
         }
 
         fclose(f);
@@ -1761,7 +1806,7 @@ int main(int argc, char* argv[])
             printf("preping idb for cmp ...\n");
             std::vector<MyPoint> idb_v(poly_indices);
             std::vector<MyPoly> idb_p(polys_delabella);
-            for (int p = 0, n = 0; p < polys_delabella; p++)
+            for (MyIndex p = 0, n = 0; p < polys_delabella; p++)
             {
                 int s = 0;
 
@@ -1802,7 +1847,7 @@ int main(int argc, char* argv[])
 
             printf("COMPARING... ");
             bool compare_ok = true;
-            for (int p = 0; p < polys_delabella; p++)
+            for (MyIndex p = 0; p < polys_delabella; p++)
             {
                 MyPoly p_idb = idb_p[p];
                 MyPoly p_cdt = cdt_p[p];
@@ -1827,7 +1872,7 @@ int main(int argc, char* argv[])
         f = fopen(argv[2],"w");
         if (f)
         {
-            for (int i=0; i<tris_delabella; i++)
+            for (MyIndex i=0; i<tris_delabella; i++)
             {
                 const DelaBella_Triangle* dela = idb->GetFirstDelaunaySimplex();
                 fprintf(f,"" IDXF " " IDXF " " IDXF "\n",
