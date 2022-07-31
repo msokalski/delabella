@@ -858,10 +858,10 @@ struct GfxStuffer
 
         #undef CODE
 
-//        /*
+        /*
         char nfolog[1025];
         int nfolen;
-//        */
+        */
 
         prg = glCreateProgram();
             
@@ -870,22 +870,22 @@ struct GfxStuffer
         glCompileShader(vs);
         glAttachShader(prg,vs);
 
-//        /*
+        /*
         glGetShaderInfoLog(vs,1024,&nfolen,nfolog);
         nfolog[nfolen]=0;
         printf("VS:\n%s\n\n",nfolog);
-//        */
+        */
 
         GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
         glShaderSource(fs, 1, fs_src, 0);
         glCompileShader(fs);
         glAttachShader(prg,fs);
 
-//        /*
+        /*
         glGetShaderInfoLog(vs,1024,&nfolen,nfolog);
         nfolog[nfolen]=0;
         printf("FS:\n%s\n\n",nfolog);
-//        */
+        */
 
         glLinkProgram(prg);
 
@@ -1601,6 +1601,17 @@ int main(int argc, char* argv[])
             cdt.insertEdges(edges);
             uint64_t t3 = uSec();
             printf("%d ms\n", (int)((t3 - t2) / 1000));
+
+            uint64_t t4 = uSec();
+            printf("cdt erasing outer and holes... ");
+
+            CDT::Triangulation<MyCoord> cdt2 = cdt;
+            cdt2.eraseOuterTrianglesAndHoles();
+            uint64_t t5 = uSec();
+
+            printf("%d ms\n", (int)((t5 - t4) / 1000));
+            printf("CDT has %d faces after eraseOuterTrianglesAndHoles()\n", (int)cdt2.triangles.size());
+
         }
 
         uint64_t t4 = uSec();
@@ -1608,7 +1619,6 @@ int main(int argc, char* argv[])
         cdt.eraseSuperTriangle();
         uint64_t t5 = uSec();
         printf("%d ms\n", (int)((t5 - t4) / 1000));
-        printf("CDT TOTAL: %d\n", (int)((t5 - t0) / 1000));
 
         printf("CDT triangles = %d\n", (int)cdt.triangles.size());
 
@@ -1996,23 +2006,6 @@ int main(int argc, char* argv[])
     free(voronoi_vtx_buf);
     #endif
 
-    #ifdef WITH_CDT
-    if (force.size())
-    {
-        // DO NOT CALL IT if eraseSuper() has been already called !!!
-        if (!cdt.isFinalized())
-        {
-            printf("cdt erasing outer and holes... ");
-
-            uint64_t t4 = uSec();
-            cdt.eraseOuterTrianglesAndHoles();
-            uint64_t t5 = uSec();
-
-            printf("%d ms\n", (int)((t5 - t4) / 1000));
-            printf("CDT has %d faces after eraseOuterTrianglesAndHoles()\n", (int)cdt.triangles.size());
-        }
-    }
-    #endif
 
     int vpw, vph;
     SDL_GL_GetDrawableSize(window, &vpw, &vph);
