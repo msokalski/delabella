@@ -7,7 +7,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 #include "predicates.h"
 
-#define CULLING
+//#define CULLING
 
 #define VORONOI
 //#define VORONOI_POLYS
@@ -1604,8 +1604,8 @@ int main(int argc, char* argv[])
         }
 
         uint64_t t4 = uSec();
-        //printf("cdt erasing super... ");
-        //cdt.eraseSuperTriangle();
+        printf("cdt erasing super... ");
+        cdt.eraseSuperTriangle();
         uint64_t t5 = uSec();
         printf("%d ms\n", (int)((t5 - t4) / 1000));
         printf("CDT TOTAL: %d\n", (int)((t5 - t0) / 1000));
@@ -1660,7 +1660,7 @@ int main(int argc, char* argv[])
     MyIndex vert_num = contour + non_contour;
 
     #ifdef VORONOI
-    printf("Polygonizing for VD\n");
+    //printf("Polygonizing for VD\n");
     //idb->Polygonize(); // optional
 
     printf("Generating VD vertices\n");
@@ -1881,6 +1881,21 @@ int main(int argc, char* argv[])
                     dela->v[2]->i);
                 dela = dela->next;
             }
+            fclose(f);
+        }
+    }
+
+    if (argc >= 4)
+    {
+        // write back input
+        f = fopen(argv[3], "w");
+        if (f)
+        {
+            fprintf(f, "%d %d\n", (int)cloud.size(), (int)force.size());
+            for (MyIndex i = 0; i < cloud.size(); i++)
+                fprintf(f, "%f %f\n", (double)cloud[i].x, (double)cloud[i].y);
+            for (MyIndex i = 0; i < force.size(); i++)
+                fprintf(f, "%d %d\n", (int)force[i].a, (int)force[i].b);
             fclose(f);
         }
     }

@@ -93,28 +93,34 @@ struct IDelaBella2
 	// num of internal vertices
 	virtual I GetNumInternalVerts() const = 0;
 
-	// called right after Triangulate() and/or Constrain() it returns number of triangles,
+	// when called right after Triangulate() / Constrain() / FloodFill() it returns number of triangles,
 	// but if called after Polygonize() it returns number of polygons
 	virtual I GetNumPolygons() const = 0;
 
 	virtual const Simplex* GetFirstDelaunaySimplex() const = 0; // valid only if Triangulate() > 0
 	virtual const Simplex* GetFirstHullSimplex() const = 0; // valid only if Triangulate() > 0
 	virtual const Vertex*  GetFirstBoundaryVertex() const = 0; // if Triangulate() < 0 it is list, otherwise closed contour! 
-	virtual const Vertex*  GetFirstInternalVertex() const = 0;
+	virtual const Vertex*  GetFirstInternalVertex() const = 0; // valid only if Triangulate() > 0
+
+	// given input point index, returns corresponding vertex pointer 
 	virtual const Vertex*  GetVertexByIndex(I i) const = 0;
 
-	// if classify=true return number of interior faces 
-	// and links these faces in front of delaunay simplex list,
-	// if classify=false all faces are classified as interior
+	// insert constraint edges into triangulation, valid only if Triangulate() > 0
 	virtual I ConstrainEdges(I edges, const I* pa, const I* pb, size_t advance_bytes) = 0;
 
+	// assigns interior / exterior flags to all faces, valid only if Triangulate() > 0
 	// returns number of 'land' faces (they start at GetFirstDelaunaySimplex)
 	// optionally <exterior> pointer is set to the first 'sea' face
 	// if invert is set, outer-most faces will become 'land' (instead of 'sea')
 	virtual I FloodFill(bool invert, const Simplex** exterior = 0) = 0;
 
-	// todo: add option to polygonize interior/exterior (2bits: 0-as_is, 1-inter, 2-extern, 3-both_but_separated)
-	virtual I Polygonize(const Simplex* poly[/*GetNumOutputIndices()/3*/] = 0) = 0; // valid only if Triangulate() > 0
+	// groups adjacent faces, not separated by constraint edges, built on concyclic vertices into polygons
+	// first 3 vertices of a polygon are all 3 vertices of first face Simplex::v[0], v[1], v[2]
+	// every next face in polygon defines additional 1 polygon vertex at its Simplex::v[0]
+	// usefull as preprocessing step before genereating voronoi diagrams 
+	// and as unification step before comparing 2 or more triangulations
+	// valid only if Triangulate() > 0
+	virtual I Polygonize(const Simplex* poly[/*GetNumOutputIndices()/3*/] = 0) = 0; 
 
 	// GenVoronoiDiagramVerts(), valid only if Triangulate() > 0
 	// it makes sense to call it prior to constraining only
