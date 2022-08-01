@@ -42,7 +42,6 @@ static uint64_t uSec()
 #endif
 }
 
-
 template <typename T, typename I>
 IDelaBella2<T,I>::~IDelaBella2()
 {
@@ -99,6 +98,8 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 	struct Face : IDelaBella2<T,I>::Simplex
 	{
+		static const T iccerrboundA;// = ((T(10) + T(96) * std::exp2(-(T)std::numeric_limits<T>::digits)) * std::exp2(-(T)std::numeric_limits<T>::digits));
+
 		#ifdef DELABELLA_AUTOTEST
 		void Validate()
 		{
@@ -223,8 +224,49 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					this->v[2]->x, this->v[2]->y) < 0;
 		}
 
-		bool dotNP(const Vert& p) const
+		bool dotNP(const Vert& p) /*const*/
 		{
+			{	// somewhat faster, poor compiler inlining?
+
+				const T dx = this->v[2]->x;
+				const T dy = this->v[2]->y;
+
+				const T adx = p.x - dx;
+				const T ady = p.y - dy;
+				const T bdx = this->v[0]->x - dx;
+				const T bdy = this->v[0]->y - dy;
+				const T cdx = this->v[1]->x - dx;
+				const T cdy = this->v[1]->y - dy;
+
+				const T adxcdy = adx * cdy;
+				const T adxbdy = adx * bdy;
+				const T bdxcdy = bdx * cdy;
+				const T bdxady = bdx * ady;
+				const T cdxbdy = cdx * bdy;
+				const T cdxady = cdx * ady;
+
+				const T alift = adx * adx + ady * ady;
+				const T blift = bdx * bdx + bdy * bdy;
+				const T clift = cdx * cdx + cdy * cdy;
+
+				const T dif_bdxcdy_cdxbdy = bdxcdy - cdxbdy;
+				const T sum_abs_bdxcdy_cdxbdy = std::abs(bdxcdy) + std::abs(cdxbdy);
+
+				const T det_a = alift * dif_bdxcdy_cdxbdy;
+				const T det_b = blift * (cdxady - adxcdy);
+				const T det_c = clift * (adxbdy - bdxady);
+
+				const T det = det_a + det_b + det_c;
+
+				const T permanent = sum_abs_bdxcdy_cdxbdy * alift
+					+ (std::abs(cdxady) + std::abs(adxcdy)) * blift
+					+ (std::abs(adxbdy) + std::abs(bdxady)) * clift;
+
+				T errbound = iccerrboundA * permanent;
+				if (std::abs(det) >= std::abs(errbound))
+					return det <= 0;
+			}
+
 			return
 				predicates::adaptive::incircle(
 					p.x,p.y, 
@@ -2905,6 +2947,9 @@ IDelaBella2<T,I>* IDelaBella2<T,I>::Create()
 	}
 	return ret;
 }
+
+template<typename T, typename I>
+const T CDelaBella2<T,I>::Face::iccerrboundA = ((T(10) + T(96) * std::exp2(-(T)std::numeric_limits<T>::digits)) * std::exp2(-(T)std::numeric_limits<T>::digits));
 
 // this should cover all malcontents
 template IDelaBella2<float, int8_t>* IDelaBella2<float, int8_t>::Create();

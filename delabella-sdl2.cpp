@@ -1598,7 +1598,8 @@ int main(int argc, char* argv[])
         if (force.size()>0)
         {
             printf("cdt forcing edges... ");
-            cdt.insertEdges(edges);
+            //cdt.insertEdges(edges);
+            cdt.conformToEdges(edges);
             uint64_t t3 = uSec();
             printf("%d ms\n", (int)((t3 - t2) / 1000));
 
