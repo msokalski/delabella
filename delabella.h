@@ -320,22 +320,21 @@ struct IDelaBella3
 		}
 	};
 
-	static IDelaBella2<T,I>* Create();
+	static IDelaBella3<T,I>* Create();
 	virtual void Destroy() = 0;
 
 	virtual void SetErrLog(int(*proc)(void* stream, const char* fmt, ...), void* stream) = 0;
 
 	enum Convexity
 	{
-		STRONG = 0,		// only strongly convex points will appear in triangulation
-		WEAK = 1,       // also exactly colinear and coplanar points will be included in triangulation
-		PROJECTIVE = 2, // all points are projected onto sphere, so all will be included in triangulation (good for spherical delaunay)
+		STRONG, // only strongly convex points will appear in triangulation (convex-hull default)
+		WEAK,   // additionally, exactly colinear and coplanar points will be included in triangulation
+		ANY     // all points are projected onto sphere, so all will be included in triangulation (spherical delaunay)
 	};
 
-	// generates exact convex hull triangulation, or if project = true, approximated delaunay triangulation on a (0,0,0) centered sphere 
-	virtual I Triangulate(I points, const T* x, const T* y = 0, const T* z = 0, size_t advance_bytes = 0, bool project = false) = 0;
+	virtual I Triangulate(Convexity mode, I points, const T* x, const T* y = 0, const T* z = 0, size_t advance_bytes = 0) = 0;
 
-	/*
+	#if 0
 	// num of points passed to last call to Triangulate()
 	virtual I GetNumInputPoints() const = 0;
 
@@ -423,8 +422,31 @@ struct IDelaBella3
 	// number of closed VD cells indices is written to <closed_indices>
 	// function returns number of indices filled (I) on success, otherwise 0
 	virtual I GenVoronoiDiagramPolys(I* indices, size_t advance_bytes = 0, I* closed_indices = 0) const = 0;
-	*/
+	#endif
 
 	protected: virtual ~IDelaBella3() = 0; // please use Destroy()
 };
+
+template <typename T, typename I>
+inline const typename IDelaBella3<T,I>::Simplex* IDelaBella3<T,I>::Simplex::StartIterator(IDelaBella3<T,I>::Iterator* it/*not_null*/, int around/*0,1,2*/) const
+{
+	it->current = this;
+	it->around = around;
+	return this;
+}
+
+template <typename T, typename I>
+inline const typename IDelaBella3<T,I>::Simplex* IDelaBella3<T,I>::Vertex::StartIterator(IDelaBella3<T,I>::Iterator* it/*not_null*/) const
+{
+	it->current = sew;
+	if (sew->v[0] == this)
+		it->around = 0;
+	else
+	if (sew->v[1] == this)
+		it->around = 1;
+	else
+		it->around = 2;
+	return sew;
+}
+
 #endif

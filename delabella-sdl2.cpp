@@ -1312,6 +1312,36 @@ struct GfxStuffer
     }
 };
 
+struct Bench
+{
+    void operator += (const Bench& b)
+    {
+        removing_dups += b.removing_dups;
+        triangulation += b.triangulation;
+        constrain_edges += b.constrain_edges;
+        erase_super += b.erase_super;
+        flood_fill += b.flood_fill;
+        polygons += b.polygons;
+    }
+
+    void operator /= (int b)
+    {
+        removing_dups /= b;
+        triangulation /= b;
+        constrain_edges /= b;
+        erase_super /= b;
+        flood_fill /= b;
+        polygons /= b;
+    }
+
+    uint64_t removing_dups;
+    uint64_t triangulation;
+    uint64_t constrain_edges;
+    uint64_t erase_super;
+    uint64_t flood_fill;
+    uint64_t polygons;
+};
+
 int main(int argc, char* argv[])
 {
 	#ifdef _WIN32
@@ -1351,11 +1381,11 @@ int main(int argc, char* argv[])
         }
         printf("generating random " IDXF " points\n", n);
         std::random_device rd{};
-        std::mt19937_64 gen{ 0x12345678 /*rd()*/};
+        std::mt19937_64 gen{ 0x12345678+5 /*rd()*/};
 
-        std::uniform_real_distribution<MyCoord> d((MyCoord)-2.503515625, (MyCoord)+2.503515625);
+        //std::uniform_real_distribution<MyCoord> d((MyCoord)-2.503515625, (MyCoord)+2.503515625);
         //std::normal_distribution<MyCoord> d{(MyCoord)0.0,(MyCoord)2.0};
-        //std::gamma_distribution<MyCoord> d((MyCoord)0.1,(MyCoord)2.0);
+        std::gamma_distribution<MyCoord> d((MyCoord)0.1,(MyCoord)2.0);
 
         MyCoord max_coord = sizeof(MyCoord) < 8 ? /*float*/0x1.p31 : /*double*/0x1.p255;
 
@@ -1587,6 +1617,8 @@ int main(int argc, char* argv[])
 
         uint64_t t1 = uSec();
         printf("%d ms\n", (int)((t1 - t0) / 1000));
+        //cdt_bench->removing_dups = t1 - t0;
+
 
         printf("cdt triangulation... ");
         CDT::Triangulation<MyCoord> cdt;
@@ -1594,23 +1626,30 @@ int main(int argc, char* argv[])
 
         uint64_t t2 = uSec();
         printf("%d ms\n", (int)((t2 - t1) / 1000));
+        //cdt_bench->triangulation = t2 - t1;
 
         if (force.size()>0)
         {
             printf("cdt forcing edges... ");
-            //cdt.insertEdges(edges);
-            cdt.conformToEdges(edges);
+            cdt.insertEdges(edges);
             uint64_t t3 = uSec();
             printf("%d ms\n", (int)((t3 - t2) / 1000));
+            //cdt_bench->constrain_edges = t3 - t2;
 
+            printf("cdt copying... ");
             uint64_t t4 = uSec();
-            printf("cdt erasing outer and holes... ");
-
             CDT::Triangulation<MyCoord> cdt2 = cdt;
-            cdt2.eraseOuterTrianglesAndHoles();
             uint64_t t5 = uSec();
-
             printf("%d ms\n", (int)((t5 - t4) / 1000));
+
+            printf("cdt erasing outer and holes... ");
+            uint64_t t6 = uSec();
+            cdt2.eraseOuterTrianglesAndHoles();
+            uint64_t t7 = uSec();
+
+            printf("%d ms\n", (int)((t7 - t6) / 1000));
+            //cdt_bench->flood_fill = t7 - t6;
+
             printf("CDT has %d faces after eraseOuterTrianglesAndHoles()\n", (int)cdt2.triangles.size());
 
         }
@@ -1620,6 +1659,7 @@ int main(int argc, char* argv[])
         cdt.eraseSuperTriangle();
         uint64_t t5 = uSec();
         printf("%d ms\n", (int)((t5 - t4) / 1000));
+        //cdt_bench->erase_super = t5 - t4;
 
         printf("CDT triangles = %d\n", (int)cdt.triangles.size());
 
@@ -1628,7 +1668,7 @@ int main(int argc, char* argv[])
         uint64_t t_p1 = uSec();
 
         printf("CDT POLYS = " IDXF " (in %d ms)\n", (MyIndex)cdt_polys.size(), (int)((t_p1 - t_p0) / 1000));
-
+        //cdt_bench->polygons = t_p1 - t_p0;
     #endif
 
 
@@ -1655,16 +1695,32 @@ int main(int argc, char* argv[])
         MyIndex tris_delaunator = d ? (MyIndex)d->triangles.size() / 3 : 0;
         uint64_t t1 = uSec();
         printf("elapsed %d ms\n", (int)((t1-t0)/1000));
+
+        //del_bench->triangulation = t1 - t0;
         printf("delaunator triangles: " IDXF "\n", tris_delaunator);
+
+        /*
+        if (tris_delaunator != (MyIndex)cdt.triangles.size())
+            del_bench->removing_dups = 1000000000;
+        else
+            del_bench->removing_dups = 0;
+        */
+
+        delete d;
     }
     #endif
 
 	IDelaBella* idb = IDelaBella::Create();
-	idb->SetErrLog(errlog, stdout);
+	//idb->SetErrLog(errlog, stdout);
 	
     printf("running delabella...\n");
     uint64_t t6 = uSec();
     MyIndex verts = idb->Triangulate(points, &cloud.data()->x, &cloud.data()->y, sizeof(MyPoint));
+
+    //extern uint64_t sorting_bench;
+    //idb_bench->removing_dups = sorting_bench;
+    //idb_bench->triangulation = uSec()-t6 - sorting_bench;
+
     MyIndex tris_delabella = verts > 0 ? verts / 3 : 0;
     MyIndex contour = idb->GetNumBoundaryVerts();
     MyIndex non_contour = idb->GetNumInternalVerts();
@@ -1701,17 +1757,25 @@ int main(int argc, char* argv[])
 
     if (force.size() > 0)
     {
+        //idb_bench->constrain_edges = uSec();
         idb->ConstrainEdges((MyIndex)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge));
+        //idb_bench->constrain_edges = uSec() - idb_bench->constrain_edges;
 
         uint64_t ff0 = uSec();
         MyIndex num_interior = idb->FloodFill(false, 0);
         uint64_t ff1 = uSec();
 
         printf("interior %d faces in %d ms\n", num_interior, (int)((ff1 - ff0) / 1000));
+        //idb_bench->flood_fill = ff1-ff0;
     }
 
+    //idb_bench->erase_super = 0;
+
     const DelaBella_Triangle** dela_polys = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * (size_t)tris_delabella);
+
+    //idb_bench->polygons = uSec();
     MyIndex polys_delabella = idb->Polygonize(dela_polys);
+    //idb_bench->polygons = uSec() - idb_bench->polygons;
 
     printf("delabella triangles: " IDXF "\n", tris_delabella);
     printf("delabella contour: " IDXF "\n", contour);
@@ -1878,6 +1942,8 @@ int main(int argc, char* argv[])
         #endif
     }
 
+    free(dela_polys);
+
     if (argc>=3)
     {
         f = fopen(argv[2],"w");
@@ -1911,6 +1977,11 @@ int main(int argc, char* argv[])
         }
     }
 
+    //free(voronoi_idx_buf);
+    //free(voronoi_vtx_buf);
+    //idb->Destroy();
+    //return 0;
+
     SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
     SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
@@ -1926,7 +1997,7 @@ int main(int argc, char* argv[])
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
 	// create viewer wnd
-    int width = 800, height = 600;
+    int width = 800, height = 800;
     const char* title = "delablella-sdl2";
     SDL_Window * window = SDL_CreateWindow( title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
     if (!window)
@@ -2395,3 +2466,119 @@ int main(int argc, char* argv[])
 	return 0;
 }
 
+#if 0
+
+int main(int argc, char* argv[])
+{
+    setlocale(LC_ALL, "");
+
+    int test_size[] =
+    {
+        1000,2500,5000,
+        10000,25000,50000,
+        100000,250000,500000,
+        1000000,2500000,5000000,
+        10000000,25000000,50000000,
+        0
+    };
+
+    Bench bench[3];
+
+    char bin[2] = "";
+    char num[16];
+    char* args[5] = { bin,num, (char*)(bench + 0), (char*)(bench + 1), (char*)(bench + 2) };
+
+    FILE* bench_file = fopen("bench_normal_bias.txt", "w");
+
+#ifdef WITH_CDT
+#ifdef WITH_DELAUNATOR
+    fprintf(bench_file, "        DLB[us]     CDT[us]     DEL[us]\n");
+#else
+    fprintf(bench_file, "        DLB[us]     CDT[us]\n");
+#endif
+#else
+#ifdef WITH_DELAUNATOR
+    fprintf(bench_file, "        DLB[us]     DEL[us]\n");
+#else
+    fprintf(bench_file, "        DLB[us]\n");
+#endif
+#endif
+
+    for (int i = 0; test_size[i]; i++)
+    {
+        Bench accum[3] = { {0}, {0}, {0} };
+
+        _itoa(test_size[i], num, 10);
+
+        uint64_t t0 = uSec();
+        int acc = 0;
+        do 
+        {
+            __main(2, args);
+            accum[0] += bench[0];
+            accum[1] += bench[1];
+            accum[2] += bench[2];
+            acc++;
+        } while (uSec() - t0 < 5000000);
+
+        accum[0] /= acc;
+        accum[1] /= acc;
+        accum[2] /= acc;
+
+        struct F
+        {
+            const char* operator () (int n, uint64_t v)
+            {
+                int len = sprintf(buf, "%lld", v);
+                int sep = (len-1) / 3;
+
+                int len2 = len + sep;
+                int pad = n > len2 ? n- len2 : 0;
+
+                int ofs = pad + len2;
+
+                if (ofs >= sizeof(buf))
+                    return 0;
+
+                buf[ofs] = 0;
+                ofs--;
+
+                for (int i = len - 1, j = 0; i >= 0; i--,j++)
+                {
+                    if (j == 3)
+                    {
+                        buf[ofs] = ',';
+                        ofs--;
+                        j = 0;
+                    }
+
+                    buf[ofs] = buf[i];
+                    ofs--;
+                }
+
+                for (int i = 0; i < pad; i++)
+                    buf[i] = ' ';
+
+                return buf;
+            }
+
+            char buf[32];
+        } f[3];
+
+        // write bench results...
+        fprintf(bench_file, "N=%s\n", f[0](0, test_size[i]));
+        fprintf(bench_file, "RD: %s %s %s\n", f[0](11,accum[0].removing_dups),   f[1](11,accum[1].removing_dups), accum[2].removing_dups ? "    INVALID" : f[2](11, accum[2].removing_dups));
+        fprintf(bench_file, "TR: %s %s %s\n", f[0](11,accum[0].triangulation),   f[1](11,accum[1].triangulation),   f[2](11,accum[2].triangulation));
+        fprintf(bench_file, "CE: %s %s\n",    f[0](11,accum[0].constrain_edges), f[1](11,accum[1].constrain_edges));
+        fprintf(bench_file, "ES: %s %s\n",    f[0](11,accum[0].erase_super),     f[1](11,accum[1].erase_super));
+        fprintf(bench_file, "FF: %s %s\n",    f[0](11,accum[0].flood_fill),      f[1](11,accum[1].flood_fill));
+        fprintf(bench_file, "PL: %s %s\n",    f[0](11,accum[0].polygons),        f[1](11,accum[1].polygons));
+        fprintf(bench_file, "\n");
+
+    }
+
+    fclose(bench_file);
+
+    return 0;
+}
+#endif

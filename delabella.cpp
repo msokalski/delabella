@@ -3,7 +3,7 @@ DELABELLA - Delaunay triangulation library
 Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 */
 
-//#define DELABELLA_AUTOTEST
+#define DELABELLA_AUTOTEST
 
 // in case of troubles, allows to see if any assert pops up.
 // define it globally (like with -DDELABELLA_AUTOTEST)
@@ -14,6 +14,8 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #include <algorithm>
 #include "delabella.h"
 #include "predicates.h"
+
+//uint64_t sorting_bench;
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -345,6 +347,9 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			}
 
 			uint64_t time1 = uSec();
+
+			//sorting_bench = time1 - time0;
+
 			if (sort_stamp)
 				*sort_stamp = time1;
 
@@ -884,16 +889,13 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation ", p, p>=100 ? "":"%");
 			}
 
-			//ValidateHull(alloc, 2 * i - 4);
 			Vert* q = vert_alloc + i;
 			Vert* p = vert_alloc + i - 1;
 			Face* f = hull;
 
 			// 1. FIND FIRST VISIBLE FACE
 			//    simply iterate around last vertex using last added triange adjecency info
-			//while (f->dot(*q) <= 0)
 			while (f->dotNP(*q))
-			//while (f->dotN(*q)) // we want to consume coplanar faces
 			{
 				f = f->Next(p);
 				if (f == hull)
@@ -903,9 +905,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					// let's run through all faces (approximately last to first),
 					// yes this is emergency fallback and should not ever happen.
 					f = face_alloc + (intptr_t)2 * i - 4 - 1;
-					//while (f->dot(*q) <= 0)
 					while (f->dotNP(*q))
-					//while (f->dotN(*q)) // we want to consume coplanar faces
 					{
 						#ifdef DELABELLA_AUTOTEST
 						assert(f != face_alloc); // no face is visible? you must be kidding!
@@ -948,9 +948,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					if (n && !n->next) // ensure neighbor is not processed yet & isn't on stack
 					{
 						// if neighbor is not visible we have slihouette edge
-						//if (n->dot(*q) <= 0) 
 						if (n->dotNP(*q))
-						//if (n->dotN(*q)) // consuming coplanar faces
 						{
 							// build face
 							add++;
@@ -2010,6 +2008,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		Face* seed = 0;
 		Face* flip = 0;
+		Face* first = 0;
 
 		Vert* v = first_boundary_vert;
 		Vert* e = v;
@@ -2056,13 +2055,26 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 			if (odds < bounds)
 			{
-				dela->next = seed;
-				seed = dela;
+				// make sure we dont seed same dela twice
+				if (dela != seed && dela != first)
+				{
+					if (!seed)
+						first = dela;
+					dela->next = seed;
+					seed = dela;
+				}
 			}
 			else
+			if (!seed)
 			{
-				dela->next = flip;
-				flip = dela;
+				// make sure we dont seed same dela twice
+				if (dela != flip && dela != first)
+				{
+					if (!first)
+						first = dela;
+					dela->next = flip;
+					flip = dela;
+				}
 			}
 
 			v = (Vert*)v->next;
@@ -2120,6 +2132,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 							if (n->index == seeded)
 							{
 								// can be slow - check / rethink
+								// try reverse pushing !!!
 								Face** p = &seed;
 								Face* s = seed;
 								while (s != n)
@@ -2967,3 +2980,514 @@ template IDelaBella2<long double, int32_t>* IDelaBella2<long double, int32_t>::C
 template IDelaBella2<float, int64_t>* IDelaBella2<float, int64_t>::Create();
 template IDelaBella2<double, int64_t>* IDelaBella2<double, int64_t>::Create();
 template IDelaBella2<long double, int64_t>* IDelaBella2<long double, int64_t>::Create();
+
+///////////////////////////////////////////
+
+template<typename T, typename I>
+IDelaBella3<T,I>::~IDelaBella3()
+{
+}
+
+template<typename T, typename I>
+struct CDelaBella3 : IDelaBella3<T,I>
+{
+	struct Vert;
+	struct Face;
+	struct Iter;
+
+	struct Vert : IDelaBella3<T,I>::Vertex {};
+	struct Face : IDelaBella3<T,I>::Simplex {};
+	struct Iter : IDelaBella3<T,I>::Iterator {};
+
+
+	Vert* vert_alloc;
+	Face* face_alloc;
+	I* vert_map;
+	I max_verts;
+	I max_faces;
+
+	Face* first_face;
+	Vert* first_boundary_vert;
+	Vert* first_internal_vert;
+
+	I inp_verts;
+	I out_verts;
+	I polygons;
+	I out_boundary_verts;
+	I unique_points;
+
+	int (*errlog_proc)(void* file, const char* fmt, ...);
+	void* errlog_file;
+
+	CDelaBella3() :
+		vert_map(0),
+		vert_alloc(0),
+		face_alloc(0),
+		max_verts(0),
+		max_faces(0),
+		first_face(0),
+		first_boundary_vert(0),
+		first_internal_vert(0),
+		inp_verts(0),
+		out_verts(0),
+		out_boundary_verts(0),
+		polygons(0),
+		unique_points(0),
+		errlog_proc(0),
+		errlog_file(0)
+	{
+	}
+
+	virtual void Destroy()
+	{
+		if (vert_map)
+			free(vert_map);
+
+		if (face_alloc)
+		{
+			//delete [] face_alloc;
+			free(face_alloc);
+		}
+
+		if (vert_alloc)
+		{
+			//delete [] vert_alloc;
+			free(vert_alloc);
+		}
+
+		delete this;
+	}
+
+	virtual void SetErrLog(int(*proc)(void* stream, const char* fmt, ...), void* stream)
+	{
+		errlog_proc = proc;
+		errlog_file = stream;
+	}
+
+	bool ReallocVerts(I points)
+	{
+		inp_verts = points;
+		out_verts = 0;
+		polygons = 0;
+
+		first_face = 0;
+		first_boundary_vert = 0;
+
+		if (max_verts < points)
+		{
+			if (max_verts)
+			{
+				free(vert_map);
+				vert_map = 0;
+
+				free(vert_alloc);
+				//delete [] vert_alloc;
+				vert_alloc = 0;
+				max_verts = 0;
+			}
+
+			/*
+			try
+			{
+				vert_alloc = new Vert[(size_t)points];
+			}
+			catch (...)
+			{
+				vert_alloc = 0;
+			}
+			*/
+
+			vert_alloc = (Vert*)malloc(sizeof(Vert) * points);
+
+			if (vert_alloc)
+				vert_map = (I*)malloc(sizeof(I) * (size_t)points);
+
+			if (vert_alloc && vert_map)
+				max_verts = points;
+			else
+			{
+				if (errlog_proc)
+					errlog_proc(errlog_file, "[ERR] Not enough memory, shop for some more RAM. See you!\n");
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+
+	I Triangulate()
+	{
+		I i = 0;
+		Face* hull = 0;
+		I hull_faces = 0;
+		Face* cache = 0;
+
+		uint64_t sort_stamp;
+		I points = Prepare(&i, &hull, &hull_faces, &cache, &sort_stamp);
+		unique_points = points < 0 ? -points : points;
+		if (points <= 0)
+		{
+			return points;
+		}
+
+		/////////////////////////////////////////////////////////////////////////
+		// ACTUAL ALGORITHM
+
+		int pro = 0;
+		for (; i < points; i++)
+		{
+			if (i >= pro)
+			{
+				uint64_t p = (int)((uint64_t)100 * i / points);
+				pro = (int)((p+1) * points / 100);
+				if (pro >= points)
+					pro = (int)points - 1;
+				if (i == points - 1)
+					p = 100;
+				if (errlog_proc)
+					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation ", p, p>=100 ? "":"%");
+			}
+
+			Vert* q = vert_alloc + i;
+			Vert* p = vert_alloc + i - 1;
+			Face* f = hull;
+
+			// 1. FIND FIRST VISIBLE FACE
+			//    simply iterate around last vertex using last added triange adjecency info
+			while (f->dotNP(*q))
+			{
+				f = f->Next(p);
+				if (f == hull)
+				{
+					//printf(".");
+					// if no visible face can be located at last vertex,
+					// let's run through all faces (approximately last to first),
+					// yes this is emergency fallback and should not ever happen.
+					f = face_alloc + (intptr_t)2 * i - 4 - 1;
+					while (f->dotNP(*q))
+					{
+						#ifdef DELABELLA_AUTOTEST
+						assert(f != face_alloc); // no face is visible? you must be kidding!
+						#endif
+						f--;
+					}
+				}
+			}
+
+			// 2. DELETE VISIBLE FACES & ADD NEW ONES
+			//    (we also build silhouette (vertex loop) between visible & invisible faces)
+
+			I del = 0;
+			I add = 0;
+
+			// push first visible face onto stack (of visible faces)
+			Face* stack = f;
+			f->next = f; // old trick to use list pointers as 'on-stack' markers
+			while (stack)
+			{
+				// pop, take care of last item ptr (it's not null!)
+				f = stack;
+				stack = (Face*)f->next;
+				if (stack == f)
+					stack = 0;
+				f->next = 0;
+
+				// copy parts of old face that we still need after removal
+				Vert* fv[3] = { (Vert*)f->v[0],(Vert*)f->v[1],(Vert*)f->v[2] };
+				Face* ff[3] = { (Face*)f->f[0],(Face*)f->f[1],(Face*)f->f[2] };
+
+				// delete visible face
+				f->Free(&cache);
+				del++;
+
+				// check all 3 neighbors
+				for (int e = 0; e < 3; e++)
+				{
+					Face* n = ff[e];
+					if (n && !n->next) // ensure neighbor is not processed yet & isn't on stack
+					{
+						// if neighbor is not visible we have slihouette edge
+						if (n->dotNP(*q))
+						{
+							// build face
+							add++;
+
+							// ab: given face adjacency [index][],
+							// it provides [][2] vertex indices on shared edge (CCW order)
+							const static int ab[3][2] = { { 1,2 },{ 2,0 },{ 0,1 } };
+
+							Vert* a = fv[ab[e][0]];
+							Vert* b = fv[ab[e][1]];
+
+							Face* s = Face::Alloc(&cache);
+							s->v[0] = a;
+							s->v[1] = b;
+							s->v[2] = q;
+
+							s->f[2] = n;
+
+							// change neighbour's adjacency from old visible face to cone side
+							if (n->f[0] == f)
+								n->f[0] = s;
+							else
+							if (n->f[1] == f)
+								n->f[1] = s;
+							else
+							if (n->f[2] == f)
+								n->f[2] = s;
+							#ifdef DELABELLA_AUTOTEST
+							else
+								assert(0);
+							#endif
+
+							// build silhouette needed for sewing sides in the second pass
+							a->sew = s;
+							a->next = b;
+						}
+						else
+						{
+							// disjoin visible faces
+							// so they won't be processed more than once
+
+							if (n->f[0] == f)
+								n->f[0] = 0;
+							else
+							if (n->f[1] == f)
+								n->f[1] = 0;
+							else
+							if (n->f[2] == f)
+								n->f[2] = 0;
+							#ifdef DELABELLA_AUTOTEST
+							else
+								assert(0);
+							#endif
+
+							// push neighbor face, it's visible and requires processing
+							n->next = stack ? stack : n;
+							stack = n;
+						}
+					}
+				}
+			}
+
+			#ifdef DELABELLA_AUTOTEST
+			// if add<del+2 hungry hull has consumed some point
+			// that means we can't do delaunay for some under precission reasons
+			// althought convex hull would be fine with it
+			assert(add == del + 2);
+			#endif
+
+			// 3. SEW SIDES OF CONE BUILT ON SLIHOUTTE SEGMENTS
+
+			hull = face_alloc + (intptr_t)2 * i - 4 + 1; // last added face
+
+										  // last face must contain part of the silhouette
+										  // (edge between its v[0] and v[1])
+			Vert* entry = (Vert*)hull->v[0];
+
+			Vert* pr = entry;
+			do
+			{
+				// sew pr<->nx
+				Vert* nx = (Vert*)pr->next;
+				pr->sew->f[0] = nx->sew;
+				nx->sew->f[1] = pr->sew;
+				pr = nx;
+			} while (pr != entry);
+		}
+
+		#ifdef DELABELLA_AUTOTEST
+		assert(2 * i - 4 == hull_faces);
+		#endif
+
+		for (I j = 0; j < points; j++)
+		{
+			vert_alloc[j].next = 0;
+			vert_alloc[j].sew = 0;
+		}
+
+		#if 0
+
+		I others = 0;
+
+		i = 0;
+		Face** prev_dela = &first_dela_face;
+		Face** prev_hull = &first_hull_face;
+		for (I j = 0; j < hull_faces; j++)
+		{
+			Face* f = face_alloc + j;
+
+			// back-link all verts to some_face
+			// yea, ~6x times, sorry
+			((Vert*)f->v[0])->sew = f;
+			((Vert*)f->v[1])->sew = f;
+			((Vert*)f->v[2])->sew = f;
+
+			if (f->signN())
+			{
+				f->index = i;  // store index in dela list
+				f->flags = 0b01000000; // interior
+				*prev_dela = f;
+				prev_dela = (Face**)&f->next;
+				i++;
+			}
+			else
+			{
+				f->index = others; // store index in hull list (~ to mark it is not dela)
+				f->flags = 0b10000000; // hull
+				*prev_hull = f;
+				prev_hull = (Face**)&f->next;
+				others++;
+			}
+		}
+
+		if (other_faces)
+			*other_faces = others;
+
+		*prev_dela = 0;
+		*prev_hull = 0;
+
+		// let's trace boudary contour, at least one vertex of first_hull_face
+		// must be shared with dela face, find that dela face
+		Iter it;
+		Vert* v = (Vert*)first_hull_face->v[0];
+		Face* t = (Face*)v->StartIterator(&it);
+		Face* e = t; // end
+		
+		first_boundary_vert = (Vert*)v;
+		out_boundary_verts = 1;
+
+		while (1)
+		{
+			if (t->IsDelaunay())
+			{
+				int pr = it.around-1; if (pr<0) pr = 2;
+				int nx = it.around+1; if (nx>2) nx = 0;
+
+				Face* fpr = (Face*)t->f[pr];
+				if (!fpr->IsDelaunay())
+				{
+					// let's move from: v to t->v[nx]
+					v->next = t->v[nx];
+					v = (Vert*)v->next;
+					if (v == first_boundary_vert)
+						break; // lap finished
+					out_boundary_verts++;
+					t = (Face*)t->StartIterator(&it,nx);
+					e = t;
+					continue;
+				}
+			}
+			t = (Face*)it.Next();
+
+			#ifdef DELABELLA_AUTOTEST
+			assert(t!=e);
+			#endif
+		}
+
+		// link all other verts into internal list
+		first_internal_vert = 0;
+		Vert** prev_inter = &first_internal_vert;
+		for (I j=0; j<points; j++)
+		{
+			if (!vert_alloc[j].next)
+			{
+				Vert* next = vert_alloc+j;
+				*prev_inter = next;
+				prev_inter = (Vert**)&next->next;
+			}
+		}
+
+		#endif
+
+		if (errlog_proc)
+			errlog_proc(errlog_file, "\r[100] convex hull triangulation (%lld ms)\n", (uSec() - sort_stamp) / 1000);
+
+		return 3*i;
+
+	}
+
+	virtual I Triangulate(IDelaBella3<T,I>::Convexity mode, I points, const T* x, const T* y = 0, const T* z = 0, size_t advance_bytes = 0)
+	{
+		if (!x)
+			return 0;
+		if (!y)
+			y = x + 1;
+		if (!z)
+			z = y + 1;
+
+		if (advance_bytes < sizeof(T) * 3)
+			advance_bytes = sizeof(T) * 3;
+
+		if (!ReallocVerts(points))
+			return 0;
+
+		if (mode == IDelaBella3<T, I>::Convexity::ANY)
+		{
+			for (I i = 0; i < points; i++)
+			{
+				Vert* v = vert_alloc + i;
+				v->i = i;
+				T vx = *(const T*)((const char*)x + i * advance_bytes);
+				T vy = *(const T*)((const char*)y + i * advance_bytes);
+				T vz = *(const T*)((const char*)z + i * advance_bytes);
+				T rr = (T)1 / sqrt(vx * vx + vy * vy + vz * vz);
+				v->x = vx * rr;
+				v->y = vy * rr;
+				v->z = vz * rr;
+			}
+		}
+		else
+		{
+			for (I i = 0; i < points; i++)
+			{
+				Vert* v = vert_alloc + i;
+				v->i = i;
+				v->x = *(const T*)((const char*)x + i * advance_bytes);
+				v->y = *(const T*)((const char*)y + i * advance_bytes);
+				v->z = *(const T*)((const char*)z + i * advance_bytes);
+			}
+		}
+
+		unique_points = 0;
+		out_verts = Triangulate();
+		polygons = out_verts / 3;
+		return out_verts;
+	}
+};
+
+template<typename T, typename I>
+IDelaBella3<T,I>* IDelaBella3<T,I>::Create()
+{
+	IDelaBella3<T, I>* ret = 0;
+	try
+	{
+		ret = new CDelaBella3<T, I>;
+	}
+	catch (...)
+	{
+		ret = 0;
+	}
+	return ret;
+}
+
+// this should cover all malcontents
+/*
+template IDelaBella3<float, int8_t>* IDelaBella3<float, int8_t>::Create();
+template IDelaBella3<double, int8_t>* IDelaBella3<double, int8_t>::Create();
+template IDelaBella3<long double, int8_t>* IDelaBella3<long double, int8_t>::Create();
+
+template IDelaBella3<float, int16_t>* IDelaBella3<float, int16_t>::Create();
+template IDelaBella3<double, int16_t>* IDelaBella3<double, int16_t>::Create();
+template IDelaBella3<long double, int16_t>* IDelaBella3<long double, int16_t>::Create();
+
+template IDelaBella3<float, int32_t>* IDelaBella3<float, int32_t>::Create();
+template IDelaBella3<double, int32_t>* IDelaBella3<double, int32_t>::Create();
+template IDelaBella3<long double, int32_t>* IDelaBella3<long double, int32_t>::Create();
+
+template IDelaBella3<float, int64_t>* IDelaBella3<float, int64_t>::Create();
+template IDelaBella3<double, int64_t>* IDelaBella3<double, int64_t>::Create();
+template IDelaBella3<long double, int64_t>* IDelaBella3<long double, int64_t>::Create();
+*/
+
