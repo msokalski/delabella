@@ -15,7 +15,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #include "delabella.h"
 #include "predicates.h"
 
-//uint64_t sorting_bench;
+extern uint64_t sorting_bench;
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -86,6 +86,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		bool operator < (const Vert& v) const
 		{
+			return this->x < v.x;
 			T dif = predicates::adaptive::sqrlendif2d(this->x, this->y, v.x, v.y);
 
 			if (dif < 0)
@@ -348,7 +349,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 			uint64_t time1 = uSec();
 
-			//sorting_bench = time1 - time0;
+			sorting_bench = time1 - time0;
 
 			if (sort_stamp)
 				*sort_stamp = time1;

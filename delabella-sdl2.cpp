@@ -7,19 +7,21 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 #include "predicates.h"
 
+#define BENCH
+
 //#define CULLING
 
-#define VORONOI
+//#define VORONOI
 //#define VORONOI_POLYS
 // otherwise EDGES
 
 // override build define
 #undef WITH_DELAUNATOR 
-//#define WITH_DELAUNATOR
+#define WITH_DELAUNATOR
 
 // override build define
 #undef WITH_CDT
-//#define WITH_CDT
+#define WITH_CDT
 
 #include <math.h>
 #include <stdlib.h>
@@ -49,7 +51,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 // competitors
 #ifdef WITH_DELAUNATOR
-#include "delaunator/delaunator-header-only.hpp"
+#include "delaunator/delaunator.hpp"
 #endif
 
 #ifdef WITH_CDT
@@ -1312,6 +1314,8 @@ struct GfxStuffer
     }
 };
 
+#ifdef BENCH
+uint64_t sorting_bench = 0;
 struct Bench
 {
     void operator += (const Bench& b)
@@ -1341,9 +1345,24 @@ struct Bench
     uint64_t flood_fill;
     uint64_t polygons;
 };
+#endif
 
+#ifdef BENCH
+int bench_main(int argc, char* argv[])
+{
+    Bench* idb_bench = (Bench*)argv[2];
+    Bench* cdt_bench = (Bench*)argv[3];
+    Bench* del_bench = (Bench*)argv[4];
+    char* dist = argv[5];
+    char* bias = argv[6];
+
+#else
 int main(int argc, char* argv[])
 {
+    const char* dist = "uni";
+    const char* bias = "";
+#endif
+
 	#ifdef _WIN32
 	SetProcessDPIAware();
     struct handler
@@ -1383,49 +1402,74 @@ int main(int argc, char* argv[])
         std::random_device rd{};
         std::mt19937_64 gen{ 0x12345678+5 /*rd()*/};
 
-        //std::uniform_real_distribution<MyCoord> d((MyCoord)-2.503515625, (MyCoord)+2.503515625);
-        //std::normal_distribution<MyCoord> d{(MyCoord)0.0,(MyCoord)2.0};
-        std::gamma_distribution<MyCoord> d((MyCoord)0.1,(MyCoord)2.0);
+        std::uniform_real_distribution<MyCoord> d_uni((MyCoord)-2.503515625, (MyCoord)+2.503515625);
+        std::normal_distribution<MyCoord> d_std{(MyCoord)0.0,(MyCoord)2.0};
+        std::gamma_distribution<MyCoord> d_gam((MyCoord)0.1,(MyCoord)2.0);
 
         MyCoord max_coord = sizeof(MyCoord) < 8 ? /*float*/0x1.p31 : /*double*/0x1.p255;
 
-        for (MyIndex i = 0; i < n; i++)
+        MyCoord bias_xy[] = { 0,0 };
+        if (bias[0])
         {
-            //MyPoint p = { (d(gen) + 50.0), (d(gen) + 50.0) };
-            MyPoint p = { d(gen), d(gen) };
-            
-            //p.x *= 0x1.p250;
-            //p.y *= 0x1.p250;
-
-            // please, leave some headroom for arithmetics!
-            assert(std::abs(p.x) <= max_coord && std::abs(p.y) <= max_coord);
-
-            cloud.push_back(p);
+            bias_xy[0] = 50;
+            bias_xy[1] = 50;
         }
-        
-        
-        /*
+
+        if (strcmp(dist, "uni") == 0)
+        {
+            for (MyIndex i = 0; i < n; i++)
+            {
+                MyPoint p = { d_uni(gen) + bias_xy[0], d_uni(gen) + bias_xy[1] };
+                // please, leave some headroom for arithmetics!
+                assert(std::abs(p.x) <= max_coord && std::abs(p.y) <= max_coord);
+                cloud.push_back(p);
+            }
+        }
+        else
+        if (strcmp(dist, "std") == 0)
+        {
+            for (MyIndex i = 0; i < n; i++)
+            {
+                MyPoint p = { d_std(gen) + bias_xy[0], d_std(gen) + bias_xy[1] };
+                // please, leave some headroom for arithmetics!
+                assert(std::abs(p.x) <= max_coord && std::abs(p.y) <= max_coord);
+                cloud.push_back(p);
+            }
+        }
+        else
+        if (strcmp(dist, "gam") == 0)
+        {
+            for (MyIndex i = 0; i < n; i++)
+            {
+                MyPoint p = { d_std(gen) + bias_xy[0], d_std(gen) + bias_xy[1] };
+                // please, leave some headroom for arithmetics!
+                assert(std::abs(p.x) <= max_coord && std::abs(p.y) <= max_coord);
+                cloud.push_back(p);
+            }
+        }
+        else
+        // HEXGRID
         {
             const double x = 0x5af2efc1.p-30;
             const double y = 0x348268e0.p-30;
             const double r = 0x6904d1c1.p-30;
-            const MyPoint p[4] = 
-            { 
-                {0,0}, 
-                {0,(MyCoord)(2*y)}, 
-                {(MyCoord)x,(MyCoord)(r+y)}, 
-                {(MyCoord)x,(MyCoord)(r+3*y)} 
+            const MyPoint p[4] =
+            {
+                {0,0},
+                {0,(MyCoord)(2 * y)},
+                {(MyCoord)x,(MyCoord)(r + y)},
+                {(MyCoord)x,(MyCoord)(r + 3 * y)}
             };
 
-            const MyCoord dx = (MyCoord)(2*x);
-            const MyCoord dy = (MyCoord)(2*(r+y));
+            const MyCoord dx = (MyCoord)(2 * x);
+            const MyCoord dy = (MyCoord)(2 * (r + y));
 
             int rows = (int)ceil(sqrt(n / 7.0));
-            int cols = (n + 2 * rows) / (4*rows);
+            int cols = (n + 2 * rows) / (4 * rows);
 
             n = rows * cols * 4;
 
-            printf("%d\n", rows* cols * 4);
+            printf("%d\n", rows * cols * 4);
 
             for (int row = 0; row < rows; row++)
             {
@@ -1441,9 +1485,8 @@ int main(int argc, char* argv[])
                 }
             }
         }
-        */
-        
-        if (1)
+             
+        if (1) // generate 1/10 constrain edges
         {
             MyIndex m = n / 10;
 
@@ -1489,27 +1532,6 @@ int main(int argc, char* argv[])
             helper->Destroy();
             free(sub);
         }
-
-
-        /*
-        MyIndex a = gen() % n;
-        for (MyIndex i = 0; i < 1000; i++)
-        {
-            MyIndex b = (a + gen() % (n-1)) % n;
-            force.push_back(MyEdge(a, b));
-        }
-        */
-     
-        /*
-        for (MyIndex i = 0; i < n; i++)
-        {
-            MyPoint p = { d(gen), 0 };
-            //p.y = p.x;
-            cloud.push_back(p);
-        }
-        MyPoint p = { 0, 1};
-        cloud.push_back(p);
-        */
         
 	}
     else
@@ -1617,8 +1639,10 @@ int main(int argc, char* argv[])
 
         uint64_t t1 = uSec();
         printf("%d ms\n", (int)((t1 - t0) / 1000));
-        //cdt_bench->removing_dups = t1 - t0;
-
+        
+        #ifdef BENCH
+        cdt_bench->removing_dups = t1 - t0;
+        #endif
 
         printf("cdt triangulation... ");
         CDT::Triangulation<MyCoord> cdt;
@@ -1626,7 +1650,10 @@ int main(int argc, char* argv[])
 
         uint64_t t2 = uSec();
         printf("%d ms\n", (int)((t2 - t1) / 1000));
-        //cdt_bench->triangulation = t2 - t1;
+        
+        #ifdef BENCH
+        cdt_bench->triangulation = t2 - t1;
+        #endif
 
         if (force.size()>0)
         {
@@ -1634,7 +1661,10 @@ int main(int argc, char* argv[])
             cdt.insertEdges(edges);
             uint64_t t3 = uSec();
             printf("%d ms\n", (int)((t3 - t2) / 1000));
-            //cdt_bench->constrain_edges = t3 - t2;
+            
+            #ifdef BENCH
+            cdt_bench->constrain_edges = t3 - t2;
+            #endif
 
             printf("cdt copying... ");
             uint64_t t4 = uSec();
@@ -1648,7 +1678,10 @@ int main(int argc, char* argv[])
             uint64_t t7 = uSec();
 
             printf("%d ms\n", (int)((t7 - t6) / 1000));
-            //cdt_bench->flood_fill = t7 - t6;
+            
+            #ifdef BENCH
+            cdt_bench->flood_fill = t7 - t6;
+            #endif
 
             printf("CDT has %d faces after eraseOuterTrianglesAndHoles()\n", (int)cdt2.triangles.size());
 
@@ -1659,7 +1692,10 @@ int main(int argc, char* argv[])
         cdt.eraseSuperTriangle();
         uint64_t t5 = uSec();
         printf("%d ms\n", (int)((t5 - t4) / 1000));
-        //cdt_bench->erase_super = t5 - t4;
+        
+        #ifdef BENCH
+        cdt_bench->erase_super = t5 - t4;
+        #endif
 
         printf("CDT triangles = %d\n", (int)cdt.triangles.size());
 
@@ -1668,7 +1704,11 @@ int main(int argc, char* argv[])
         uint64_t t_p1 = uSec();
 
         printf("CDT POLYS = " IDXF " (in %d ms)\n", (MyIndex)cdt_polys.size(), (int)((t_p1 - t_p0) / 1000));
-        //cdt_bench->polygons = t_p1 - t_p0;
+        
+        #ifdef BENCH
+        cdt_bench->polygons = t_p1 - t_p0;
+        #endif
+
     #endif
 
 
@@ -1696,30 +1736,34 @@ int main(int argc, char* argv[])
         uint64_t t1 = uSec();
         printf("elapsed %d ms\n", (int)((t1-t0)/1000));
 
-        //del_bench->triangulation = t1 - t0;
-        printf("delaunator triangles: " IDXF "\n", tris_delaunator);
-
-        /*
+        #ifdef BENCH
+        del_bench->triangulation = t1 - t0;
         if (tris_delaunator != (MyIndex)cdt.triangles.size())
             del_bench->removing_dups = 1000000000;
         else
             del_bench->removing_dups = 0;
-        */
+        #endif
+        
+        printf("delaunator triangles: " IDXF "\n", tris_delaunator);
 
         delete d;
     }
     #endif
 
 	IDelaBella* idb = IDelaBella::Create();
-	//idb->SetErrLog(errlog, stdout);
-	
+
+    #ifndef BENCH
+	idb->SetErrLog(errlog, stdout);
+    #endif
+
     printf("running delabella...\n");
     uint64_t t6 = uSec();
     MyIndex verts = idb->Triangulate(points, &cloud.data()->x, &cloud.data()->y, sizeof(MyPoint));
 
-    //extern uint64_t sorting_bench;
-    //idb_bench->removing_dups = sorting_bench;
-    //idb_bench->triangulation = uSec()-t6 - sorting_bench;
+    #ifdef BENCH
+    idb_bench->removing_dups = sorting_bench;
+    idb_bench->triangulation = uSec()-t6 - sorting_bench;
+    #endif
 
     MyIndex tris_delabella = verts > 0 ? verts / 3 : 0;
     MyIndex contour = idb->GetNumBoundaryVerts();
@@ -1757,25 +1801,42 @@ int main(int argc, char* argv[])
 
     if (force.size() > 0)
     {
-        //idb_bench->constrain_edges = uSec();
+        #ifdef BENCH
+        idb_bench->constrain_edges = uSec();
+        #endif
+
         idb->ConstrainEdges((MyIndex)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge));
-        //idb_bench->constrain_edges = uSec() - idb_bench->constrain_edges;
+
+        #ifdef BENCH
+        idb_bench->constrain_edges = uSec() - idb_bench->constrain_edges;
+        #endif
 
         uint64_t ff0 = uSec();
         MyIndex num_interior = idb->FloodFill(false, 0);
         uint64_t ff1 = uSec();
 
         printf("interior %d faces in %d ms\n", num_interior, (int)((ff1 - ff0) / 1000));
-        //idb_bench->flood_fill = ff1-ff0;
+
+        #ifdef BENCH
+        idb_bench->flood_fill = ff1-ff0;
+        #endif
     }
 
-    //idb_bench->erase_super = 0;
+    #ifdef BENCH
+    idb_bench->erase_super = 0;
+    #endif
 
     const DelaBella_Triangle** dela_polys = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * (size_t)tris_delabella);
 
-    //idb_bench->polygons = uSec();
+    #ifdef BENCH
+    idb_bench->polygons = uSec();
+    #endif    
+    
     MyIndex polys_delabella = idb->Polygonize(dela_polys);
-    //idb_bench->polygons = uSec() - idb_bench->polygons;
+    
+    #ifdef BENCH
+    idb_bench->polygons = uSec() - idb_bench->polygons;
+    #endif
 
     printf("delabella triangles: " IDXF "\n", tris_delabella);
     printf("delabella contour: " IDXF "\n", contour);
@@ -1977,10 +2038,14 @@ int main(int argc, char* argv[])
         }
     }
 
-    //free(voronoi_idx_buf);
-    //free(voronoi_vtx_buf);
-    //idb->Destroy();
-    //return 0;
+#ifdef BENCH
+    #ifdef VORONOI
+    free(voronoi_idx_buf);
+    free(voronoi_vtx_buf);
+    #endif
+    idb->Destroy();
+    return 0;
+#endif
 
     SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
     SDL_Init(SDL_INIT_VIDEO);
@@ -2466,18 +2531,25 @@ int main(int argc, char* argv[])
 	return 0;
 }
 
-#if 0
+#ifdef BENCH
 
 int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, "");
 
+    const char* test_dist[] = { "uni","std","gam",0 };
+
+    MyCoord no_bias[] = { 0,0 };
+    MyCoord with_bias[] = { 50,50 };
+
+    const char* test_bias[] = { "", "+", 0 };
+
     int test_size[] =
     {
         1000,2500,5000,
-        10000,25000,50000,
+        10000,25000,50000, 
         100000,250000,500000,
-        1000000,2500000,5000000,
+        1000000,2500000,5000000, 0,
         10000000,25000000,50000000,
         0
     };
@@ -2486,98 +2558,117 @@ int main(int argc, char* argv[])
 
     char bin[2] = "";
     char num[16];
-    char* args[5] = { bin,num, (char*)(bench + 0), (char*)(bench + 1), (char*)(bench + 2) };
 
-    FILE* bench_file = fopen("bench_normal_bias.txt", "w");
+    char test_path[100];
 
-#ifdef WITH_CDT
-#ifdef WITH_DELAUNATOR
-    fprintf(bench_file, "        DLB[us]     CDT[us]     DEL[us]\n");
-#else
-    fprintf(bench_file, "        DLB[us]     CDT[us]\n");
-#endif
-#else
-#ifdef WITH_DELAUNATOR
-    fprintf(bench_file, "        DLB[us]     DEL[us]\n");
-#else
-    fprintf(bench_file, "        DLB[us]\n");
-#endif
-#endif
-
-    for (int i = 0; test_size[i]; i++)
+    for (int d = 0; test_dist[d]; d++)
     {
-        Bench accum[3] = { {0}, {0}, {0} };
-
-        _itoa(test_size[i], num, 10);
-
-        uint64_t t0 = uSec();
-        int acc = 0;
-        do 
+        for (int b = 0; test_bias[b]; b++)
         {
-            __main(2, args);
-            accum[0] += bench[0];
-            accum[1] += bench[1];
-            accum[2] += bench[2];
-            acc++;
-        } while (uSec() - t0 < 5000000);
+            sprintf(test_path, "bench_%s%s.txt", test_dist[d], test_bias[b]);
+            FILE* bench_file = fopen(test_path, "w");
 
-        accum[0] /= acc;
-        accum[1] /= acc;
-        accum[2] /= acc;
+            #ifdef WITH_CDT
+            #ifdef WITH_DELAUNATOR
+            fprintf(bench_file, "        DLB[us]     CDT[us]     DEL[us]\n");
+            #else
+            fprintf(bench_file, "        DLB[us]     CDT[us]\n");
+            #endif
+            #else
+            #ifdef WITH_DELAUNATOR
+            fprintf(bench_file, "        DLB[us]     DEL[us]\n");
+            #else
+            fprintf(bench_file, "        DLB[us]\n");
+            #endif
+            #endif
 
-        struct F
-        {
-            const char* operator () (int n, uint64_t v)
+            char* args[7] = 
+            { 
+                bin,
+                num, 
+                (char*)(bench + 0), 
+                (char*)(bench + 1), 
+                (char*)(bench + 2), 
+                (char*)test_dist[d], 
+                (char*)test_bias[b]
+            };
+
+            for (int i = 0; test_size[i]; i++)
             {
-                int len = sprintf(buf, "%lld", v);
-                int sep = (len-1) / 3;
+                Bench accum[3] = { {0}, {0}, {0} };
 
-                int len2 = len + sep;
-                int pad = n > len2 ? n- len2 : 0;
+                _itoa(test_size[i], num, 10);
 
-                int ofs = pad + len2;
-
-                if (ofs >= sizeof(buf))
-                    return 0;
-
-                buf[ofs] = 0;
-                ofs--;
-
-                for (int i = len - 1, j = 0; i >= 0; i--,j++)
+                uint64_t t0 = uSec();
+                int acc = 0;
+                do
                 {
-                    if (j == 3)
+                    bench_main(2, args);
+                    accum[0] += bench[0];
+                    accum[1] += bench[1];
+                    accum[2] += bench[2];
+                    acc++;
+                } while (uSec() - t0 < 5000000);
+
+                accum[0] /= acc;
+                accum[1] /= acc;
+                accum[2] /= acc;
+
+                struct F
+                {
+                    const char* operator () (int n, uint64_t v)
                     {
-                        buf[ofs] = ',';
+                        int len = sprintf(buf, "%lld", v);
+                        int sep = (len - 1) / 3;
+
+                        int len2 = len + sep;
+                        int pad = n > len2 ? n - len2 : 0;
+
+                        int ofs = pad + len2;
+
+                        if (ofs >= sizeof(buf))
+                            return 0;
+
+                        buf[ofs] = 0;
                         ofs--;
-                        j = 0;
+
+                        for (int i = len - 1, j = 0; i >= 0; i--, j++)
+                        {
+                            if (j == 3)
+                            {
+                                buf[ofs] = ',';
+                                ofs--;
+                                j = 0;
+                            }
+
+                            buf[ofs] = buf[i];
+                            ofs--;
+                        }
+
+                        for (int i = 0; i < pad; i++)
+                            buf[i] = ' ';
+
+                        return buf;
                     }
 
-                    buf[ofs] = buf[i];
-                    ofs--;
-                }
+                    char buf[32];
+                } f[3];
 
-                for (int i = 0; i < pad; i++)
-                    buf[i] = ' ';
+                // write bench results...
+                fprintf(bench_file, "N=%s\n", f[0](0, test_size[i]));
+                fprintf(bench_file, "RD: %s %s %s\n", f[0](11, accum[0].removing_dups), f[1](11, accum[1].removing_dups), accum[2].removing_dups ? "    INVALID" : f[2](11, accum[2].removing_dups));
+                fprintf(bench_file, "TR: %s %s %s\n", f[0](11, accum[0].triangulation), f[1](11, accum[1].triangulation), f[2](11, accum[2].triangulation));
+                fprintf(bench_file, "CE: %s %s\n", f[0](11, accum[0].constrain_edges), f[1](11, accum[1].constrain_edges));
+                fprintf(bench_file, "ES: %s %s\n", f[0](11, accum[0].erase_super), f[1](11, accum[1].erase_super));
+                fprintf(bench_file, "FF: %s %s\n", f[0](11, accum[0].flood_fill), f[1](11, accum[1].flood_fill));
+                fprintf(bench_file, "PL: %s %s\n", f[0](11, accum[0].polygons), f[1](11, accum[1].polygons));
+                fprintf(bench_file, "\n");
 
-                return buf;
             }
 
-            char buf[32];
-        } f[3];
-
-        // write bench results...
-        fprintf(bench_file, "N=%s\n", f[0](0, test_size[i]));
-        fprintf(bench_file, "RD: %s %s %s\n", f[0](11,accum[0].removing_dups),   f[1](11,accum[1].removing_dups), accum[2].removing_dups ? "    INVALID" : f[2](11, accum[2].removing_dups));
-        fprintf(bench_file, "TR: %s %s %s\n", f[0](11,accum[0].triangulation),   f[1](11,accum[1].triangulation),   f[2](11,accum[2].triangulation));
-        fprintf(bench_file, "CE: %s %s\n",    f[0](11,accum[0].constrain_edges), f[1](11,accum[1].constrain_edges));
-        fprintf(bench_file, "ES: %s %s\n",    f[0](11,accum[0].erase_super),     f[1](11,accum[1].erase_super));
-        fprintf(bench_file, "FF: %s %s\n",    f[0](11,accum[0].flood_fill),      f[1](11,accum[1].flood_fill));
-        fprintf(bench_file, "PL: %s %s\n",    f[0](11,accum[0].polygons),        f[1](11,accum[1].polygons));
-        fprintf(bench_file, "\n");
-
+            fclose(bench_file);
+        }
     }
-
-    fclose(bench_file);
 
     return 0;
 }
