@@ -51,11 +51,11 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 // competitors
 #ifdef WITH_DELAUNATOR
-#include "delaunator/delaunator.hpp"
+#include "delaunator-cpp/include/delaunator.hpp"
 #endif
 
 #ifdef WITH_CDT
-#include "CDT/include/CDT.h"
+#include "CDT/CDT/include/CDT.h"
 
 namespace CDT
 {
@@ -2597,8 +2597,8 @@ int main(int argc, char* argv[])
             {
                 Bench accum[3] = { {0}, {0}, {0} };
 
-                _itoa(test_size[i], num, 10);
-
+                sprintf(num,"%d",test_size[i]);
+                
                 uint64_t t0 = uSec();
                 int acc = 0;
                 do
@@ -2618,7 +2618,7 @@ int main(int argc, char* argv[])
                 {
                     const char* operator () (int n, uint64_t v)
                     {
-                        int len = sprintf(buf, "%lld", v);
+                        int len = sprintf(buf, "%llu", (long long unsigned int)v);
                         int sep = (len - 1) / 3;
 
                         int len2 = len + sep;

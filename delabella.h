@@ -6,9 +6,6 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #ifndef DELABELLA_H
 #define DELABELLA_H
 
-#include <intrin.h>
-#include <xmmintrin.h>
-
 template<typename T = double, typename I = int>
 struct IDelaBella2
 {

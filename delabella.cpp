@@ -3409,7 +3409,7 @@ struct CDelaBella3 : IDelaBella3<T,I>
 
 	}
 
-	virtual I Triangulate(IDelaBella3<T,I>::Convexity mode, I points, const T* x, const T* y = 0, const T* z = 0, size_t advance_bytes = 0)
+	virtual I Triangulate(typename IDelaBella3<T,I>::Convexity mode, I points, const T* x, const T* y = 0, const T* z = 0, size_t advance_bytes = 0)
 	{
 		if (!x)
 			return 0;
