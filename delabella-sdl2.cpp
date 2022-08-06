@@ -1441,7 +1441,7 @@ int main(int argc, char* argv[])
         {
             for (MyIndex i = 0; i < n; i++)
             {
-                MyPoint p = { d_std(gen) + bias_xy[0], d_std(gen) + bias_xy[1] };
+                MyPoint p = { d_gam(gen) + bias_xy[0], d_gam(gen) + bias_xy[1] };
                 // please, leave some headroom for arithmetics!
                 assert(std::abs(p.x) <= max_coord && std::abs(p.y) <= max_coord);
                 cloud.push_back(p);
@@ -2598,7 +2598,7 @@ int main(int argc, char* argv[])
                 Bench accum[3] = { {0}, {0}, {0} };
 
                 sprintf(num,"%d",test_size[i]);
-                
+
                 uint64_t t0 = uSec();
                 int acc = 0;
                 do
