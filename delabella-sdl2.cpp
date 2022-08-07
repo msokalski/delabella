@@ -17,7 +17,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 // override build define
 #undef WITH_DELAUNATOR 
-#define WITH_DELAUNATOR
+//#define WITH_DELAUNATOR
 
 // override build define
 #undef WITH_CDT
@@ -1315,7 +1315,7 @@ struct GfxStuffer
 };
 
 #ifdef BENCH
-uint64_t sorting_bench = 0;
+extern uint64_t sorting_bench;
 struct Bench
 {
     void operator += (const Bench& b)
@@ -1553,7 +1553,8 @@ int main(int argc, char* argv[])
                 if (n <= 0)
                 {
                     char check[2];
-                    fgets(check,2,f);
+                    char* res = fgets(check,2,f);
+
                     if (start == current)
                         break; // eof?
 
@@ -2537,11 +2538,7 @@ int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, "");
 
-    const char* test_dist[] = { "uni","std","gam",0 };
-
-    MyCoord no_bias[] = { 0,0 };
-    MyCoord with_bias[] = { 50,50 };
-
+    const char* test_dist[] = { /*"uni","std",*/"gam",0 };
     const char* test_bias[] = { "", "+", 0 };
 
     int test_size[] =

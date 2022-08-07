@@ -3,7 +3,7 @@ DELABELLA - Delaunay triangulation library
 Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 */
 
-#define DELABELLA_AUTOTEST
+// #define DELABELLA_AUTOTEST
 
 // in case of troubles, allows to see if any assert pops up.
 // define it globally (like with -DDELABELLA_AUTOTEST)
@@ -15,7 +15,8 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #include "delabella.h"
 #include "predicates.h"
 
-extern uint64_t sorting_bench;
+// benching hack, fixme!
+uint64_t sorting_bench = 0;
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -79,14 +80,23 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 	struct Vert : IDelaBella2<T,I>::Vertex
 	{
+		static const T resulterrbound;
+
 		static bool overlap(const Vert* v1, const Vert* v2)
 		{
 			return v1->x == v2->x && v1->y == v2->y;
 		}
 
 		bool operator < (const Vert& v) const
-		{
-			return this->x < v.x;
+		{	
+			{	// somewhat faster, poor compiler inlining?
+				const T a = this->x * this->x + this->y * this->y;
+				const T b = v.x * v.x + v.y * v.y;
+				const T c = a - b;
+				if (std::abs(c) > (a + b) * resulterrbound)
+					return c < 0;
+			}
+
 			T dif = predicates::adaptive::sqrlendif2d(this->x, this->y, v.x, v.y);
 
 			if (dif < 0)
@@ -101,7 +111,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 	struct Face : IDelaBella2<T,I>::Simplex
 	{
-		static const T iccerrboundA;// = ((T(10) + T(96) * std::exp2(-(T)std::numeric_limits<T>::digits)) * std::exp2(-(T)std::numeric_limits<T>::digits));
+		static const T iccerrboundA;
 
 		#ifdef DELABELLA_AUTOTEST
 		void Validate()
@@ -2964,6 +2974,9 @@ IDelaBella2<T,I>* IDelaBella2<T,I>::Create()
 
 template<typename T, typename I>
 const T CDelaBella2<T,I>::Face::iccerrboundA = ((T(10) + T(96) * std::exp2(-(T)std::numeric_limits<T>::digits)) * std::exp2(-(T)std::numeric_limits<T>::digits));
+
+template<typename T, typename I>
+const T CDelaBella2<T,I>::Vert::resulterrbound = (T( 3) + T(   8) * std::exp2(-(T)std::numeric_limits<T>::digits)) * std::exp2(-(T)std::numeric_limits<T>::digits);
 
 // this should cover all malcontents
 template IDelaBella2<float, int8_t>* IDelaBella2<float, int8_t>::Create();
