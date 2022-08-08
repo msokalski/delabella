@@ -17,7 +17,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 // override build define
 #undef WITH_DELAUNATOR 
-//#define WITH_DELAUNATOR
+#define WITH_DELAUNATOR
 
 // override build define
 #undef WITH_CDT
@@ -51,7 +51,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 // competitors
 #ifdef WITH_DELAUNATOR
-#include "delaunator-cpp/include/delaunator.hpp"
+#include "delaunator-cpp/include/delaunator-header-only.hpp"
 #endif
 
 #ifdef WITH_CDT
@@ -1400,7 +1400,7 @@ int main(int argc, char* argv[])
         }
         printf("generating random " IDXF " points\n", n);
         std::random_device rd{};
-        std::mt19937_64 gen{ 0x12345678+5 /*rd()*/};
+        std::mt19937_64 gen{ 0x12345678ULL /*rd()*/};
 
         std::uniform_real_distribution<MyCoord> d_uni((MyCoord)-2.503515625, (MyCoord)+2.503515625);
         std::normal_distribution<MyCoord> d_std{(MyCoord)0.0,(MyCoord)2.0};
@@ -2538,7 +2538,7 @@ int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, "");
 
-    const char* test_dist[] = { /*"uni","std",*/"gam",0 };
+    const char* test_dist[] = { "uni","std","gam",0 };
     const char* test_bias[] = { "", "+", 0 };
 
     int test_size[] =
@@ -2600,6 +2600,7 @@ int main(int argc, char* argv[])
                 int acc = 0;
                 do
                 {
+                    memset(bench, 0, sizeof(bench));
                     bench_main(2, args);
                     accum[0] += bench[0];
                     accum[1] += bench[1];
