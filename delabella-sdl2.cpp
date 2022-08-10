@@ -5,8 +5,6 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 #define _CRT_SECURE_NO_WARNINGS
 
-#include "predicates.h"
-
 #define BENCH
 
 //#define CULLING
@@ -22,6 +20,11 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 // override build define
 #undef WITH_CDT
 #define WITH_CDT
+
+// override build define
+#undef WITH_FADE 
+//#define WITH_FADE
+
 
 #include <math.h>
 #include <stdlib.h>
@@ -49,12 +52,33 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #undef main // on windows SDL does this weird thing
 #endif
 
+
+#ifdef WITH_FADE
+#pragma comment(lib,"libgmp-10.lib")
+#ifdef _DEBUG
+#pragma comment(lib,"fade2D_x64_v142_Debug.lib")
+#else
+#pragma comment(lib,"fade2D_x64_v142_Release.lib")
+#endif
+#include "fade/include_fade2d/Fade_2D.h"
+using namespace GEOM_FADE2D;
+#endif
+
 // competitors
 #ifdef WITH_DELAUNATOR
 #include "delaunator-cpp/include/delaunator-header-only.hpp"
 #endif
 
 #ifdef WITH_CDT
+//rescue CDT from DekkersProduct() bug
+/*
+#undef FP_FAST_FMAF
+#define FP_FAST_FMAF
+#undef FP_FAST_FMA
+#define FP_FAST_FMA
+#undef FP_FAST_FMAL
+#define FP_FAST_FMAL
+*/
 #include "CDT/CDT/include/CDT.h"
 
 namespace CDT
@@ -544,6 +568,8 @@ typedef IDelaBella::Simplex DelaBella_Triangle;
 
 struct MyPoint
 {
+    MyPoint() {}
+    MyPoint(MyCoord x, MyCoord y) : x(x), y(y) {}
     MyCoord x;
     MyCoord y;
 
@@ -1353,13 +1379,14 @@ int bench_main(int argc, char* argv[])
     Bench* idb_bench = (Bench*)argv[2];
     Bench* cdt_bench = (Bench*)argv[3];
     Bench* del_bench = (Bench*)argv[4];
-    char* dist = argv[5];
-    char* bias = argv[6];
+    Bench* fad_bench = (Bench*)argv[5];
+    char* dist = argv[6];
+    char* bias = argv[7];
 
 #else
 int main(int argc, char* argv[])
 {
-    const char* dist = "uni";
+    const char* dist = "sym";
     const char* bias = "";
 #endif
 
@@ -1389,10 +1416,16 @@ int main(int argc, char* argv[])
 	std::vector<MyPoint> cloud;
     std::vector<MyEdge> force;
 
+    #ifdef BENCH
+    FILE* f = 0;
+    #else
 	FILE* f = fopen(argv[1],"r");
-    MyIndex n = atoi(argv[1]);
+    #endif
+
     if (!f)
     {
+        MyIndex n = atoi(argv[1]);
+
         if (n <= 2)
         {
             printf("can't open %s file, terminating!\n", argv[1]);
@@ -1400,7 +1433,7 @@ int main(int argc, char* argv[])
         }
         printf("generating random " IDXF " points\n", n);
         std::random_device rd{};
-        std::mt19937_64 gen{ 0x12345678ULL /*rd()*/};
+        std::mt19937_64 gen{ 0x12345678ULL+1 /*rd()*/};
 
         std::uniform_real_distribution<MyCoord> d_uni((MyCoord)-2.503515625, (MyCoord)+2.503515625);
         std::normal_distribution<MyCoord> d_std{(MyCoord)0.0,(MyCoord)2.0};
@@ -1442,10 +1475,45 @@ int main(int argc, char* argv[])
             for (MyIndex i = 0; i < n; i++)
             {
                 MyPoint p = { d_gam(gen) + bias_xy[0], d_gam(gen) + bias_xy[1] };
+
                 // please, leave some headroom for arithmetics!
                 assert(std::abs(p.x) <= max_coord && std::abs(p.y) <= max_coord);
                 cloud.push_back(p);
             }
+        }
+        else
+        if (strcmp(dist, "sym") == 0)
+        {
+            n /= 8;
+            for (MyIndex i = 0; i < n; i++)
+            {
+                MyPoint p = { d_gam(gen), d_gam(gen) };
+
+                // please, leave some headroom for arithmetics!
+                assert(std::abs(p.x) <= max_coord && std::abs(p.y) <= max_coord);
+
+                cloud.push_back(MyPoint(p.x+bias_xy[0], p.y+bias_xy[1]));
+                p.x = -p.x;
+                cloud.push_back(MyPoint(p.x + bias_xy[0], p.y + bias_xy[1]));
+                p.y = -p.y;
+                cloud.push_back(MyPoint(p.x + bias_xy[0], p.y + bias_xy[1]));
+                p.x = -p.x;
+                cloud.push_back(MyPoint(p.x + bias_xy[0], p.y + bias_xy[1]));
+
+                MyCoord s = p.x;
+                p.x = -p.y;
+                p.y = s;
+
+                cloud.push_back(MyPoint(p.x + bias_xy[0], p.y + bias_xy[1]));
+                p.x = -p.x;
+                cloud.push_back(MyPoint(p.x + bias_xy[0], p.y + bias_xy[1]));
+                p.y = -p.y;
+                cloud.push_back(MyPoint(p.x + bias_xy[0], p.y + bias_xy[1]));
+                p.x = -p.x;
+                cloud.push_back(MyPoint(p.x + bias_xy[0], p.y + bias_xy[1]));
+
+            }
+            n *= 8;
         }
         else
         // HEXGRID
@@ -1478,8 +1546,8 @@ int main(int argc, char* argv[])
                     for (int i = 0; i < 4; i++)
                     {
                         MyPoint q = p[i];
-                        q.x += col * dx;
-                        q.y += row * dy;
+                        q.x += col * dx + bias_xy[0];
+                        q.y += row * dy + bias_xy[1];
                         cloud.push_back(q);
                     }
                 }
@@ -1712,6 +1780,28 @@ int main(int argc, char* argv[])
 
     #endif
 
+    #ifdef WITH_FADE
+    {
+        printf("running fade ...");
+        uint64_t t0 = uSec();
+        Fade_2D dt;
+        //dt.setNumCPU(32);
+        Point2** handles = (Point2**)malloc(sizeof(Point2*) * cloud.size());
+        dt.insert((int)cloud.size(), &cloud.data()->x, handles);
+        MyIndex tris_fade = (MyIndex)dt.numberOfTriangles();
+        free(handles);
+        uint64_t t1 = uSec();
+        printf("(%d ms)\nFADE %d tris\n", (int)((t1 - t0) / 1000), (int)tris_fade);
+
+        #ifdef BENCH
+        fad_bench->triangulation = t1 - t0;
+        if (tris_fade != (MyIndex)cdt.triangles.size())
+            fad_bench->removing_dups = 1000000000;
+        else
+            fad_bench->removing_dups = 0;
+        #endif
+    }
+    #endif
 
     #ifdef WITH_DELAUNATOR
     {
@@ -2538,20 +2628,20 @@ int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, "");
 
-    const char* test_dist[] = { "uni","std","gam",0 };
-    const char* test_bias[] = { "", "+", 0 };
+    const char* test_dist[] = { /*"uni","std",*/"gam"/*,"sym","hex"*/,0};
+    const char* test_bias[] = { /*"",*/"+", 0 };
 
     int test_size[] =
     {
-        1000,2500,5000,
+        /*1000,2500,5000,
         10000,25000,50000, 
-        100000,250000,500000,
-        1000000,2500000,5000000, 0,
+        100000,250000,500000,*/
+        1000000,0,2500000,5000000,
         10000000,25000000,50000000,
         0
     };
 
-    Bench bench[3];
+    Bench bench[4];
 
     char bin[2] = "";
     char num[16];
@@ -2565,34 +2655,23 @@ int main(int argc, char* argv[])
             sprintf(test_path, "bench_%s%s.txt", test_dist[d], test_bias[b]);
             FILE* bench_file = fopen(test_path, "w");
 
-            #ifdef WITH_CDT
-            #ifdef WITH_DELAUNATOR
-            fprintf(bench_file, "        DLB[us]     CDT[us]     DEL[us]\n");
-            #else
-            fprintf(bench_file, "        DLB[us]     CDT[us]\n");
-            #endif
-            #else
-            #ifdef WITH_DELAUNATOR
-            fprintf(bench_file, "        DLB[us]     DEL[us]\n");
-            #else
-            fprintf(bench_file, "        DLB[us]\n");
-            #endif
-            #endif
+            fprintf(bench_file, "        DLB[us]     CDT[us]     DEL[us]     FAD[us]\n");
 
-            char* args[7] = 
+            char* args[8] = 
             { 
                 bin,
                 num, 
                 (char*)(bench + 0), 
                 (char*)(bench + 1), 
                 (char*)(bench + 2), 
+                (char*)(bench + 3),
                 (char*)test_dist[d], 
                 (char*)test_bias[b]
             };
 
             for (int i = 0; test_size[i]; i++)
             {
-                Bench accum[3] = { {0}, {0}, {0} };
+                Bench accum[4] = { {0}, {0}, {0}, {0} };
 
                 sprintf(num,"%d",test_size[i]);
 
@@ -2605,18 +2684,22 @@ int main(int argc, char* argv[])
                     accum[0] += bench[0];
                     accum[1] += bench[1];
                     accum[2] += bench[2];
+                    accum[3] += bench[3];
                     acc++;
                 } while (uSec() - t0 < 5000000);
 
                 accum[0] /= acc;
                 accum[1] /= acc;
                 accum[2] /= acc;
+                accum[3] /= acc;
 
                 struct F
                 {
                     const char* operator () (int n, uint64_t v)
                     {
                         int len = sprintf(buf, "%llu", (long long unsigned int)v);
+                        if (len <= 0)
+                            return 0;
                         int sep = (len - 1) / 3;
 
                         int len2 = len + sep;
@@ -2650,12 +2733,12 @@ int main(int argc, char* argv[])
                     }
 
                     char buf[32];
-                } f[3];
+                } f[4] = {0};
 
                 // write bench results...
                 fprintf(bench_file, "N=%s\n", f[0](0, test_size[i]));
-                fprintf(bench_file, "RD: %s %s %s\n", f[0](11, accum[0].removing_dups), f[1](11, accum[1].removing_dups), accum[2].removing_dups ? "    INVALID" : f[2](11, accum[2].removing_dups));
-                fprintf(bench_file, "TR: %s %s %s\n", f[0](11, accum[0].triangulation), f[1](11, accum[1].triangulation), f[2](11, accum[2].triangulation));
+                fprintf(bench_file, "RD: %s %s %s %s\n", f[0](11, accum[0].removing_dups), f[1](11, accum[1].removing_dups), accum[2].removing_dups ? "    INVALID" : f[2](11, accum[2].removing_dups), accum[3].removing_dups ? "    INVALID" : f[3](11, accum[3].removing_dups));
+                fprintf(bench_file, "TR: %s %s %s %s\n", f[0](11, accum[0].triangulation), f[1](11, accum[1].triangulation), f[2](11, accum[2].triangulation), f[3](11, accum[3].triangulation));
                 fprintf(bench_file, "CE: %s %s\n", f[0](11, accum[0].constrain_edges), f[1](11, accum[1].constrain_edges));
                 fprintf(bench_file, "ES: %s %s\n", f[0](11, accum[0].erase_super), f[1](11, accum[1].erase_super));
                 fprintf(bench_file, "FF: %s %s\n", f[0](11, accum[0].flood_fill), f[1](11, accum[1].flood_fill));

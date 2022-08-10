@@ -34,8 +34,8 @@
  * Adding sqrlendif2d() predicate - (C) 2022 GUMIX - Marcin Sokalski               *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-#ifndef PREDICATES_H_INCLUDED
-#define PREDICATES_H_INCLUDED
+#ifndef _PREDICATES_H_INCLUDED
+#define _PREDICATES_H_INCLUDED
 
 //@reference: https://www.cs.cmu.edu/~quake/robust.html
 
@@ -183,24 +183,24 @@ namespace  predicates {
 #include <functional>//negate
 
 // a macro based static assert for pre c++11
-#define PREDICATES_PORTABLE_STATIC_ASSERT(condition, message) typedef char message[(condition) ? 1 : -1]
+#define _PREDICATES_PORTABLE_STATIC_ASSERT(condition, message) typedef char message[(condition) ? 1 : -1]
 
 // check if c++11 is supported
 #if !defined(__cplusplus) && !defined(_MSC_VER)
-	PREDICATES_PORTABLE_STATIC_ASSERT(false, couldnt_parse_cxx_standard)
+	_PREDICATES_PORTABLE_STATIC_ASSERT(false, couldnt_parse_cxx_standard)
 #endif
 #if __cplusplus >= 201103L || (defined(_MSC_VER) && _MSC_VER >= 1900)
-	#define PREDICATES_CXX11_IS_SUPPORTED
+	#define _PREDICATES_CXX11_IS_SUPPORTED
 #endif
 
 // choose to use c++11 features or their backports
-#ifdef PREDICATES_CXX11_IS_SUPPORTED
+#ifdef _PREDICATES_CXX11_IS_SUPPORTED
 #include <array>
 #include <type_traits>// is_same, enable_if
-#undef PREDICATES_PORTABLE_STATIC_ASSERT
-#define PREDICATES_TOKEN_TO_STRING1(x)  #x
-#define PREDICATES_TOKEN_TO_STRING(x)  PREDICATES_TOKEN_TO_STRING1(x)
-#define PREDICATES_PORTABLE_STATIC_ASSERT(condition, message) static_assert(condition, PREDICATES_TOKEN_TO_STRING(message))
+#undef _PREDICATES_PORTABLE_STATIC_ASSERT
+#define __PREDICATES_TOKEN_TO_STRING1(x)  #x
+#define _PREDICATES_TOKEN_TO_STRING(x)  __PREDICATES_TOKEN_TO_STRING1(x)
+#define _PREDICATES_PORTABLE_STATIC_ASSERT(condition, message) static_assert(condition, _PREDICATES_TOKEN_TO_STRING(message))
 namespace  predicates {
 namespace stdx {
 	using std::array;
@@ -236,7 +236,7 @@ namespace stdx {
 		return result;
 	}
 }
-#endif // PREDICATES_CXX11_IS_SUPPORTED
+#endif // _PREDICATES_CXX11_IS_SUPPORTED
 
 namespace detail {
 	template<typename T> class ExpansionBase;
@@ -252,7 +252,7 @@ namespace detail {
 
 			Expansion() : m_size(0) {}
 			template <size_t M> Expansion& operator=(const Expansion<T, M>& e) {
-				PREDICATES_PORTABLE_STATIC_ASSERT(M <= N, cannot_assign_a_larger_expansion_to_a_smaller_expansion);
+				_PREDICATES_PORTABLE_STATIC_ASSERT(M <= N, cannot_assign_a_larger_expansion_to_a_smaller_expansion);
 				stdx::copy_n(e.cbegin(), e.size(), stdx::array<T, N>::begin());
 				m_size = e.size();
 				return *this;
@@ -304,7 +304,7 @@ namespace detail {
 		static const bool fp_fast_fmal = false;
 	#endif
 
-	#ifdef PREDICATES_CXX11_IS_SUPPORTED
+	#ifdef _PREDICATES_CXX11_IS_SUPPORTED
 	template <typename T> struct use_fma {static const bool value = (std::is_same<T, float>::value       && fp_fast_fmaf) ||
 	                                                                (std::is_same<T, double>::value      && fp_fast_fma)  ||
 	                                                                (std::is_same<T, long double>::value && fp_fast_fmal);};
@@ -322,8 +322,8 @@ namespace detail {
 		private:
 			static const T Splitter;
 
-			PREDICATES_PORTABLE_STATIC_ASSERT(std::numeric_limits<T>::is_iec559, Requires_IEC_559_IEEE_754_floating_point_type);
-			PREDICATES_PORTABLE_STATIC_ASSERT(2 == std::numeric_limits<T>::radix, Requires_base_2_floating_point_type);
+			_PREDICATES_PORTABLE_STATIC_ASSERT(std::numeric_limits<T>::is_iec559, Requires_IEC_559_IEEE_754_floating_point_type);
+			_PREDICATES_PORTABLE_STATIC_ASSERT(2 == std::numeric_limits<T>::radix, Requires_base_2_floating_point_type);
 
 			//combine result + roundoff error into expansion
 			static inline Expansion<T, 2> MakeExpansion(const T value, const T tail) {
@@ -419,7 +419,7 @@ namespace detail {
 			}
 
 			//roundoff error of x = a * b
-#ifdef PREDICATES_CXX11_IS_SUPPORTED
+#ifdef _PREDICATES_CXX11_IS_SUPPORTED
 			template <typename S = T> static typename std::enable_if< use_fma<S>::value, S>::type MultTail(const T a, const T b, const T p) {return std::fma(a, b, -p);}
 			template <typename S = T> static typename std::enable_if<!use_fma<S>::value, S>::type MultTail(const T a, const T b, const T p) {return DekkersProduct(a, Split(a), b, Split(b), p);}
 
@@ -481,10 +481,10 @@ namespace detail {
 	};
 
 	template <typename T> const T ExpansionBase<T>::Splitter = static_cast<T>(
-#ifdef PREDICATES_CXX11_IS_SUPPORTED
-		std::exp2((std::numeric_limits<T>::digits + std::numeric_limits<T>::digits%2)/2 + 1)
+#ifdef _PREDICATES_CXX11_IS_SUPPORTED
+		std::exp2((std::numeric_limits<T>::digits + std::numeric_limits<T>::digits/*%2*/) / 2 + 1)
 #else
-		std::ldexp(T(1), (std::numeric_limits<T>::digits + std::numeric_limits<T>::digits%2)/2 + 1)
+		std::ldexp(T(1), (std::numeric_limits<T>::digits + std::numeric_limits<T>::digits/*%2*/) / 2 + 1)
 #endif
 	);
 }
@@ -618,7 +618,7 @@ namespace detail {
 	const T& Epsilon()
 	{
 		static const T epsilon = 
-#ifdef PREDICATES_CXX11_IS_SUPPORTED
+#ifdef _PREDICATES_CXX11_IS_SUPPORTED
 			std::exp2(-(T)std::numeric_limits<T>::digits);
 #else
 			std::ldexp(T(1), -std::numeric_limits<T>::digits);

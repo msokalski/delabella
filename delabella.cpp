@@ -3,10 +3,19 @@ DELABELLA - Delaunay triangulation library
 Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 */
 
-// #define DELABELLA_AUTOTEST
+//#define DELABELLA_AUTOTEST
 
 // in case of troubles, allows to see if any assert pops up.
 // define it globally (like with -DDELABELLA_AUTOTEST)
+
+// this is to work around bug in the DekkersProduct()
+// note Splitter constant is also wrong but not used outside DekkersProduct()
+#undef FP_FAST_FMAF
+#define FP_FAST_FMAF
+#undef FP_FAST_FMA
+#define FP_FAST_FMA
+#undef FP_FAST_FMAL
+#define FP_FAST_FMAL
 
 #include <cassert>
 #include <cstdio>
@@ -88,7 +97,30 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		}
 
 		bool operator < (const Vert& v) const
-		{	
+		{
+			// assuming no dups
+			// return this->x < v.x;
+
+			// seams to work, but results in super slow triangulation on gamma+
+			// return this->x < v.x || this->x == v.x && this->y < v.y;
+
+			// reversing? 
+			// return this->x > v.x || this->x == v.x && this->y > v.y;
+
+			// can we use approx paraboloid somehow to speed sorting up?
+			// reversing paraboloid, speeds up: gam,sym,hex, bias (1.1,0.9) added mostly for sym to de-sym it
+			{
+				T dif = predicates::adaptive::sqrlendif2d(this->x + T(1.1), this->y + T(0.9), v.x + T(1.1), v.y + T(0.9));
+				if (dif > 0)
+					return true;
+				if (dif < 0)
+					return false;
+				if (this->x > v.x || this->x == v.x && this->y > v.y)
+					return true;
+				return false;
+			}
+
+
 			{	// somewhat faster, poor compiler inlining?
 				const T a = this->x * this->x + this->y * this->y;
 				const T b = v.x * v.x + v.y * v.y;
@@ -209,7 +241,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		bool dot0(const Vert& p) const
 		{
-			return
+			return 
 				predicates::adaptive::incircle(
 					p.x, p.y,
 					this->v[0]->x, this->v[0]->y,
@@ -560,7 +592,9 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				{
 					Vert* ll = vert_alloc + lower_left;
 					Vert* ur = vert_alloc + upper_right;
+					
 					T dot = predicates::adaptive::orient2d(ll->x, ll->y, ur->x, ur->y, vert_alloc[j].x, vert_alloc[j].y);
+					
 					if (dot < 0)
 					{
 						// lower
@@ -568,13 +602,17 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					}
 					else
 					{
+						if (dot == 0)
+						{
+							int dbg = 1;
+						}
 						#ifdef DELABELLA_AUTOTEST
 						assert(dot > 0);
 						#endif
 						// upper
 						vert_alloc[j].sew = 0;
 					}
-				}
+				} 
 			}
 
 			struct
