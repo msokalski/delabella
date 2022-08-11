@@ -5,11 +5,11 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 #define _CRT_SECURE_NO_WARNINGS
 
-//#define BENCH
+#define BENCH
 
-#define CULLING
+//#define CULLING
 
-#define VORONOI
+//#define VORONOI
 //#define VORONOI_POLYS
 // otherwise EDGES
 
@@ -1382,7 +1382,7 @@ int bench_main(int argc, char* argv[])
 #else
 int main(int argc, char* argv[])
 {
-    const char* dist = "uni";
+    const char* dist = "sph";
     const char* bias = "";
 #endif
 
@@ -1429,9 +1429,11 @@ int main(int argc, char* argv[])
         }
         printf("generating random " IDXF " points\n", n);
         std::random_device rd{};
-        std::mt19937_64 gen{ 0x12345678ULL+1 /*rd()*/};
+        uint64_t seed = 0x00000000AA67F0F5ULL; // 0x00000000CEA84754ULL; //0x12345678ULL+1 rd();
+        std::mt19937_64 gen{ seed };
+        printf("SEED = 0x%016llX\n", seed);
 
-        std::uniform_real_distribution<MyCoord> d_uni((MyCoord)-2.503515625, (MyCoord)+2.503515625);
+        std::uniform_real_distribution<MyCoord> d_uni((MyCoord)-1.0, (MyCoord)+1.0);
         std::normal_distribution<MyCoord> d_std{(MyCoord)0.0,(MyCoord)2.0};
         std::gamma_distribution<MyCoord> d_gam((MyCoord)0.1,(MyCoord)2.0);
 
@@ -1510,6 +1512,23 @@ int main(int argc, char* argv[])
 
             }
             n *= 8;
+        }
+        else
+        if (strcmp(dist, "sph") == 0)
+        {
+            for (MyIndex i = 0; i < n; i++)
+            {
+                MyCoord x = d_std(gen);
+                MyCoord y = d_std(gen);
+
+                MyCoord l = sqrt(x * x + y * y);
+
+                x = x / l;
+                y = y / l;
+
+                MyPoint p{ x + bias_xy[0],y + bias_xy[1] };
+                cloud.push_back(p);
+            }
         }
         else
         // HEXGRID
@@ -1927,9 +1946,9 @@ int main(int argc, char* argv[])
 
 	IDelaBella* idb = IDelaBella::Create();
 
-    #ifndef BENCH
+    //#ifndef BENCH
 	idb->SetErrLog(errlog, stdout);
-    #endif
+    //#endif
 
     printf("running delabella...\n");
     uint64_t t6 = uSec();
@@ -2712,16 +2731,17 @@ int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, "");
 
-    const char* test_dist[] = { "uni","std","gam","sym","hex",0};
+    const char* test_dist[] = { /*"uni","std","gam","sym",*/"sph",/*"hex",*/0};
     const char* test_bias[] = { "","+", 0 };
 
     int test_size[] =
     {
-        1000,2500,5000,
+        90,0,
+        /*1000,2500,5000,
         10000,25000,50000, 
         100000,250000,500000,
-        1000000,/*2500000,5000000,
-        10000000,25000000,50000000,*/
+        1000000,*/2500000,5000000,
+        10000000,25000000,50000000,
         0
     };
 
@@ -2733,6 +2753,7 @@ int main(int argc, char* argv[])
 
     char test_path[100];
 
+    while(1)
     for (int d = 0; test_dist[d]; d++)
     {
         for (int b = 0; test_bias[b]; b++)

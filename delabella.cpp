@@ -3,7 +3,7 @@ DELABELLA - Delaunay triangulation library
 Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 */
 
-//#define DELABELLA_AUTOTEST
+#define DELABELLA_AUTOTEST
 
 // in case of troubles, allows to see if any assert pops up.
 // define it globally (like with -DDELABELLA_AUTOTEST)
@@ -2073,7 +2073,6 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		Face* seed = 0;
 		Face* flip = 0;
-		Face* first = 0;
 
 		Vert* v = first_boundary_vert;
 		Vert* e = v;
@@ -2121,10 +2120,9 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			if (odds < bounds)
 			{
 				// make sure we dont seed same dela twice
-				if (dela != seed && dela != first)
+				if (dela->index != seeded)
 				{
-					if (!seed)
-						first = dela;
+					dela->index = seeded;
 					dela->next = seed;
 					seed = dela;
 				}
@@ -2133,10 +2131,9 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			if (!seed)
 			{
 				// make sure we dont seed same dela twice
-				if (dela != flip && dela != first)
+				if (dela->index != seeded)
 				{
-					if (!first)
-						first = dela;
+					dela->index = seeded;
 					dela->next = flip;
 					flip = dela;
 				}

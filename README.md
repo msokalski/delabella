@@ -107,4 +107,8 @@
 
 ![terminal](images/terminal.gif)
 
-## `TODO: more examples`
+## Benchmarks
+
+
+
+
