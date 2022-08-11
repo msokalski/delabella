@@ -5,21 +5,21 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 #define _CRT_SECURE_NO_WARNINGS
 
-#define BENCH
+//#define BENCH
 
-//#define CULLING
+#define CULLING
 
-//#define VORONOI
+#define VORONOI
 //#define VORONOI_POLYS
 // otherwise EDGES
 
 // override build define
 #undef WITH_DELAUNATOR 
-#define WITH_DELAUNATOR
+//#define WITH_DELAUNATOR
 
 // override build define
 #undef WITH_CDT
-#define WITH_CDT
+//#define WITH_CDT
 
 // override build define
 #undef WITH_FADE 
@@ -54,11 +54,13 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 
 #ifdef WITH_FADE
+#ifdef _WIN32
 #pragma comment(lib,"libgmp-10.lib")
 #ifdef _DEBUG
 #pragma comment(lib,"fade2D_x64_v142_Debug.lib")
 #else
 #pragma comment(lib,"fade2D_x64_v142_Release.lib")
+#endif
 #endif
 #include "fade/include_fade2d/Fade_2D.h"
 using namespace GEOM_FADE2D;
@@ -70,15 +72,6 @@ using namespace GEOM_FADE2D;
 #endif
 
 #ifdef WITH_CDT
-//rescue CDT from DekkersProduct() bug
-/*
-#undef FP_FAST_FMAF
-#define FP_FAST_FMAF
-#undef FP_FAST_FMA
-#define FP_FAST_FMA
-#undef FP_FAST_FMAL
-#define FP_FAST_FMAL
-*/
 #include "CDT/CDT/include/CDT.h"
 
 namespace CDT
@@ -320,6 +313,8 @@ std::vector<Poly> Polygonize(Triangulation<T, L>& cdt)
 }
 }
 
+#else
+#include "predicates.h" // we use them for panning expansions
 #endif
 
 PFNGLBINDBUFFERPROC glBindBuffer = 0;
@@ -1378,15 +1373,16 @@ int bench_main(int argc, char* argv[])
 {
     Bench* idb_bench = (Bench*)argv[2];
     Bench* cdt_bench = (Bench*)argv[3];
-    Bench* del_bench = (Bench*)argv[4];
-    Bench* fad_bench = (Bench*)argv[5];
-    char* dist = argv[6];
-    char* bias = argv[7];
+    Bench* fad_bench = (Bench*)argv[4];
+    Bench* fmt_bench = (Bench*)argv[5];
+    Bench* del_bench = (Bench*)argv[6];
+    char* dist = argv[7];
+    char* bias = argv[8];
 
 #else
 int main(int argc, char* argv[])
 {
-    const char* dist = "sym";
+    const char* dist = "uni";
     const char* bias = "";
 #endif
 
@@ -1781,16 +1777,48 @@ int main(int argc, char* argv[])
     #endif
 
     #ifdef WITH_FADE
+    if (points < 500000 || strcmp(dist,"gam") || strcmp(bias,"+"))
     {
         printf("running fade ...");
-        uint64_t t0 = uSec();
-        Fade_2D dt;
-        //dt.setNumCPU(32);
+        uint64_t t0 = uSec(), t1, t2;
         Point2** handles = (Point2**)malloc(sizeof(Point2*) * cloud.size());
-        dt.insert((int)cloud.size(), &cloud.data()->x, handles);
-        MyIndex tris_fade = (MyIndex)dt.numberOfTriangles();
+        MyIndex tris_fade;
+        try {
+            Fade_2D dt;
+            dt.insert((int)cloud.size(), &cloud.data()->x, handles);
+            tris_fade = (MyIndex)dt.numberOfTriangles();
+
+            t1 = uSec();
+
+            // we need to map using handles
+            std::vector<Segment2> ve;
+            ve.reserve(force.size());
+            for (int i = 0; i < force.size(); i++)
+            {
+                Segment2 e{ *handles[force[i].a], *handles[force[i].b] };
+                ve.push_back(e);
+            }
+            auto cgr = dt.createConstraint(ve, ConstraintInsertionStrategy::CIS_CONSTRAINED_DELAUNAY, true);
+
+            t2 = uSec();
+
+            auto zon = dt.createZone(cgr, ZL_INSIDE, false);
+
+            //#ifndef BENCH
+            //zon->show("zone.ps", false, false);
+            //#endif
+
+            printf("ZONE has %d triangles", (int)zon->getNumberOfTriangles());
+
+            //delete cgr;
+            //delete zon;
+        }
+        catch (...)
+        {
+            tris_fade = 0;
+        }
         free(handles);
-        uint64_t t1 = uSec();
+        uint64_t t3 = uSec();
         printf("(%d ms)\nFADE %d tris\n", (int)((t1 - t0) / 1000), (int)tris_fade);
 
         #ifdef BENCH
@@ -1799,8 +1827,64 @@ int main(int argc, char* argv[])
             fad_bench->removing_dups = 1000000000;
         else
             fad_bench->removing_dups = 0;
+        fad_bench->constrain_edges = t2-t1;
+        fad_bench->flood_fill = t3 - t2;
         #endif
     }
+    {
+        printf("running fade_mt ...");
+        uint64_t t0 = uSec(), t1;
+        Point2** handles = (Point2**)malloc(sizeof(Point2*) * cloud.size());
+        MyIndex tris_fade;
+        try {
+            Fade_2D dt;
+            dt.setNumCPU(0);
+            dt.insert((int)cloud.size(), &cloud.data()->x, handles);
+            tris_fade = (MyIndex)dt.numberOfTriangles();
+
+            t1 = uSec();
+
+            // we need to map using handles
+            if (points < 500000 || strcmp(dist, "gam"))
+            {
+                std::vector<Segment2> ve;
+                ve.reserve(force.size());
+                for (int i = 0; i < force.size(); i++)
+                {
+                    Segment2 e{ *handles[force[i].a], *handles[force[i].b] };
+                    ve.push_back(e);
+                }
+                auto cgr = dt.createConstraint(ve, ConstraintInsertionStrategy::CIS_CONSTRAINED_DELAUNAY, false);
+
+                t2 = uSec();
+
+                auto zon = dt.createZone(0, ZL_GLOBAL, false);
+            }
+            else
+                t2 = t1;
+
+            //delete cgr;
+            //delete zon;
+        }
+        catch (...)
+        {
+            tris_fade = 0;
+        }
+        free(handles);
+        uint64_t t3 = uSec();
+        printf("(%d ms)\nFADE_MT %d tris\n", (int)((t1 - t0) / 1000), (int)tris_fade);
+
+        #ifdef BENCH
+        fmt_bench->triangulation = t1 - t0;
+        if (tris_fade != (MyIndex)cdt.triangles.size())
+            fmt_bench->removing_dups = 1000000000;
+        else
+            fmt_bench->removing_dups = 0;
+        fmt_bench->constrain_edges = t2 - t1;
+        fmt_bench->flood_fill = t3 - t2;
+        #endif
+    }
+
     #endif
 
     #ifdef WITH_DELAUNATOR
@@ -2628,20 +2712,21 @@ int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, "");
 
-    const char* test_dist[] = { /*"uni","std",*/"gam"/*,"sym","hex"*/,0};
-    const char* test_bias[] = { /*"",*/"+", 0 };
+    const char* test_dist[] = { "uni","std","gam","sym","hex",0};
+    const char* test_bias[] = { "","+", 0 };
 
     int test_size[] =
     {
-        /*1000,2500,5000,
+        1000,2500,5000,
         10000,25000,50000, 
-        100000,250000,500000,*/
-        1000000,0,2500000,5000000,
-        10000000,25000000,50000000,
+        100000,250000,500000,
+        1000000,/*2500000,5000000,
+        10000000,25000000,50000000,*/
         0
     };
 
-    Bench bench[4];
+    const int players = 5;
+    Bench bench[players];
 
     char bin[2] = "";
     char num[16];
@@ -2655,9 +2740,9 @@ int main(int argc, char* argv[])
             sprintf(test_path, "bench_%s%s.txt", test_dist[d], test_bias[b]);
             FILE* bench_file = fopen(test_path, "w");
 
-            fprintf(bench_file, "        DLB[us]     CDT[us]     DEL[us]     FAD[us]\n");
+            fprintf(bench_file, "        DLB[us]     CDT[us]     FAD[us]   FADMT[us]     DEL[us]\n");
 
-            char* args[8] = 
+            char* args[] = 
             { 
                 bin,
                 num, 
@@ -2665,13 +2750,15 @@ int main(int argc, char* argv[])
                 (char*)(bench + 1), 
                 (char*)(bench + 2), 
                 (char*)(bench + 3),
+                (char*)(bench + 4),
                 (char*)test_dist[d], 
                 (char*)test_bias[b]
             };
 
             for (int i = 0; test_size[i]; i++)
             {
-                Bench accum[4] = { {0}, {0}, {0}, {0} };
+                Bench accum[players];
+                memset(accum, 0, sizeof(accum));
 
                 sprintf(num,"%d",test_size[i]);
 
@@ -2681,17 +2768,13 @@ int main(int argc, char* argv[])
                 {
                     memset(bench, 0, sizeof(bench));
                     bench_main(2, args);
-                    accum[0] += bench[0];
-                    accum[1] += bench[1];
-                    accum[2] += bench[2];
-                    accum[3] += bench[3];
+                    for (int i=0; i< players; i++)
+                        accum[i] += bench[i];
                     acc++;
-                } while (uSec() - t0 < 5000000);
+                } while (uSec() - t0 < 500000);
 
-                accum[0] /= acc;
-                accum[1] /= acc;
-                accum[2] /= acc;
-                accum[3] /= acc;
+                for (int i = 0; i < players; i++)
+                    accum[i] /= acc;
 
                 struct F
                 {
@@ -2733,18 +2816,47 @@ int main(int argc, char* argv[])
                     }
 
                     char buf[32];
-                } f[4] = {0};
+                } f[players] = {0};
 
                 // write bench results...
                 fprintf(bench_file, "N=%s\n", f[0](0, test_size[i]));
-                fprintf(bench_file, "RD: %s %s %s %s\n", f[0](11, accum[0].removing_dups), f[1](11, accum[1].removing_dups), accum[2].removing_dups ? "    INVALID" : f[2](11, accum[2].removing_dups), accum[3].removing_dups ? "    INVALID" : f[3](11, accum[3].removing_dups));
-                fprintf(bench_file, "TR: %s %s %s %s\n", f[0](11, accum[0].triangulation), f[1](11, accum[1].triangulation), f[2](11, accum[2].triangulation), f[3](11, accum[3].triangulation));
-                fprintf(bench_file, "CE: %s %s\n", f[0](11, accum[0].constrain_edges), f[1](11, accum[1].constrain_edges));
-                fprintf(bench_file, "ES: %s %s\n", f[0](11, accum[0].erase_super), f[1](11, accum[1].erase_super));
-                fprintf(bench_file, "FF: %s %s\n", f[0](11, accum[0].flood_fill), f[1](11, accum[1].flood_fill));
-                fprintf(bench_file, "PL: %s %s\n", f[0](11, accum[0].polygons), f[1](11, accum[1].polygons));
+                fprintf(bench_file, "RD: %s %s %s %s %s\n", 
+                    f[0](11, accum[0].removing_dups), 
+                    f[1](11, accum[1].removing_dups), 
+                    accum[2].removing_dups ? "    INVALID" : f[2](11, accum[2].removing_dups), 
+                    accum[3].removing_dups ? "    INVALID" : f[3](11, accum[3].removing_dups), 
+                    accum[4].removing_dups ? "    INVALID" : f[4](11, accum[4].removing_dups));
+                fprintf(bench_file, "TR: %s %s %s %s %s\n", 
+                    f[0](11, accum[0].triangulation), 
+                    f[1](11, accum[1].triangulation), 
+                    f[2](11, accum[2].triangulation), 
+                    f[3](11, accum[3].triangulation), 
+                    f[4](11, accum[4].triangulation));
+                fprintf(bench_file, "CE: %s %s %s %s %s\n", 
+                    f[0](11, accum[0].constrain_edges), 
+                    f[1](11, accum[1].constrain_edges), 
+                    f[2](11, accum[2].constrain_edges), 
+                    f[3](11, accum[3].constrain_edges), 
+                    f[4](11, accum[4].constrain_edges));
+                fprintf(bench_file, "ES: %s %s %s %s %s\n", 
+                    f[0](11, accum[0].erase_super), 
+                    f[1](11, accum[1].erase_super),
+                    f[2](11, accum[2].erase_super),
+                    f[3](11, accum[3].erase_super),
+                    f[4](11, accum[4].erase_super));
+                fprintf(bench_file, "FF: %s %s %s %s %s\n", 
+                    f[0](11, accum[0].flood_fill), 
+                    f[1](11, accum[1].flood_fill), 
+                    f[2](11, accum[2].flood_fill), 
+                    f[3](11, accum[3].flood_fill), 
+                    f[4](11, accum[4].flood_fill));
+                fprintf(bench_file, "PL: %s %s %s %s %s\n", 
+                    f[0](11, accum[0].polygons), 
+                    f[1](11, accum[1].polygons),
+                    f[2](11, accum[2].polygons),
+                    f[3](11, accum[3].polygons),
+                    f[4](11, accum[4].polygons));
                 fprintf(bench_file, "\n");
-
             }
 
             fclose(bench_file);

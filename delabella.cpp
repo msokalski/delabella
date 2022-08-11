@@ -107,7 +107,23 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			// reversing? 
 			// return this->x > v.x || this->x == v.x && this->y > v.y;
 
-			// can we use approx paraboloid somehow to speed sorting up?
+			// reversing paraboloid, somewhat faster without predicate
+			{
+				T ax = this->x+T(1.1);
+				T ay = this->y+T(0.9);
+				T bx = v.x+T(1.1);
+				T by = v.y+T(0.9);
+				T a = ax*ax+ay*ay;
+				T b = bx*bx+by*by;
+				if (a == b)
+				{
+					if (this->x > v.x || this->x == v.x && this->y > v.y)
+						return true;
+					return false;
+				}
+				return a > b;
+			}
+
 			// reversing paraboloid, speeds up: gam,sym,hex, bias (1.1,0.9) added mostly for sym to de-sym it
 			{
 				T dif = predicates::adaptive::sqrlendif2d(this->x + T(1.1), this->y + T(0.9), v.x + T(1.1), v.y + T(0.9));
