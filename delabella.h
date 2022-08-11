@@ -6,20 +6,6 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #ifndef DELABELLA_H
 #define DELABELLA_H
 
-#include <intrin.h>
-#include <xmmintrin.h>
-
-//#define DELABELLA_LEGACY double
-// define it to enable compatibility with older api
-// you can use: float, double or long double
-// can be defined just prior to including this header
-
-// choose I wisely!
-// int8_t  -> max points = 19
-// int16_t -> max points = 4682
-// int32_t -> max points = 306783379
-// int64_t -> max points > 306783379 
-
 template<typename T = double, typename I = int>
 struct IDelaBella2
 {
@@ -64,9 +50,55 @@ struct IDelaBella2
 		inline const Simplex* StartIterator(Iterator* it/*not_null*/, int around/*0,1,2*/) const;
 	};
 
-	static IDelaBella2<T,I>* Create();
-	virtual ~IDelaBella2() = 0;
+	struct Iterator
+	{
+		const Simplex* current;
+		int around;
 
+		const Simplex* Next()
+		{
+			int pivot = around + 1;
+			if (pivot == 3)
+				pivot = 0;
+
+			Simplex* next = current->f[pivot];
+			Vertex* v = current->v[around];
+
+			if (next->v[0] == v)
+				around = 0;
+			else
+			if (next->v[1] == v)
+				around = 1;
+			else
+				around = 2;
+
+			current = next;
+			return current;
+		}
+
+		const Simplex* Prev()
+		{
+			int pivot = around - 1;
+			if (pivot == -1)
+				pivot = 2;
+
+			Simplex* prev = current->f[pivot];
+			Vertex* v = current->v[around];
+
+			if (prev->v[0] == v)
+				around = 0;
+			else
+			if (prev->v[1] == v)
+				around = 1;
+			else
+				around = 2;
+
+			current = prev;
+			return current;
+		}
+	};
+
+	static IDelaBella2<T,I>* Create();
 	virtual void Destroy() = 0;
 
 	virtual void SetErrLog(int(*proc)(void* stream, const char* fmt, ...), void* stream) = 0;
@@ -171,65 +203,7 @@ struct IDelaBella2
 	// function returns number of indices filled (I) on success, otherwise 0
 	virtual I GenVoronoiDiagramPolys(I* indices, size_t advance_bytes=0, I* closed_indices=0) const = 0;
 
-	#ifdef DELABELLA_LEGACY
-	inline const Simplex* GetFirstDelaunayTriangle() const
-	{
-		return GetFirstDelaunaySimplex();
-	}
-	inline const Simplex* GetFirstHullTriangle() const
-	{
-		return GetFirstHullSimplex();
-	}
-	#endif
-
-
-	struct Iterator
-	{
-		const Simplex* current;
-		int around;
-
-		const Simplex* Next()
-		{
-			int pivot = around + 1;
-			if (pivot == 3)
-				pivot = 0;
-
-			Simplex* next = current->f[pivot];
-			Vertex* v = current->v[around];
-
-			if (next->v[0] == v)
-				around = 0;
-			else
-			if (next->v[1] == v)
-				around = 1;
-			else
-				around = 2;
-
-			current = next;
-			return current;
-		}
-
-		const Simplex* Prev()
-		{
-			int pivot = around - 1;
-			if (pivot == -1)
-				pivot = 2;
-
-			Simplex* prev = current->f[pivot];
-			Vertex* v = current->v[around];
-
-			if (prev->v[0] == v)
-				around = 0;
-			else
-			if (prev->v[1] == v)
-				around = 1;
-			else
-				around = 2;
-
-			current = prev;
-			return current;
-		}
-	};
+	protected: virtual ~IDelaBella2() = 0; // please use Destroy()
 };
 
 template <typename T, typename I>
@@ -254,11 +228,5 @@ inline const typename IDelaBella2<T,I>::Simplex* IDelaBella2<T,I>::Vertex::Start
 	return sew;
 }
 
-#ifdef DELABELLA_LEGACY
-typedef IDelaBella2<DELABELLA_LEGACY,int>  IDelaBella;
-typedef IDelaBella::Simplex  DelaBella_Triangle;
-typedef IDelaBella::Vertex   DelaBella_Vertex;
-typedef IDelaBella::Iterator DelaBella_Iterator;
-#endif
 
 #endif

@@ -8,12 +8,24 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 // in case of troubles, allows to see if any assert pops up.
 // define it globally (like with -DDELABELLA_AUTOTEST)
 
+// this is to work around bug in the DekkersProduct()
+// note Splitter constant is also wrong but not used outside DekkersProduct()
+#undef FP_FAST_FMAF
+#define FP_FAST_FMAF
+#undef FP_FAST_FMA
+#define FP_FAST_FMA
+#undef FP_FAST_FMAL
+#define FP_FAST_FMAL
+
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <algorithm>
 #include "delabella.h"
 #include "predicates.h"
+
+// benching hack, fixme!
+uint64_t sorting_bench = 0;
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -41,7 +53,6 @@ static uint64_t uSec()
 	return (uint64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
 #endif
 }
-
 
 template <typename T, typename I>
 IDelaBella2<T,I>::~IDelaBella2()
@@ -78,6 +89,8 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 	struct Vert : IDelaBella2<T,I>::Vertex
 	{
+		static const T resulterrbound;
+
 		static bool overlap(const Vert* v1, const Vert* v2)
 		{
 			return v1->x == v2->x && v1->y == v2->y;
@@ -85,6 +98,53 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		bool operator < (const Vert& v) const
 		{
+			// assuming no dups
+			// return this->x < v.x;
+
+			// seams to work, but results in super slow triangulation on gamma+
+			// return this->x < v.x || this->x == v.x && this->y < v.y;
+
+			// reversing? 
+			// return this->x > v.x || this->x == v.x && this->y > v.y;
+
+			// reversing paraboloid, somewhat faster without predicate
+			{
+				T ax = this->x+T(1.1);
+				T ay = this->y+T(0.9);
+				T bx = v.x+T(1.1);
+				T by = v.y+T(0.9);
+				T a = ax*ax+ay*ay;
+				T b = bx*bx+by*by;
+				if (a == b)
+				{
+					if (this->x > v.x || this->x == v.x && this->y > v.y)
+						return true;
+					return false;
+				}
+				return a > b;
+			}
+
+			// reversing paraboloid, speeds up: gam,sym,hex, bias (1.1,0.9) added mostly for sym to de-sym it
+			{
+				T dif = predicates::adaptive::sqrlendif2d(this->x + T(1.1), this->y + T(0.9), v.x + T(1.1), v.y + T(0.9));
+				if (dif > 0)
+					return true;
+				if (dif < 0)
+					return false;
+				if (this->x > v.x || this->x == v.x && this->y > v.y)
+					return true;
+				return false;
+			}
+
+
+			{	// somewhat faster, poor compiler inlining?
+				const T a = this->x * this->x + this->y * this->y;
+				const T b = v.x * v.x + v.y * v.y;
+				const T c = a - b;
+				if (std::abs(c) > (a + b) * resulterrbound)
+					return c < 0;
+			}
+
 			T dif = predicates::adaptive::sqrlendif2d(this->x, this->y, v.x, v.y);
 
 			if (dif < 0)
@@ -99,6 +159,8 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 	struct Face : IDelaBella2<T,I>::Simplex
 	{
+		static const T iccerrboundA;
+
 		#ifdef DELABELLA_AUTOTEST
 		void Validate()
 		{
@@ -195,7 +257,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		bool dot0(const Vert& p) const
 		{
-			return
+			return 
 				predicates::adaptive::incircle(
 					p.x, p.y,
 					this->v[0]->x, this->v[0]->y,
@@ -223,8 +285,49 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					this->v[2]->x, this->v[2]->y) < 0;
 		}
 
-		bool dotNP(const Vert& p) const
+		bool dotNP(const Vert& p) /*const*/
 		{
+			{	// somewhat faster, poor compiler inlining?
+
+				const T dx = this->v[2]->x;
+				const T dy = this->v[2]->y;
+
+				const T adx = p.x - dx;
+				const T ady = p.y - dy;
+				const T bdx = this->v[0]->x - dx;
+				const T bdy = this->v[0]->y - dy;
+				const T cdx = this->v[1]->x - dx;
+				const T cdy = this->v[1]->y - dy;
+
+				const T adxcdy = adx * cdy;
+				const T adxbdy = adx * bdy;
+				const T bdxcdy = bdx * cdy;
+				const T bdxady = bdx * ady;
+				const T cdxbdy = cdx * bdy;
+				const T cdxady = cdx * ady;
+
+				const T alift = adx * adx + ady * ady;
+				const T blift = bdx * bdx + bdy * bdy;
+				const T clift = cdx * cdx + cdy * cdy;
+
+				const T dif_bdxcdy_cdxbdy = bdxcdy - cdxbdy;
+				const T sum_abs_bdxcdy_cdxbdy = std::abs(bdxcdy) + std::abs(cdxbdy);
+
+				const T det_a = alift * dif_bdxcdy_cdxbdy;
+				const T det_b = blift * (cdxady - adxcdy);
+				const T det_c = clift * (adxbdy - bdxady);
+
+				const T det = det_a + det_b + det_c;
+
+				const T permanent = sum_abs_bdxcdy_cdxbdy * alift
+					+ (std::abs(cdxady) + std::abs(adxcdy)) * blift
+					+ (std::abs(adxbdy) + std::abs(bdxady)) * clift;
+
+				T errbound = iccerrboundA * permanent;
+				if (std::abs(det) >= std::abs(errbound))
+					return det <= 0;
+			}
+
 			return
 				predicates::adaptive::incircle(
 					p.x,p.y, 
@@ -303,6 +406,9 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			}
 
 			uint64_t time1 = uSec();
+
+			sorting_bench = time1 - time0;
+
 			if (sort_stamp)
 				*sort_stamp = time1;
 
@@ -502,7 +608,9 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				{
 					Vert* ll = vert_alloc + lower_left;
 					Vert* ur = vert_alloc + upper_right;
+					
 					T dot = predicates::adaptive::orient2d(ll->x, ll->y, ur->x, ur->y, vert_alloc[j].x, vert_alloc[j].y);
+					
 					if (dot < 0)
 					{
 						// lower
@@ -510,13 +618,17 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					}
 					else
 					{
+						if (dot == 0)
+						{
+							int dbg = 1;
+						}
 						#ifdef DELABELLA_AUTOTEST
 						assert(dot > 0);
 						#endif
 						// upper
 						vert_alloc[j].sew = 0;
 					}
-				}
+				} 
 			}
 
 			struct
@@ -842,16 +954,13 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation ", p, p>=100 ? "":"%");
 			}
 
-			//ValidateHull(alloc, 2 * i - 4);
 			Vert* q = vert_alloc + i;
 			Vert* p = vert_alloc + i - 1;
 			Face* f = hull;
 
 			// 1. FIND FIRST VISIBLE FACE
 			//    simply iterate around last vertex using last added triange adjecency info
-			//while (f->dot(*q) <= 0)
 			while (f->dotNP(*q))
-			//while (f->dotN(*q)) // we want to consume coplanar faces
 			{
 				f = f->Next(p);
 				if (f == hull)
@@ -861,9 +970,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					// let's run through all faces (approximately last to first),
 					// yes this is emergency fallback and should not ever happen.
 					f = face_alloc + (intptr_t)2 * i - 4 - 1;
-					//while (f->dot(*q) <= 0)
 					while (f->dotNP(*q))
-					//while (f->dotN(*q)) // we want to consume coplanar faces
 					{
 						#ifdef DELABELLA_AUTOTEST
 						assert(f != face_alloc); // no face is visible? you must be kidding!
@@ -906,9 +1013,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					if (n && !n->next) // ensure neighbor is not processed yet & isn't on stack
 					{
 						// if neighbor is not visible we have slihouette edge
-						//if (n->dot(*q) <= 0) 
 						if (n->dotNP(*q))
-						//if (n->dotN(*q)) // consuming coplanar faces
 						{
 							// build face
 							add++;
@@ -1968,6 +2073,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		Face* seed = 0;
 		Face* flip = 0;
+		Face* first = 0;
 
 		Vert* v = first_boundary_vert;
 		Vert* e = v;
@@ -2014,13 +2120,26 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 			if (odds < bounds)
 			{
-				dela->next = seed;
-				seed = dela;
+				// make sure we dont seed same dela twice
+				if (dela != seed && dela != first)
+				{
+					if (!seed)
+						first = dela;
+					dela->next = seed;
+					seed = dela;
+				}
 			}
 			else
+			if (!seed)
 			{
-				dela->next = flip;
-				flip = dela;
+				// make sure we dont seed same dela twice
+				if (dela != flip && dela != first)
+				{
+					if (!first)
+						first = dela;
+					dela->next = flip;
+					flip = dela;
+				}
 			}
 
 			v = (Vert*)v->next;
@@ -2078,6 +2197,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 							if (n->index == seeded)
 							{
 								// can be slow - check / rethink
+								// try reverse pushing !!!
 								Face** p = &seed;
 								Face* s = seed;
 								while (s != n)
@@ -2906,6 +3026,12 @@ IDelaBella2<T,I>* IDelaBella2<T,I>::Create()
 	return ret;
 }
 
+template<typename T, typename I>
+const T CDelaBella2<T,I>::Face::iccerrboundA = ((T(10) + T(96) * std::exp2(-(T)std::numeric_limits<T>::digits)) * std::exp2(-(T)std::numeric_limits<T>::digits));
+
+template<typename T, typename I>
+const T CDelaBella2<T,I>::Vert::resulterrbound = (T( 3) + T(   8) * std::exp2(-(T)std::numeric_limits<T>::digits)) * std::exp2(-(T)std::numeric_limits<T>::digits);
+
 // this should cover all malcontents
 template IDelaBella2<float, int8_t>* IDelaBella2<float, int8_t>::Create();
 template IDelaBella2<double, int8_t>* IDelaBella2<double, int8_t>::Create();
@@ -2922,3 +3048,4 @@ template IDelaBella2<long double, int32_t>* IDelaBella2<long double, int32_t>::C
 template IDelaBella2<float, int64_t>* IDelaBella2<float, int64_t>::Create();
 template IDelaBella2<double, int64_t>* IDelaBella2<double, int64_t>::Create();
 template IDelaBella2<long double, int64_t>* IDelaBella2<long double, int64_t>::Create();
+
