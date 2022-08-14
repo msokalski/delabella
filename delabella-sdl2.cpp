@@ -15,11 +15,11 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 // override build define
 #undef WITH_DELAUNATOR 
-//#define WITH_DELAUNATOR
+#define WITH_DELAUNATOR
 
 // override build define
 #undef WITH_CDT
-//#define WITH_CDT
+#define WITH_CDT
 
 // override build define
 #undef WITH_FADE 
@@ -1382,7 +1382,7 @@ int bench_main(int argc, char* argv[])
 #else
 int main(int argc, char* argv[])
 {
-    const char* dist = "sph";
+    const char* dist = "cir";
     const char* bias = "";
 #endif
 
@@ -1429,7 +1429,7 @@ int main(int argc, char* argv[])
         }
         printf("generating random " IDXF " points\n", n);
         std::random_device rd{};
-        uint64_t seed = 0x00000000FCDC9FCAULL;//rd();
+        uint64_t seed = rd();
         std::mt19937_64 gen{ seed };
         printf("SEED = 0x%016llX\n", (long long unsigned int)seed);
 
@@ -1514,7 +1514,7 @@ int main(int argc, char* argv[])
             n *= 8;
         }
         else
-        if (strcmp(dist, "sph") == 0)
+        if (strcmp(dist, "cir") == 0)
         {
             for (MyIndex i = 0; i < n; i++)
             {
@@ -1946,9 +1946,9 @@ int main(int argc, char* argv[])
 
 	IDelaBella* idb = IDelaBella::Create();
 
-    //#ifndef BENCH
+    #ifndef BENCH
 	idb->SetErrLog(errlog, stdout);
-    //#endif
+    #endif
 
     printf("running delabella...\n");
     uint64_t t6 = uSec();
@@ -2734,17 +2734,16 @@ int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, "");
 
-    const char* test_dist[] = { /*"uni","std","gam","sym",*/"sph",/*"hex",*/0};
+    const char* test_dist[] = { /*"uni","std","gam","sym",*/"cir",/*"hex",*/0};
     const char* test_bias[] = { "","+", 0 };
 
     int test_size[] =
     {
-        1000,0,
-        /*1000,2500,5000,
+        1000,2500,5000,
         10000,25000,50000, 
         100000,250000,500000,
-        1000000,*/2500000,5000000,
-        10000000,25000000,50000000,
+        1000000, /*2500000,5000000,
+        10000000,25000000,50000000,*/
         0
     };
 
@@ -2881,6 +2880,9 @@ int main(int argc, char* argv[])
                     f[3](11, accum[3].polygons),
                     f[4](11, accum[4].polygons));
                 fprintf(bench_file, "\n");
+
+                // live view
+                fflush(bench_file);
             }
 
             fclose(bench_file);

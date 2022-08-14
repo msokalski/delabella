@@ -3,7 +3,7 @@ DELABELLA - Delaunay triangulation library
 Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 */
 
-#define DELABELLA_AUTOTEST
+//#define DELABELLA_AUTOTEST
 
 // in case of troubles, allows to see if any assert pops up.
 // define it globally (like with -DDELABELLA_AUTOTEST)
@@ -163,31 +163,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 	struct Face : IDelaBella2<T, I>::Simplex
 	{
 		static const T iccerrboundA;
-
-#ifdef DELABELLA_AUTOTEST
-		void Validate()
-		{
-			Face *N = this;
-			for (int j = 0; j < 3; j++)
-			{
-				Face *M = (Face *)N->f[j];
-				int k = 0;
-				if (M->f[1] == N)
-					k = 1;
-				else if (M->f[2] == N)
-					k = 2;
-
-				// neighbors can see each other
-				assert(M->f[k] == N);
-
-				// edge flags are same on both sides
-				// of the edge Nj|Mk
-				uint8_t nf = N->GetEdgeBits(j);
-				uint8_t mf = M->GetEdgeBits(k);
-				assert(nf == mf);
-			}
-		}
-#endif
 
 		void RotateEdgeFlagsCCW() // <<
 		{
@@ -1347,8 +1322,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		{
 			if (a)
 			{
-				CheckFace(N);
-
 				// rotate N->v[] and N->f 'a' times 'backward' such offending edge appears opposite to v[0]
 				const int *r = rotate[a];
 
@@ -1370,8 +1343,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					else // a==2
 						N->RotateEdgeFlagsCCW();
 				}
-
-				CheckFace(N);
 			}
 
 			// add edge
@@ -1609,8 +1580,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					list = (Face *)N->next;
 					N->next = 0;
 
-					CheckFace(N);
-
 					Vert *v0 = (Vert *)(N->v[b]);
 					Vert *v1 = (Vert *)(N->v[c]);
 
@@ -1719,14 +1688,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							v0->sew = N;
 							v1->sew = F;
 
-							#ifdef DELABELLA_AUTOTEST
-							CheckFace(N);
-							CheckFace(F);
-							CheckFace(O);
-							CheckFace(P);
-							CheckFace(Q);
-							#endif
-
 							// if (classify)
 							{
 								// TRANSFER bits:
@@ -1800,14 +1761,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 							v0->sew = F;
 							v1->sew = N;
-
-							#ifdef DELABELLA_AUTOTEST
-							CheckFace(N);
-							CheckFace(F);
-							CheckFace(O);
-							CheckFace(P);
-							CheckFace(Q);
-							#endif
 
 							// if (classify)
 							{
@@ -1979,14 +1932,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 								v0->sew = N;
 								v1->sew = F;
 
-								#ifdef DELABELLA_AUTOTEST
-								CheckFace(N);
-								CheckFace(F);
-								CheckFace(O);
-								CheckFace(P);
-								CheckFace(Q);
-								#endif
-
 								// if (classify)
 								{
 									// TRANSFER bits:
@@ -2033,14 +1978,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 								v0->sew = F;
 								v1->sew = N;
-
-								#ifdef DELABELLA_AUTOTEST
-								CheckFace(N);
-								CheckFace(F);
-								CheckFace(O);
-								CheckFace(P);
-								CheckFace(Q);
-								#endif
 
 								// if (classify)
 								{
@@ -2177,7 +2114,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					seed = dela;
 				}
 			}
-			/*
 			else
 			if (!seed)
 			{
@@ -2189,7 +2125,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					flip = dela;
 				}
 			}
-			*/
 
 			v = (Vert *)v->next;
 		} while (v != e);
@@ -2201,8 +2136,15 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			seed = flip;
 			flip = 0;
 			fill ^= 0b01000000;
-
-			assert(0); // uncomment flip
+		}
+		else
+		{
+			Face *f = flip;
+			while (f)
+			{
+				f->index = 0; // clear seeded
+				f = (Face *)f->next;
+			}
 		}
 
 		while (seed)
@@ -3108,26 +3050,38 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 		assert(f->f[0] != f && f->f[1] != f && f->f[2] != f);
 
-		// check back refs
-		// TODO: check flags
+		// check back refs & edge flags
 		Vert *fv[][2] =
-			{
-				{(Vert *)f->v[1], (Vert *)f->v[2]},
-				{(Vert *)f->v[2], (Vert *)f->v[0]},
-				{(Vert *)f->v[0], (Vert *)f->v[1]}};
+		{
+			{(Vert *)f->v[1], (Vert *)f->v[2]},
+			{(Vert *)f->v[2], (Vert *)f->v[0]},
+			{(Vert *)f->v[0], (Vert *)f->v[1]}
+		};
+
 		for (int i = 0; i < 3; i++)
 		{
+
+			uint8_t nf = f->GetEdgeBits(i);
+
 			Face *h = (Face *)f->f[i];
 			Vert *a = fv[i][0];
 			Vert *b = fv[i][1];
 			if (h->v[0] == b && h->v[1] == a)
+			{
 				assert(h->f[2] == f);
-			else if (h->v[1] == b && h->v[2] == a)
+				assert(nf == h->GetEdgeBits(2));
+			}	
+			else 
+			if (h->v[1] == b && h->v[2] == a)
+			{
 				assert(h->f[0] == f);
+				assert(nf == h->GetEdgeBits(0));
+			}
 			else
 			{
 				assert(h->v[2] == b && h->v[0] == a);
 				assert(h->f[1] == f);
+				assert(nf == h->GetEdgeBits(1));
 			}
 		}
 	}
