@@ -15,7 +15,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 // override build define
 #undef WITH_DELAUNATOR 
-#define WITH_DELAUNATOR
+//#define WITH_DELAUNATOR
 
 // override build define
 #undef WITH_CDT
@@ -2734,7 +2734,7 @@ int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, "");
 
-    const char* test_dist[] = { /*"uni","std","gam","sym",*/"cir",/*"hex",*/0};
+    const char* test_dist[] = { "uni","std","gam","sym","cir","hex",0};
     const char* test_bias[] = { "","+", 0 };
 
     int test_size[] =
@@ -2755,7 +2755,6 @@ int main(int argc, char* argv[])
 
     char test_path[100];
 
-    while(1)
     for (int d = 0; test_dist[d]; d++)
     {
         for (int b = 0; test_bias[b]; b++)
@@ -2794,7 +2793,7 @@ int main(int argc, char* argv[])
                     for (int i=0; i< players; i++)
                         accum[i] += bench[i];
                     acc++;
-                } while (uSec() - t0 < 500000);
+                } while (uSec() - t0 < 5000000);
 
                 for (int i = 0; i < players; i++)
                     accum[i] /= acc;

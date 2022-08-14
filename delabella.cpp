@@ -109,7 +109,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			// return this->x > v.x || this->x == v.x && this->y > v.y;
 
 			// reversing paraboloid, somewhat faster without predicate
-			/*
 			{
 				T ax = this->x+T(1.1);
 				T ay = this->y+T(0.9);
@@ -146,7 +145,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				if (std::abs(c) > (a + b) * resulterrbound)
 					return c < 0;
 			}
-			*/
 
 			T dif = predicates::adaptive::sqrlendif2d(this->x, this->y, v.x, v.y);
 
