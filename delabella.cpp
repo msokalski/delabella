@@ -55,48 +55,49 @@ static uint64_t uSec()
 }
 
 template <typename T, typename I>
-IDelaBella2<T,I>::~IDelaBella2()
+IDelaBella2<T, I>::~IDelaBella2()
 {
 }
 
 template <typename T, typename I>
-struct CDelaBella2 : IDelaBella2<T,I>
+struct CDelaBella2 : IDelaBella2<T, I>
 {
-	CDelaBella2() : 
-		vert_map(0),
-		vert_alloc(0),
-		face_alloc(0),
-		max_verts(0),
-		max_faces(0),
-		first_dela_face(0),
-		first_hull_face(0),
-		first_boundary_vert(0),
-		first_internal_vert(0),
-		inp_verts(0),
-		out_verts(0),
-		out_boundary_verts(0),
-		polygons(0),
-		out_hull_faces(0),
-		unique_points(0),
-		errlog_proc(0),
-		errlog_file(0)
+	CDelaBella2() : vert_map(0),
+					vert_alloc(0),
+					face_alloc(0),
+					max_verts(0),
+					max_faces(0),
+					first_dela_face(0),
+					first_hull_face(0),
+					first_boundary_vert(0),
+					first_internal_vert(0),
+					inp_verts(0),
+					out_verts(0),
+					out_boundary_verts(0),
+					polygons(0),
+					out_hull_faces(0),
+					unique_points(0),
+					errlog_proc(0),
+					errlog_file(0)
 	{
 	}
 
 	struct Face;
 
-	struct Iter : IDelaBella2<T,I>::Iterator {};
+	struct Iter : IDelaBella2<T, I>::Iterator
+	{
+	};
 
-	struct Vert : IDelaBella2<T,I>::Vertex
+	struct Vert : IDelaBella2<T, I>::Vertex
 	{
 		static const T resulterrbound;
 
-		static bool overlap(const Vert* v1, const Vert* v2)
+		static bool overlap(const Vert *v1, const Vert *v2)
 		{
 			return v1->x == v2->x && v1->y == v2->y;
 		}
 
-		bool operator < (const Vert& v) const
+		bool operator<(const Vert &v) const
 		{
 			// assuming no dups
 			// return this->x < v.x;
@@ -104,10 +105,11 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			// seams to work, but results in super slow triangulation on gamma+
 			// return this->x < v.x || this->x == v.x && this->y < v.y;
 
-			// reversing? 
+			// reversing?
 			// return this->x > v.x || this->x == v.x && this->y > v.y;
 
 			// reversing paraboloid, somewhat faster without predicate
+			/*
 			{
 				T ax = this->x+T(1.1);
 				T ay = this->y+T(0.9);
@@ -144,6 +146,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				if (std::abs(c) > (a + b) * resulterrbound)
 					return c < 0;
 			}
+			*/
 
 			T dif = predicates::adaptive::sqrlendif2d(this->x, this->y, v.x, v.y);
 
@@ -157,22 +160,21 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		}
 	};
 
-	struct Face : IDelaBella2<T,I>::Simplex
+	struct Face : IDelaBella2<T, I>::Simplex
 	{
 		static const T iccerrboundA;
 
-		#ifdef DELABELLA_AUTOTEST
+#ifdef DELABELLA_AUTOTEST
 		void Validate()
 		{
-			Face* N = this;
+			Face *N = this;
 			for (int j = 0; j < 3; j++)
 			{
-				Face* M = (Face*)N->f[j];
+				Face *M = (Face *)N->f[j];
 				int k = 0;
 				if (M->f[1] == N)
 					k = 1;
-				else
-				if (M->f[2] == N)
+				else if (M->f[2] == N)
 					k = 2;
 
 				// neighbors can see each other
@@ -185,7 +187,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				assert(nf == mf);
 			}
 		}
-		#endif
+#endif
 
 		void RotateEdgeFlagsCCW() // <<
 		{
@@ -214,80 +216,77 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			this->flags = (bits << at) | (this->flags & ~(0b00001001 << at));
 		}
 
-		static Face* Alloc(Face** from)
+		static Face *Alloc(Face **from)
 		{
-			Face* f = *from;
-			*from = (Face*)f->next;
+			Face *f = *from;
+			*from = (Face *)f->next;
 			f->next = 0;
 			return f;
 		}
 
-		void Free(Face** to)
+		void Free(Face **to)
 		{
 			this->next = *to;
 			*to = this;
 		}
 
-		Face* Next(const Vert* p) const
+		Face *Next(const Vert *p) const
 		{
 			if (this->v[0] == p)
-				return (Face*)this->f[1];
+				return (Face *)this->f[1];
 			if (this->v[1] == p)
-				return (Face*)this->f[2];
+				return (Face *)this->f[2];
 			if (this->v[2] == p)
-				return (Face*)this->f[0];
+				return (Face *)this->f[0];
 			return 0;
 		}
 
 		bool signN() const
 		{
 			return 0 > predicates::adaptive::orient2d(
-				this->v[0]->x, this->v[0]->y, 
-				this->v[1]->x, this->v[1]->y, 
-				this->v[2]->x, this->v[2]->y);
+						   this->v[0]->x, this->v[0]->y,
+						   this->v[1]->x, this->v[1]->y,
+						   this->v[2]->x, this->v[2]->y);
 		}
 
 		bool sign0() const
 		{
 			return 0 == predicates::adaptive::orient2d(
-				this->v[0]->x, this->v[0]->y, 
-				this->v[1]->x, this->v[1]->y, 
-				this->v[2]->x, this->v[2]->y);
+							this->v[0]->x, this->v[0]->y,
+							this->v[1]->x, this->v[1]->y,
+							this->v[2]->x, this->v[2]->y);
 		}
 
-		bool dot0(const Vert& p) const
+		bool dot0(const Vert &p) const
 		{
-			return 
-				predicates::adaptive::incircle(
-					p.x, p.y,
-					this->v[0]->x, this->v[0]->y,
-					this->v[1]->x, this->v[1]->y,
-					this->v[2]->x, this->v[2]->y) == 0;
+			return predicates::adaptive::incircle(
+					   p.x, p.y,
+					   this->v[0]->x, this->v[0]->y,
+					   this->v[1]->x, this->v[1]->y,
+					   this->v[2]->x, this->v[2]->y) == 0;
 		}
 
-		bool dotP(const Vert& p) const
+		bool dotP(const Vert &p) const
 		{
-			return
-				predicates::adaptive::incircle(
-					p.x, p.y,
-					this->v[0]->x, this->v[0]->y,
-					this->v[1]->x, this->v[1]->y,
-					this->v[2]->x, this->v[2]->y) > 0;
+			return predicates::adaptive::incircle(
+					   p.x, p.y,
+					   this->v[0]->x, this->v[0]->y,
+					   this->v[1]->x, this->v[1]->y,
+					   this->v[2]->x, this->v[2]->y) > 0;
 		}
 
-		bool dotN(const Vert& p) const
+		bool dotN(const Vert &p) const
 		{
-			return
-				predicates::adaptive::incircle(
-					p.x, p.y,
-					this->v[0]->x, this->v[0]->y,
-					this->v[1]->x, this->v[1]->y,
-					this->v[2]->x, this->v[2]->y) < 0;
+			return predicates::adaptive::incircle(
+					   p.x, p.y,
+					   this->v[0]->x, this->v[0]->y,
+					   this->v[1]->x, this->v[1]->y,
+					   this->v[2]->x, this->v[2]->y) < 0;
 		}
 
-		bool dotNP(const Vert& p) /*const*/
+		bool dotNP(const Vert &p) /*const*/
 		{
-			{	// somewhat faster, poor compiler inlining?
+			{ // somewhat faster, poor compiler inlining?
 
 				const T dx = this->v[2]->x;
 				const T dy = this->v[2]->y;
@@ -319,34 +318,31 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 				const T det = det_a + det_b + det_c;
 
-				const T permanent = sum_abs_bdxcdy_cdxbdy * alift
-					+ (std::abs(cdxady) + std::abs(adxcdy)) * blift
-					+ (std::abs(adxbdy) + std::abs(bdxady)) * clift;
+				const T permanent = sum_abs_bdxcdy_cdxbdy * alift + (std::abs(cdxady) + std::abs(adxcdy)) * blift + (std::abs(adxbdy) + std::abs(bdxady)) * clift;
 
 				T errbound = iccerrboundA * permanent;
 				if (std::abs(det) >= std::abs(errbound))
 					return det <= 0;
 			}
 
-			return
-				predicates::adaptive::incircle(
-					p.x,p.y, 
-					this->v[0]->x, this->v[0]->y, 
-					this->v[1]->x, this->v[1]->y, 
-					this->v[2]->x, this->v[2]->y) <= 0;
+			return predicates::adaptive::incircle(
+					   p.x, p.y,
+					   this->v[0]->x, this->v[0]->y,
+					   this->v[1]->x, this->v[1]->y,
+					   this->v[2]->x, this->v[2]->y) <= 0;
 		}
 	};
 
-	Vert* vert_alloc;
-	Face* face_alloc;
-	I* vert_map;
+	Vert *vert_alloc;
+	Face *face_alloc;
+	I *vert_map;
 	I max_verts;
 	I max_faces;
 
-	Face* first_dela_face;
-	Face* first_hull_face;
-	Vert* first_boundary_vert;
-	Vert* first_internal_vert;
+	Face *first_dela_face;
+	Face *first_hull_face;
+	Vert *first_boundary_vert;
+	Vert *first_internal_vert;
 
 	I inp_verts;
 	I out_verts;
@@ -355,10 +351,10 @@ struct CDelaBella2 : IDelaBella2<T,I>
 	I out_boundary_verts;
 	I unique_points;
 
-	int(*errlog_proc)(void* file, const char* fmt, ...);
-	void* errlog_file;
+	int (*errlog_proc)(void *file, const char *fmt, ...);
+	void *errlog_file;
 
-	I Prepare(I* start, Face** hull, I* out_hull_faces, Face** cache, uint64_t* sort_stamp)
+	I Prepare(I *start, Face **hull, I *out_hull_faces, Face **cache, uint64_t *sort_stamp)
 	{
 		uint64_t time0 = uSec();
 
@@ -458,7 +454,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		I upper_right = 0;
 		for (i = 1; i < 3; i++)
 		{
-			Vert* v = vert_alloc + i;
+			Vert *v = vert_alloc + i;
 			f.v[i] = v;
 
 			if (v->x < lo_x)
@@ -466,8 +462,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				lo_x = v->x;
 				lower_left = i;
 			}
-			else
-			if (v->x == lo_x && v->y < vert_alloc[lower_left].y)
+			else if (v->x == lo_x && v->y < vert_alloc[lower_left].y)
 				lower_left = i;
 
 			if (v->x > hi_x)
@@ -475,14 +470,13 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				hi_x = v->x;
 				upper_right = i;
 			}
-			else
-			if (v->x == hi_x && v->y > vert_alloc[upper_right].y)
+			else if (v->x == hi_x && v->y > vert_alloc[upper_right].y)
 				upper_right = i;
 
 			lo_y = v->y < lo_y ? v->y : lo_y;
 			hi_y = v->y > hi_y ? v->y : hi_y;
 		}
-		
+
 		int pro = 0;
 		// skip until points are coplanar
 		while (i < points && f.dot0(vert_alloc[i]))
@@ -501,15 +495,14 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation ", p, p >= 100 ? "" : "%");
 			}
 
-			Vert* v = vert_alloc + i;
+			Vert *v = vert_alloc + i;
 
 			if (v->x < lo_x)
 			{
 				lo_x = v->x;
 				lower_left = i;
 			}
-			else
-			if (v->x == lo_x && v->y < vert_alloc[lower_left].y)
+			else if (v->x == lo_x && v->y < vert_alloc[lower_left].y)
 				lower_left = i;
 
 			if (v->x > hi_x)
@@ -517,8 +510,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				hi_x = v->x;
 				upper_right = i;
 			}
-			else
-			if (v->x == hi_x && v->y > vert_alloc[upper_right].y)
+			else if (v->x == hi_x && v->y > vert_alloc[upper_right].y)
 				upper_right = i;
 
 			lo_y = v->y < lo_y ? v->y : lo_y;
@@ -527,12 +519,12 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			i++;
 		}
 
-		I* vert_sub = 0;
+		I *vert_sub = 0;
 
 		bool colinear = f.sign0(); // hybrid
 		if (colinear)
 		{
-			vert_sub = (I*)malloc(sizeof(I) * ((size_t)i+1));
+			vert_sub = (I *)malloc(sizeof(I) * ((size_t)i + 1));
 			if (!vert_sub)
 			{
 				if (errlog_proc)
@@ -546,19 +538,19 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			// choose x or y axis to sort verts (no need to be exact)
 			if (hi_x - lo_x > hi_y - lo_y)
 			{
-				struct 
-				{ 
-					bool operator() (const I& a, const I& b)
+				struct
+				{
+					bool operator()(const I &a, const I &b)
 					{
 						return less(vert_alloc[a], vert_alloc[b]);
 					}
 
-					bool less(const Vert& a, const Vert& b) const 
-					{ 
-						return a.x < b.x; 
+					bool less(const Vert &a, const Vert &b) const
+					{
+						return a.x < b.x;
 					}
 
-					Vert* vert_alloc;
+					Vert *vert_alloc;
 				} c;
 
 				c.vert_alloc = vert_alloc;
@@ -566,19 +558,19 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			}
 			else
 			{
-				struct 
-				{ 
-					bool operator() (const I& a, const I& b)
+				struct
+				{
+					bool operator()(const I &a, const I &b)
 					{
 						return less(vert_alloc[a], vert_alloc[b]);
 					}
 
-					bool less(const Vert& a, const Vert& b) const 
-					{ 
-						return a.y < b.y; 
-					} 
+					bool less(const Vert &a, const Vert &b) const
+					{
+						return a.y < b.y;
+					}
 
-					Vert* vert_alloc;
+					Vert *vert_alloc;
 				} c;
 
 				c.vert_alloc = vert_alloc;
@@ -587,7 +579,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		}
 		else
 		{
-			// split to lower (below diag) and uppert (above diag) parts, 
+			// split to lower (below diag) and uppert (above diag) parts,
 			// sort parts separately in opposite directions
 			// mark part with Vert::sew temporarily
 
@@ -598,19 +590,18 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					// lower
 					vert_alloc[j].sew = &f;
 				}
-				else
-				if (j == upper_right)
+				else if (j == upper_right)
 				{
 					// upper
 					vert_alloc[j].sew = 0;
 				}
 				else
 				{
-					Vert* ll = vert_alloc + lower_left;
-					Vert* ur = vert_alloc + upper_right;
-					
+					Vert *ll = vert_alloc + lower_left;
+					Vert *ur = vert_alloc + upper_right;
+
 					T dot = predicates::adaptive::orient2d(ll->x, ll->y, ur->x, ur->y, vert_alloc[j].x, vert_alloc[j].y);
-					
+
 					if (dot < 0)
 					{
 						// lower
@@ -622,25 +613,25 @@ struct CDelaBella2 : IDelaBella2<T,I>
 						{
 							int dbg = 1;
 						}
-						#ifdef DELABELLA_AUTOTEST
+#ifdef DELABELLA_AUTOTEST
 						assert(dot > 0);
-						#endif
+#endif
 						// upper
 						vert_alloc[j].sew = 0;
 					}
-				} 
+				}
 			}
 
 			struct
 			{
 				// default to CW order (unlikely, if wrong, we will reverse using one=2 and two=1)
-				
-				bool operator()(const I& a, const I& b) const
+
+				bool operator()(const I &a, const I &b) const
 				{
 					return less(vert_alloc[a], vert_alloc[b]);
 				}
 
-				bool less(const Vert& a, const Vert& b) const
+				bool less(const Vert &a, const Vert &b) const
 				{
 					// if a is lower and b is upper, return true
 					if (a.sew && !b.sew)
@@ -670,17 +661,17 @@ struct CDelaBella2 : IDelaBella2<T,I>
 						return false;
 					}
 
-					// otherwise
-					#ifdef DELABELLA_AUTOTEST
+// otherwise
+#ifdef DELABELLA_AUTOTEST
 					assert(0);
-					#endif
+#endif
 					return false;
 				}
 
-				Vert* vert_alloc;
+				Vert *vert_alloc;
 			} c;
 
-			vert_sub = (I*)malloc(sizeof(I) * ((size_t)i+1));
+			vert_sub = (I *)malloc(sizeof(I) * ((size_t)i + 1));
 			if (!vert_sub)
 			{
 				if (errlog_proc)
@@ -708,12 +699,12 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				if (max_faces)
 				{
 					free(face_alloc);
-					//delete[] face_alloc;
+					// delete[] face_alloc;
 				}
 				max_faces = 0;
 
 				/*
-				try 
+				try
 				{
 					face_alloc = new Face[(size_t)hull_faces];
 				}
@@ -723,7 +714,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				}
 				*/
 
-				face_alloc = (Face*)malloc(sizeof(Face) * hull_faces);
+				face_alloc = (Face *)malloc(sizeof(Face) * hull_faces);
 
 				if (face_alloc)
 					max_faces = hull_faces;
@@ -776,23 +767,23 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 			// we're almost done!
 			// time to build final flat hull
-			Face* next_p = Face::Alloc(cache);
-			Face* next_q = Face::Alloc(cache);
-			Face* prev_p = 0;
-			Face* prev_q = 0;
+			Face *next_p = Face::Alloc(cache);
+			Face *next_q = Face::Alloc(cache);
+			Face *prev_p = 0;
+			Face *prev_q = 0;
 
 			for (I j = 2; j < i; j++)
 			{
-				Face* p = next_p;
+				Face *p = next_p;
 				p->v[0] = vert_alloc + vert_sub[0];
-				p->v[1] = vert_alloc + vert_sub[j-1];
+				p->v[1] = vert_alloc + vert_sub[j - 1];
 				p->v[2] = vert_alloc + vert_sub[j];
 
 				// mirrored
-				Face* q = next_q;
+				Face *q = next_q;
 				q->v[0] = vert_alloc + vert_sub[0];
 				q->v[1] = vert_alloc + vert_sub[j];
-				q->v[2] = vert_alloc + vert_sub[j-1];
+				q->v[2] = vert_alloc + vert_sub[j - 1];
 
 				if (j < i - 1)
 				{
@@ -836,21 +827,21 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				two = 1;
 			}
 
-			Face* next_p = Face::Alloc(cache);
-			Face* prev_p = 0;
+			Face *next_p = Face::Alloc(cache);
+			Face *prev_p = 0;
 
-			Face* first_q = 0;
-			Face* next_q = Face::Alloc(cache);
-			Face* prev_q = 0;
+			Face *first_q = 0;
+			Face *next_q = Face::Alloc(cache);
+			Face *prev_q = 0;
 
 			for (I j = 2; j < i; j++)
 			{
-				Face* p = next_p;
+				Face *p = next_p;
 				p->v[0] = vert_alloc + vert_sub[0];
 				p->v[one] = vert_alloc + vert_sub[j - 1];
 				p->v[two] = vert_alloc + vert_sub[j];
 
-				Face* q;
+				Face *q;
 
 				if (j == 2)
 				{
@@ -871,7 +862,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				q = next_q;
 				q->v[0] = vert_alloc + vert_sub[i];
 				q->v[one] = vert_alloc + vert_sub[j];
-				q->v[two] = vert_alloc + vert_sub[j-1];
+				q->v[two] = vert_alloc + vert_sub[j - 1];
 
 				next_q = Face::Alloc(cache);
 
@@ -892,7 +883,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					q = next_q;
 					q->v[0] = vert_alloc + vert_sub[i];
 					q->v[one] = vert_alloc + vert_sub[0];
-					q->v[two] = vert_alloc + vert_sub[i-1];
+					q->v[two] = vert_alloc + vert_sub[i - 1];
 
 					q->f[0] = p;
 					q->f[one] = prev_q;
@@ -921,12 +912,12 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		return points;
 	}
 
-	I Triangulate(I* other_faces)
+	I Triangulate(I *other_faces)
 	{
 		I i = 0;
-		Face* hull = 0;
+		Face *hull = 0;
 		I hull_faces = 0;
-		Face* cache = 0;
+		Face *cache = 0;
 
 		uint64_t sort_stamp;
 		I points = Prepare(&i, &hull, &hull_faces, &cache, &sort_stamp);
@@ -945,18 +936,18 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			if (i >= pro)
 			{
 				uint64_t p = (int)((uint64_t)100 * i / points);
-				pro = (int)((p+1) * points / 100);
+				pro = (int)((p + 1) * points / 100);
 				if (pro >= points)
 					pro = (int)points - 1;
 				if (i == points - 1)
 					p = 100;
 				if (errlog_proc)
-					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation ", p, p>=100 ? "":"%");
+					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation ", p, p >= 100 ? "" : "%");
 			}
 
-			Vert* q = vert_alloc + i;
-			Vert* p = vert_alloc + i - 1;
-			Face* f = hull;
+			Vert *q = vert_alloc + i;
+			Vert *p = vert_alloc + i - 1;
+			Face *f = hull;
 
 			// 1. FIND FIRST VISIBLE FACE
 			//    simply iterate around last vertex using last added triange adjecency info
@@ -965,16 +956,16 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				f = f->Next(p);
 				if (f == hull)
 				{
-					//printf(".");
-					// if no visible face can be located at last vertex,
-					// let's run through all faces (approximately last to first),
-					// yes this is emergency fallback and should not ever happen.
+					// printf(".");
+					//  if no visible face can be located at last vertex,
+					//  let's run through all faces (approximately last to first),
+					//  yes this is emergency fallback and should not ever happen.
 					f = face_alloc + (intptr_t)2 * i - 4 - 1;
 					while (f->dotNP(*q))
 					{
-						#ifdef DELABELLA_AUTOTEST
+#ifdef DELABELLA_AUTOTEST
 						assert(f != face_alloc); // no face is visible? you must be kidding!
-						#endif
+#endif
 						f--;
 					}
 				}
@@ -987,20 +978,20 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			I add = 0;
 
 			// push first visible face onto stack (of visible faces)
-			Face* stack = f;
+			Face *stack = f;
 			f->next = f; // old trick to use list pointers as 'on-stack' markers
 			while (stack)
 			{
 				// pop, take care of last item ptr (it's not null!)
 				f = stack;
-				stack = (Face*)f->next;
+				stack = (Face *)f->next;
 				if (stack == f)
 					stack = 0;
 				f->next = 0;
 
 				// copy parts of old face that we still need after removal
-				Vert* fv[3] = { (Vert*)f->v[0],(Vert*)f->v[1],(Vert*)f->v[2] };
-				Face* ff[3] = { (Face*)f->f[0],(Face*)f->f[1],(Face*)f->f[2] };
+				Vert *fv[3] = {(Vert *)f->v[0], (Vert *)f->v[1], (Vert *)f->v[2]};
+				Face *ff[3] = {(Face *)f->f[0], (Face *)f->f[1], (Face *)f->f[2]};
 
 				// delete visible face
 				f->Free(&cache);
@@ -1009,7 +1000,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				// check all 3 neighbors
 				for (int e = 0; e < 3; e++)
 				{
-					Face* n = ff[e];
+					Face *n = ff[e];
 					if (n && !n->next) // ensure neighbor is not processed yet & isn't on stack
 					{
 						// if neighbor is not visible we have slihouette edge
@@ -1020,12 +1011,12 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 							// ab: given face adjacency [index][],
 							// it provides [][2] vertex indices on shared edge (CCW order)
-							const static int ab[3][2] = { { 1,2 },{ 2,0 },{ 0,1 } };
+							const static int ab[3][2] = {{1, 2}, {2, 0}, {0, 1}};
 
-							Vert* a = fv[ab[e][0]];
-							Vert* b = fv[ab[e][1]];
+							Vert *a = fv[ab[e][0]];
+							Vert *b = fv[ab[e][1]];
 
-							Face* s = Face::Alloc(&cache);
+							Face *s = Face::Alloc(&cache);
 							s->v[0] = a;
 							s->v[1] = b;
 							s->v[2] = q;
@@ -1035,16 +1026,14 @@ struct CDelaBella2 : IDelaBella2<T,I>
 							// change neighbour's adjacency from old visible face to cone side
 							if (n->f[0] == f)
 								n->f[0] = s;
-							else
-							if (n->f[1] == f)
+							else if (n->f[1] == f)
 								n->f[1] = s;
-							else
-							if (n->f[2] == f)
+							else if (n->f[2] == f)
 								n->f[2] = s;
-							#ifdef DELABELLA_AUTOTEST
+#ifdef DELABELLA_AUTOTEST
 							else
 								assert(0);
-							#endif
+#endif
 
 							// build silhouette needed for sewing sides in the second pass
 							a->sew = s;
@@ -1057,16 +1046,14 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 							if (n->f[0] == f)
 								n->f[0] = 0;
-							else
-							if (n->f[1] == f)
+							else if (n->f[1] == f)
 								n->f[1] = 0;
-							else
-							if (n->f[2] == f)
+							else if (n->f[2] == f)
 								n->f[2] = 0;
-							#ifdef DELABELLA_AUTOTEST
+#ifdef DELABELLA_AUTOTEST
 							else
 								assert(0);
-							#endif
+#endif
 
 							// push neighbor face, it's visible and requires processing
 							n->next = stack ? stack : n;
@@ -1076,35 +1063,35 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				}
 			}
 
-			#ifdef DELABELLA_AUTOTEST
+#ifdef DELABELLA_AUTOTEST
 			// if add<del+2 hungry hull has consumed some point
 			// that means we can't do delaunay for some under precission reasons
 			// althought convex hull would be fine with it
 			assert(add == del + 2);
-			#endif
+#endif
 
 			// 3. SEW SIDES OF CONE BUILT ON SLIHOUTTE SEGMENTS
 
 			hull = face_alloc + (intptr_t)2 * i - 4 + 1; // last added face
 
-										  // last face must contain part of the silhouette
-										  // (edge between its v[0] and v[1])
-			Vert* entry = (Vert*)hull->v[0];
+			// last face must contain part of the silhouette
+			// (edge between its v[0] and v[1])
+			Vert *entry = (Vert *)hull->v[0];
 
-			Vert* pr = entry;
+			Vert *pr = entry;
 			do
 			{
 				// sew pr<->nx
-				Vert* nx = (Vert*)pr->next;
+				Vert *nx = (Vert *)pr->next;
 				pr->sew->f[0] = nx->sew;
 				nx->sew->f[1] = pr->sew;
 				pr = nx;
 			} while (pr != entry);
 		}
 
-		#ifdef DELABELLA_AUTOTEST
+#ifdef DELABELLA_AUTOTEST
 		assert(2 * i - 4 == hull_faces);
-		#endif
+#endif
 
 		for (I j = 0; j < points; j++)
 		{
@@ -1115,32 +1102,32 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		I others = 0;
 
 		i = 0;
-		Face** prev_dela = &first_dela_face;
-		Face** prev_hull = &first_hull_face;
+		Face **prev_dela = &first_dela_face;
+		Face **prev_hull = &first_hull_face;
 		for (I j = 0; j < hull_faces; j++)
 		{
-			Face* f = face_alloc + j;
+			Face *f = face_alloc + j;
 
 			// back-link all verts to some_face
 			// yea, ~6x times, sorry
-			((Vert*)f->v[0])->sew = f;
-			((Vert*)f->v[1])->sew = f;
-			((Vert*)f->v[2])->sew = f;
+			((Vert *)f->v[0])->sew = f;
+			((Vert *)f->v[1])->sew = f;
+			((Vert *)f->v[2])->sew = f;
 
 			if (f->signN())
 			{
-				f->index = i;  // store index in dela list
+				f->index = i;		   // store index in dela list
 				f->flags = 0b01000000; // interior
 				*prev_dela = f;
-				prev_dela = (Face**)&f->next;
+				prev_dela = (Face **)&f->next;
 				i++;
 			}
 			else
 			{
-				f->index = others; // store index in hull list (~ to mark it is not dela)
+				f->index = others;	   // store index in hull list (~ to mark it is not dela)
 				f->flags = 0b10000000; // hull
 				*prev_hull = f;
-				prev_hull = (Face**)&f->next;
+				prev_hull = (Face **)&f->next;
 				others++;
 			}
 		}
@@ -1154,58 +1141,62 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		// let's trace boudary contour, at least one vertex of first_hull_face
 		// must be shared with dela face, find that dela face
 		Iter it;
-		Vert* v = (Vert*)first_hull_face->v[0];
-		Face* t = (Face*)v->StartIterator(&it);
-		Face* e = t; // end
-		
-		first_boundary_vert = (Vert*)v;
+		Vert *v = (Vert *)first_hull_face->v[0];
+		Face *t = (Face *)v->StartIterator(&it);
+		Face *e = t; // end
+
+		first_boundary_vert = (Vert *)v;
 		out_boundary_verts = 1;
 
 		while (1)
 		{
 			if (t->IsDelaunay())
 			{
-				int pr = it.around-1; if (pr<0) pr = 2;
-				int nx = it.around+1; if (nx>2) nx = 0;
+				int pr = it.around - 1;
+				if (pr < 0)
+					pr = 2;
+				int nx = it.around + 1;
+				if (nx > 2)
+					nx = 0;
 
-				Face* fpr = (Face*)t->f[pr];
+				Face *fpr = (Face *)t->f[pr];
 				if (!fpr->IsDelaunay())
 				{
 					// let's move from: v to t->v[nx]
 					v->next = t->v[nx];
-					v = (Vert*)v->next;
+					v = (Vert *)v->next;
 					if (v == first_boundary_vert)
 						break; // lap finished
 					out_boundary_verts++;
-					t = (Face*)t->StartIterator(&it,nx);
+					t = (Face *)t->StartIterator(&it, nx);
 					e = t;
 					continue;
 				}
 			}
-			t = (Face*)it.Next();
+			t = (Face *)it.Next();
 
-			#ifdef DELABELLA_AUTOTEST
-			assert(t!=e);
-			#endif
+#ifdef DELABELLA_AUTOTEST
+			assert(t != e);
+#endif
 		}
 
 		// link all other verts into internal list
 		first_internal_vert = 0;
-		Vert** prev_inter = &first_internal_vert;
-		for (I j=0; j<points; j++)
+		Vert **prev_inter = &first_internal_vert;
+		for (I j = 0; j < points; j++)
 		{
 			if (!vert_alloc[j].next)
 			{
-				Vert* next = vert_alloc+j;
+				Vert *next = vert_alloc + j;
 				*prev_inter = next;
-				prev_inter = (Vert**)&next->next;
+				prev_inter = (Vert **)&next->next;
 			}
 		}
 
 		if (errlog_proc)
 			errlog_proc(errlog_file, "\r[100] convex hull triangulation (%lld ms)\n", (uSec() - sort_stamp) / 1000);
 
-		return 3*i;
+		return 3 * i;
 	}
 
 	bool ReallocVerts(I points)
@@ -1226,7 +1217,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				vert_map = 0;
 
 				free(vert_alloc);
-				//delete [] vert_alloc;
+				// delete [] vert_alloc;
 				vert_alloc = 0;
 				max_verts = 0;
 			}
@@ -1242,10 +1233,10 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			}
 			*/
 
-			vert_alloc = (Vert*)malloc(sizeof(Vert) * points);
+			vert_alloc = (Vert *)malloc(sizeof(Vert) * points);
 
 			if (vert_alloc)
-				vert_map = (I*)malloc(sizeof(I) * (size_t)points);
+				vert_map = (I *)malloc(sizeof(I) * (size_t)points);
 
 			if (vert_alloc && vert_map)
 				max_verts = points;
@@ -1261,44 +1252,44 @@ struct CDelaBella2 : IDelaBella2<T,I>
 	}
 
 	// private
-	Face* FindConstraintOffenders(Vert* va, Vert* vb, Face*** ptail, Vert** restart)
+	Face *FindConstraintOffenders(Vert *va, Vert *vb, Face ***ptail, Vert **restart)
 	{
-		static const int rotate[3][3] = { {0,1,2},{1,2,0},{2,0,1} };
-		static const int other_vert[3][2] = { {1,2},{2,0},{0,1} };
+		static const int rotate[3][3] = {{0, 1, 2}, {1, 2, 0}, {2, 0, 1}};
+		static const int other_vert[3][2] = {{1, 2}, {2, 0}, {0, 1}};
 
 		// returns list of faces!
 		// with Face::index replaced with vertex indice opposite to the offending edge
 		// (we are about to change triangulation after all so indexes will change as well)
 		// and it's safe for detrimination of dela/hull (sign is preserved)
 
-		Face* list = 0;
-		Face** tail = &list;
+		Face *list = 0;
+		Face **tail = &list;
 
 		Iter it;
 
-		Face* first = (Face*)va->StartIterator(&it);
-		Face* face = first;
+		Face *first = (Face *)va->StartIterator(&it);
+		Face *face = first;
 
 		// find first face around va, containing offending edge
-		Vert* v0;
-		Vert* v1;
-		Face* N = 0;
+		Vert *v0;
+		Vert *v1;
+		Face *N = 0;
 		int a, b, c;
 
 		while (1)
 		{
 			if (!face->IsDelaunay())
 			{
-				face = (Face*)it.Next();
-				#ifdef DELABELLA_AUTOTEST
+				face = (Face *)it.Next();
+#ifdef DELABELLA_AUTOTEST
 				assert(face != first);
-				#endif
+#endif
 				continue;
 			}
 
 			a = it.around;
 			b = other_vert[a][0];
-			v0 = (Vert*)(face->v[b]);
+			v0 = (Vert *)(face->v[b]);
 			if (v0 == vb)
 			{
 				*tail = 0;
@@ -1307,7 +1298,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			}
 
 			c = other_vert[a][1];
-			v1 = (Vert*)(face->v[c]);
+			v1 = (Vert *)(face->v[c]);
 			if (v1 == vb)
 			{
 				*tail = 0;
@@ -1315,12 +1306,12 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				return list; // ab is already there
 			}
 
-			T a0b = predicates::adaptive::orient2d(va->x,va->y, v0->x,v0->y, vb->x,vb->y);
-			T a1b = predicates::adaptive::orient2d(va->x,va->y, v1->x,v1->y, vb->x,vb->y);
-			
+			T a0b = predicates::adaptive::orient2d(va->x, va->y, v0->x, v0->y, vb->x, vb->y);
+			T a1b = predicates::adaptive::orient2d(va->x, va->y, v1->x, v1->y, vb->x, vb->y);
+
 			if (a0b <= 0 && a1b >= 0)
 			{
-				// note: 
+				// note:
 				// check co-linearity only if v0,v1 are pointing
 				// to the right direction (from va to vb)
 
@@ -1341,35 +1332,37 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				}
 
 				// offending edge!
-				N = (Face*)face;
+				N = (Face *)face;
 				break;
 			}
 
-			face = (Face*)it.Next();
+			face = (Face *)it.Next();
 
-			#ifdef DELABELLA_AUTOTEST
+#ifdef DELABELLA_AUTOTEST
 			assert(face != first);
-			#endif
+#endif
 		}
 
 		while (1)
 		{
 			if (a)
 			{
-				// rotate N->v[] and N->f 'a' times 'backward' such offending edge appears opposite to v[0]
-				const int* r = rotate[a];
+				CheckFace(N);
 
-				Vert* v[3] = { (Vert*)N->v[0], (Vert*)N->v[1], (Vert*)N->v[2] };
+				// rotate N->v[] and N->f 'a' times 'backward' such offending edge appears opposite to v[0]
+				const int *r = rotate[a];
+
+				Vert *v[3] = {(Vert *)N->v[0], (Vert *)N->v[1], (Vert *)N->v[2]};
 				N->v[0] = v[r[0]];
 				N->v[1] = v[r[1]];
 				N->v[2] = v[r[2]];
 
-				Face* f[3] = { (Face*)N->f[0], (Face*)N->f[1], (Face*)N->f[2] };
+				Face *f[3] = {(Face *)N->f[0], (Face *)N->f[1], (Face *)N->f[2]};
 				N->f[0] = f[r[0]];
 				N->f[1] = f[r[1]];
 				N->f[2] = f[r[2]];
 
-				//if (classify)
+				// if (classify)
 				{
 					// rotate face_bits!
 					if (a == 1)
@@ -1377,14 +1370,16 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					else // a==2
 						N->RotateEdgeFlagsCCW();
 				}
+
+				CheckFace(N);
 			}
 
 			// add edge
 			*tail = N;
-			tail = (Face**)&N->next;
+			tail = (Face **)&N->next;
 
 			// what is our next face?
-			Face* F = (Face*)(N->f[0]);
+			Face *F = (Face *)(N->f[0]);
 			int d, e, f;
 
 			if (F->f[0] == N)
@@ -1393,8 +1388,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				e = 1;
 				f = 2;
 			}
-			else
-			if (F->f[1] == N)
+			else if (F->f[1] == N)
 			{
 				d = 1;
 				e = 2;
@@ -1407,7 +1401,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				f = 1;
 			}
 
-			Vert* vr = (Vert*)(F->v[d]);
+			Vert *vr = (Vert *)(F->v[d]);
 
 			if (vr == vb)
 			{
@@ -1419,7 +1413,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 			// is vr above or below ab ?
 			T abr = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, vr->x, vr->y);
-			
+
 			if (abr == 0)
 			{
 				*restart = vr;
@@ -1432,37 +1426,37 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			{
 				// above: de edge (a' = f vert)
 				a = f;
-				v0 = (Vert*)F->v[d];
-				v1 = (Vert*)F->v[e];
+				v0 = (Vert *)F->v[d];
+				v1 = (Vert *)F->v[e];
 				N = F;
 			}
 			else
 			{
 				// below: fd edge (a' = e vert)
 				a = e;
-				v0 = (Vert*)F->v[f];
-				v1 = (Vert*)F->v[d];
+				v0 = (Vert *)F->v[f];
+				v1 = (Vert *)F->v[d];
 				N = F;
 			}
 		}
 
-		#ifdef DELABELLA_AUTOTEST
+#ifdef DELABELLA_AUTOTEST
 		assert(0);
-		#endif
+#endif
 		*restart = 0;
 		*ptail = 0;
 		return 0;
 	}
 
 	// private:
-	bool FindEdgeFaces(const Vert* v1, const Vert* v2, Face* twin[2], int opposed[2])
+	bool FindEdgeFaces(const Vert *v1, const Vert *v2, Face *twin[2], int opposed[2])
 	{
-		static const int prev[3] = { 2,0,1 };
-		static const int next[3] = { 1,2,0 };
+		static const int prev[3] = {2, 0, 1};
+		static const int next[3] = {1, 2, 0};
 
 		Iter it;
-		Face* f = (Face*)v1->StartIterator(&it);
-		Face* e = f;
+		Face *f = (Face *)v1->StartIterator(&it);
+		Face *e = f;
 		do
 		{
 			if (f->v[prev[it.around]] == v2)
@@ -1472,20 +1466,20 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				{
 					twin[0] = f;
 					opposed[0] = next[it.around];
-					twin[1] = (Face*)it.Next();
+					twin[1] = (Face *)it.Next();
 					opposed[1] = prev[it.around];
 
-					#ifdef DELABELLA_AUTOTEST
+#ifdef DELABELLA_AUTOTEST
 					assert(twin[0]->f[opposed[0]] == twin[1]);
 					assert(twin[1]->f[opposed[1]] == twin[0]);
-					#endif
+#endif
 
 					return true;
 				}
 
-				Face* tmp_f = f;
+				Face *tmp_f = f;
 				int tmp_op = next[it.around];
-				f = (Face*)it.Next();
+				f = (Face *)it.Next();
 
 				if (f->IsDelaunay())
 				{
@@ -1494,25 +1488,25 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					twin[1] = tmp_f;
 					opposed[1] = tmp_op;
 
-					#ifdef DELABELLA_AUTOTEST
+#ifdef DELABELLA_AUTOTEST
 					assert(twin[0]->f[opposed[0]] == twin[1]);
 					assert(twin[1]->f[opposed[1]] == twin[0]);
-					#endif
+#endif
 
 					return true;
 				}
 			}
 			else
-				f = (Face*)it.Next();
+				f = (Face *)it.Next();
 		} while (f != e);
 
 		return false;
 	}
 
-	virtual I ConstrainEdges(I edges, const I* pa, const I* pb, size_t advance_bytes)
+	virtual I ConstrainEdges(I edges, const I *pa, const I *pb, size_t advance_bytes)
 	{
 		if (advance_bytes == 0)
-			advance_bytes = 2*sizeof(I);
+			advance_bytes = 2 * sizeof(I);
 
 		int unfixed = 0;
 
@@ -1533,341 +1527,94 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					errlog_proc(errlog_file, "\r[%2d%s] constraining ", p, p >= 100 ? "" : "%");
 			}
 
-			I a = *(const I*)((const char*)pa + (intptr_t)con * advance_bytes);
-			I b = *(const I*)((const char*)pb + (intptr_t)con * advance_bytes);
+			I a = *(const I *)((const char *)pa + (intptr_t)con * advance_bytes);
+			I b = *(const I *)((const char *)pb + (intptr_t)con * advance_bytes);
 
 			if (!first_dela_face || a == b)
 				continue;
 
 			// current
-			Vert* va = (Vert*)GetVertexByIndex(a);
+			Vert *va = (Vert *)GetVertexByIndex(a);
 			if (!va)
 				continue;
 
 			// destination
-			Vert* vc = (Vert*)GetVertexByIndex(b);
+			Vert *vc = (Vert *)GetVertexByIndex(b);
 			if (!vc)
 				continue;
 
-			do {
-			// 1. Make list of offenders
-			Face** tail = 0;
-			Vert* restart = 0;
-			Face* list = FindConstraintOffenders(va, vc, &tail, &restart);
-
-			if (!list)
+			do
 			{
-				if (restart)
+				// 1. Make list of offenders
+				Face **tail = 0;
+				Vert *restart = 0;
+				Face *list = FindConstraintOffenders(va, vc, &tail, &restart);
+
+				if (!list)
 				{
-					//if (classify)
+					if (restart)
 					{
-						Face* nf[2];
+						// if (classify)
+						{
+							Face *nf[2];
+							int op[2];
+
+#ifdef DELABELLA_AUTOTEST
+							assert(FindEdgeFaces(va, restart, nf, op));
+#else
+							FindEdgeFaces(va, restart, nf, op);
+#endif
+
+							nf[0]->ToggleEdgeFixed(op[0]);
+							nf[1]->ToggleEdgeFixed(op[1]);
+						}
+
+						va = restart;
+						continue;
+					}
+
+					// if (classify)
+					{
+						Face *nf[2];
 						int op[2];
 
-						#ifdef DELABELLA_AUTOTEST
-						assert(FindEdgeFaces(va, restart, nf, op));
-						#else
-						FindEdgeFaces(va, restart, nf, op);
-						#endif
+#ifdef DELABELLA_AUTOTEST
+						assert(FindEdgeFaces(va, vc, nf, op));
+#else
+						FindEdgeFaces(va, vc, nf, op);
+#endif
 
 						nf[0]->ToggleEdgeFixed(op[0]);
 						nf[1]->ToggleEdgeFixed(op[1]);
 					}
-
-					va = restart;
-					continue;
 				}
 
-				//if (classify)
+				Face *flipped = 0;
+
+				Vert *vb = restart ? restart : vc;
+
+				// will we relink'em back to dela and replace indexes?
+
+				// 2. Repeatedly until there are no offenders on the list
+				// - remove first edge from the list of offenders
+				// - if it forms concave quad diagonal, push it back to the list of offenders
+				// - otherwise do flip then:
+				//   - if flipped diagonal still intersects ab, push it back to the list of offenders
+				//   - otherwise push it to the list of flipped edges
+				while (list)
 				{
-					Face* nf[2];
-					int op[2];
-
-					#ifdef DELABELLA_AUTOTEST
-					assert(FindEdgeFaces(va, vc, nf, op));
-					#else
-					FindEdgeFaces(va, vc, nf, op);
-					#endif
-
-					nf[0]->ToggleEdgeFixed(op[0]);
-					nf[1]->ToggleEdgeFixed(op[1]);
-				}
-			}
-
-			Face* flipped = 0;
-
-			Vert* vb = restart ? restart : vc;
-
-			// will we relink'em back to dela and replace indexes?
-
-			// 2. Repeatedly until there are no offenders on the list
-			// - remove first edge from the list of offenders
-			// - if it forms concave quad diagonal, push it back to the list of offenders
-			// - otherwise do flip then:
-			//   - if flipped diagonal still intersects ab, push it back to the list of offenders
-			//   - otherwise push it to the list of flipped edges
-			while (list)
-			{
-				const int a = 0, b = 1, c = 2;
-
-				Face* N = list;
-				list = (Face*)N->next;
-				N->next = 0;
-
-				Vert* v0 = (Vert*)(N->v[b]);
-				Vert* v1 = (Vert*)(N->v[c]);
-
-				Face* F = (Face*)(N->f[a]);
-				int d, e, f;
-
-				if (F->f[0] == N)
-				{
-					d = 0;
-					e = 1;
-					f = 2;
-				}
-				else
-				if (F->f[1] == N)
-				{
-					d = 1;
-					e = 2;
-					f = 0;
-				}
-				else
-				{
-					d = 2;
-					e = 0;
-					f = 1;
-				}
-
-				Vert* v = (Vert*)N->v[0]; // may be not same as global va (if we have had a skip)
-				Vert* vr = (Vert*)(F->v[d]);
-
-				// is v,v0,vr,v1 a convex quad?
-				T v0r = predicates::adaptive::orient2d(v->x, v->y, v0->x, v0->y, vr->x, vr->y);
-				T v1r = predicates::adaptive::orient2d(v->x, v->y, v1->x, v1->y, vr->x, vr->y);
-				
-				if (v0r >= 0 || v1r <= 0)
-				{
-					// CONCAVE CUNT!
-					*tail = N;
-					tail = (Face**)&N->next;
-					continue;
-				}
-
-				#ifdef DELABELLA_AUTOTEST
-				assert(v0r < 0 && v1r > 0);
-				#endif
-
-				//if (classify)
-				{
-					if (N->IsEdgeFixed(a))
-					{
-						unfixed++;
-						#ifdef DELABELLA_AUTOTEST
-						assert(F->IsEdgeFixed(d));
-					}
-					else
-					{
-						assert(!F->IsEdgeFixed(d));
-						#endif
-					}
-				}
-
-				// it's convex, xa already checked
-				// if (l_a0r < r_a0r && l_a1r > r_a1r)
-				{
-					if (f == 0)
-					{
-						/*           *                             *
-							   va*  / \                      va*  / \
-								  \/   \                        \/   \
-								  /\ O  \                       /\ O  \
-							   v /  \    \v0                 v /  \    \v0
-								*----\----*---------*	      *----\----*---------*
-							   / \a   \ b/f\      q/	     / \'-,c\   a\      q/
-							  /   \  N \/   \  Q  /   -->   /   \f '-, N  \  Q  /
-							 /  P  \   /\ F  \   /		   /  P  \  F '-, b\   /
-							/p      \c/e \   d\ /		  /p      \e   \d'-,\ /
-						   *---------*----+----*		 *---------*----\----*
-									v1     \     vr		           v1    \    vr
-											*vb                           *vb
-						*/
-
-						Face* O = (Face*)N->f[c];
-
-						Face* P = (Face*)(N->f[b]);
-						int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
-
-						Face* Q = (Face*)(F->f[e]);
-						int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
-
-						// do flip
-						N->v[a] = v0;
-						N->v[b] = vr;
-						N->v[c] = v;
-						N->f[a] = F;
-						N->f[b] = O;
-						N->f[c] = Q;
-						F->v[f] = v;  // from v0
-						F->f[d] = P;  // from N
-						F->f[e] = N;  // from Q
-						P->f[p] = F;  // from N
-						Q->f[q] = N;  // from F
-
-						v0->sew = N;
-						v1->sew = F;
-
-						//if (classify)
-						{
-							// TRANSFER bits:
-							// N->b -> F->d
-							// N->c -> N->b
-							// F->e -> N->c
-
-							F->SetEdgeBits(d, N->GetEdgeBits(b));
-							N->SetEdgeBits(b, N->GetEdgeBits(c));
-							N->SetEdgeBits(c, F->GetEdgeBits(e));
-
-							if (v == va && vr == vb)
-							{
-								// set N->a & F->e
-								N->SetEdgeBits(a, 0b00001001);
-								F->SetEdgeBits(e, 0b00001001);
-							}
-							else
-							{
-								// clear N->a & F->e
-								N->SetEdgeBits(a, 0);
-								F->SetEdgeBits(e, 0);
-							}
-						}
-					}
-					else // e==0, (or d==0 but we don't care about it)
-					{
-						/*           *						       *
-									/p\						      /p\
-								   /   \					     /   \
-								  /  P  \					    /  P  \
-							   v /       \ v0                v /       \ v0
-								*---------*          	      *---------*
-							   / \a  N  b/f\         	     / \'-,e    f\
-						 va*__/___\_____/___\__*vb --> va*__/___\b '-, F__\__*vb
-							 /     \   /  F  \             /     \  N '-, d\
-							/   O   \c/e     d\  		  /   O   \a    c'-,\
-						   *---------*---------*		 *---------*---------*
-								   v1 \       / vr		         v1 \       / vr
-									   \  Q  /                       \  Q  /
-										\   /						  \   /
-										 \q/						   \q/
-										  *							    *
-						*/
-
-						Face* O = (Face*)N->f[b];
-
-						Face* P = (Face*)(N->f[c]);
-						int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
-
-						Face* Q = (Face*)(F->f[f]);
-						int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
-
-						// do flip
-						N->v[a] = v1;
-						N->v[b] = v;
-						N->v[c] = vr;
-						N->f[a] = F;
-						N->f[b] = Q;
-						N->f[c] = O;
-						F->v[e] = v;  // from v1
-						F->f[d] = P;  // from N
-						F->f[f] = N;  // from Q
-						P->f[p] = F;  // from N
-						Q->f[q] = N;  // from F
-
-						v0->sew = F;
-						v1->sew = N;
-
-						//if (classify)
-						{
-							// TRANSFER bits:
-							// N->c -> F->d
-							// N->b -> N->c
-							// F->f -> N->b
-							// F->e -> F->e
-
-							F->SetEdgeBits(d, N->GetEdgeBits(c));
-							N->SetEdgeBits(c, N->GetEdgeBits(b));
-							N->SetEdgeBits(b, F->GetEdgeBits(f));
-
-							if (v == va && vr == vb)
-							{
-								// set N->a & F->f
-								N->SetEdgeBits(a, 0b00001001);
-								F->SetEdgeBits(f, 0b00001001);
-							}
-							else
-							{
-								N->SetEdgeBits(a, 0);
-								F->SetEdgeBits(f, 0);
-							}
-						}
-					}
-
-					// if v and vr are on strongly opposite sides of the edge
-					// push N's edge back to offenders otherwise push to the new edges
-
-					if (va == v || vr == vb)
-					{
-
-						// resolved!
-						N->next = flipped;
-						flipped = N;
-					}
-					else
-					{
-						// check if v and vr are on the same side of a--b
-						T abv = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, v->x, v->y);
-						T abr = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, vr->x, vr->y);
-						
-						if (abv >= 0 && abr >= 0 || abv <= 0 && abr <= 0)
-						{
-							// resolved
-							N->next = flipped;
-							flipped = N;
-						}
-						else
-						{
-							// unresolved
-							*tail = N;
-							tail = (Face**)&N->next;
-						}
-					}
-				}
-			}
-
-			// 3. Repeatedly until no flip occurs
-			// for every edge from new edges list,
-			// if 2 triangles sharing the edge violates delaunay criterion
-			// do diagonal flip
-
-			while (1)
-			{
-				bool no_flips = true;
-				Face* N = flipped;
-				while (N)
-				{
-					if (N->v[1] == va && N->v[2] == vb || N->v[1] == vb && N->v[2] == va)
-					{
-						N = (Face*)N->next;
-						continue;
-					}
-
 					const int a = 0, b = 1, c = 2;
 
-					Vert* v0 = (Vert*)(N->v[b]);
-					Vert* v1 = (Vert*)(N->v[c]);
+					Face *N = list;
+					list = (Face *)N->next;
+					N->next = 0;
 
-					Face* F = (Face*)(N->f[a]);
+					CheckFace(N);
+
+					Vert *v0 = (Vert *)(N->v[b]);
+					Vert *v1 = (Vert *)(N->v[c]);
+
+					Face *F = (Face *)(N->f[a]);
 					int d, e, f;
 
 					if (F->f[0] == N)
@@ -1876,8 +1623,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 						e = 1;
 						f = 2;
 					}
-					else
-					if (F->f[1] == N)
+					else if (F->f[1] == N)
 					{
 						d = 1;
 						e = 2;
@@ -1890,50 +1636,72 @@ struct CDelaBella2 : IDelaBella2<T,I>
 						f = 1;
 					}
 
-					Vert* v = (Vert*)N->v[0];
-					Vert* vr = (Vert*)(F->v[d]);
+					Vert *v = (Vert *)N->v[0]; // may be not same as global va (if we have had a skip)
+					Vert *vr = (Vert *)(F->v[d]);
 
-					// fixed by calling F->cross()
-					// bool np = N->dotP(*vr);
-					// bool fp = F->dotP(*v);
-					// assert(np && fp || !np && !fp);
+					// is v,v0,vr,v1 a convex quad?
+					T v0r = predicates::adaptive::orient2d(v->x, v->y, v0->x, v0->y, vr->x, vr->y);
+					T v1r = predicates::adaptive::orient2d(v->x, v->y, v1->x, v1->y, vr->x, vr->y);
 
-					// can we check if it was flipped last time?
-					// if ((N->index & 0x40000000) == 0)
-					if (N->dotP(*vr) /* || F->dotP(*v)*/) 
+					if (v0r >= 0 || v1r <= 0)
 					{
-						//if (classify)
+						// CONCAVE CUNT!
+						*tail = N;
+						tail = (Face **)&N->next;
+						continue;
+					}
+
+#ifdef DELABELLA_AUTOTEST
+					assert(v0r < 0 && v1r > 0);
+#endif
+
+					// if (classify)
+					{
+						if (N->IsEdgeFixed(a))
 						{
-							// check if N->a or F->d is marked as fixed
-							// it should not ever happen -- i think
-							
-							// ... but if it does happen
-							// remember we've broken fixed edge
-							// then display warning right before we return
-
-							if (N->IsEdgeFixed(a))
-							{
-								printf("IT DOES HAPPEN!\n");
-								unfixed++;
-								#ifdef DELABELLA_AUTOTEST
-								assert(F->IsEdgeFixed(d));
-							}
-							else
-							{
-								assert(!F->IsEdgeFixed(d));
-								#endif
-							}
+							unfixed++;
+#ifdef DELABELLA_AUTOTEST
+							assert(F->IsEdgeFixed(d));
 						}
+						else
+						{
+							assert(!F->IsEdgeFixed(d));
+#endif
+						}
+					}
 
-						no_flips = false;
-
+					// it's convex, xa already checked
+					// if (l_a0r < r_a0r && l_a1r > r_a1r)
+					{
 						if (f == 0)
 						{
-							Face* O = (Face*)N->f[c];
-							Face* P = (Face*)(N->f[b]);
-							int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
-							Face* Q = (Face*)(F->f[e]);
-							int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
+							/*           *                             *
+								   va*  / \                      va*  / \
+									  \/   \                        \/   \
+									  /\ O  \                       /\ O  \
+								   v /  \    \v0                 v /  \    \v0
+									*----\----*---------*	      *----\----*---------*
+								   / \a   \ b/f\      q/	     / \'-,c\   a\      q/
+								  /   \  N \/   \  Q  /   -->   /   \f '-, N  \  Q  /
+								 /  P  \   /\ F  \   /		   /  P  \  F '-, b\   /
+								/p      \c/e \   d\ /		  /p      \e   \d'-,\ /
+							   *---------*----+----*		 *---------*----\----*
+										v1     \     vr		           v1    \    vr
+												*vb                           *vb
+							*/
+
+							Face *O = (Face *)N->f[c];
+							Face *P = (Face *)(N->f[b]);
+							Face *Q = (Face *)(F->f[e]);
+
+							// bad if O==P
+							// int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
+							// we have to look for Nac edge
+							int p = P->v[0] == v ? 2 : P->v[1] == v ? 0 : 1;
+
+							// int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
+							// look for Fdf edge
+							int q = Q->v[0] == vr ? 2 : Q->v[1] == vr ? 0 : 1;
 
 							// do flip
 							N->v[a] = v0;
@@ -1942,39 +1710,80 @@ struct CDelaBella2 : IDelaBella2<T,I>
 							N->f[a] = F;
 							N->f[b] = O;
 							N->f[c] = Q;
-							F->v[f] = v;  // from v0
-							F->f[d] = P;  // from N
-							F->f[e] = N;  // from Q
-							P->f[p] = F;  // from N
-							Q->f[q] = N;  // from F
+							F->v[f] = v; // from v0
+							F->f[d] = P; // from N
+							F->f[e] = N; // from Q
+							P->f[p] = F; // from N
+							Q->f[q] = N; // from F
 
 							v0->sew = N;
 							v1->sew = F;
 
-							//if (classify)
+							#ifdef DELABELLA_AUTOTEST
+							CheckFace(N);
+							CheckFace(F);
+							CheckFace(O);
+							CheckFace(P);
+							CheckFace(Q);
+							#endif
+
+							// if (classify)
 							{
 								// TRANSFER bits:
 								// N->b -> F->d
 								// N->c -> N->b
-								// F->f -> F->f
 								// F->e -> N->c
 
 								F->SetEdgeBits(d, N->GetEdgeBits(b));
 								N->SetEdgeBits(b, N->GetEdgeBits(c));
 								N->SetEdgeBits(c, F->GetEdgeBits(e));
 
-								// clear N->a & F->e
-								N->SetEdgeBits(a, 0);
-								F->SetEdgeBits(e, 0);
+								if (v == va && vr == vb)
+								{
+									// set N->a & F->e
+									N->SetEdgeBits(a, 0b00001001);
+									F->SetEdgeBits(e, 0b00001001);
+								}
+								else
+								{
+									// clear N->a & F->e
+									N->SetEdgeBits(a, 0);
+									F->SetEdgeBits(e, 0);
+								}
 							}
 						}
-						else
+						else // e==0, (or d==0 but we don't care about it)
 						{
-							Face* O = (Face*)N->f[b];
-							Face* P = (Face*)(N->f[c]);
-							int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
-							Face* Q = (Face*)(F->f[f]);
-							int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
+							/*           *						       *
+										/p\						      /p\
+									   /   \					     /   \
+									  /  P  \					    /  P  \
+								   v /       \ v0                v /       \ v0
+									*---------*          	      *---------*
+								   / \a  N  b/f\         	     / \'-,e    f\
+							 va*__/___\_____/___\__*vb --> va*__/___\b '-, F__\__*vb
+								 /     \   /  F  \             /     \  N '-, d\
+								/   O   \c/e     d\  		  /   O   \a    c'-,\
+							   *---------*---------*		 *---------*---------*
+									   v1 \       / vr		         v1 \       / vr
+										   \  Q  /                       \  Q  /
+											\   /						  \   /
+											 \q/						   \q/
+											  *							    *
+							*/
+
+							Face *O = (Face *)N->f[b];
+
+							Face *P = (Face *)(N->f[c]);
+							Face *Q = (Face *)(F->f[f]);
+							
+							// int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
+							// look for Nba edge
+							int p = P->v[0] == v0 ? 2 : P->v[1] == v0 ? 0 : 1;
+
+							//int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
+							// look for Fed edge
+							int q = Q->v[0] == v1 ? 2 : Q->v[1] == v1 ? 0 : 1;
 
 							// do flip
 							N->v[a] = v1;
@@ -1983,16 +1792,24 @@ struct CDelaBella2 : IDelaBella2<T,I>
 							N->f[a] = F;
 							N->f[b] = Q;
 							N->f[c] = O;
-							F->v[e] = v;  // from v1
-							F->f[d] = P;  // from N
-							F->f[f] = N;  // from Q
-							P->f[p] = F;  // from N
-							Q->f[q] = N;  // from F
+							F->v[e] = v; // from v1
+							F->f[d] = P; // from N
+							F->f[f] = N; // from Q
+							P->f[p] = F; // from N
+							Q->f[q] = N; // from F
 
 							v0->sew = F;
 							v1->sew = N;
 
-							//if (classify)
+							#ifdef DELABELLA_AUTOTEST
+							CheckFace(N);
+							CheckFace(F);
+							CheckFace(O);
+							CheckFace(P);
+							CheckFace(Q);
+							#endif
+
+							// if (classify)
 							{
 								// TRANSFER bits:
 								// N->c -> F->d
@@ -2004,43 +1821,276 @@ struct CDelaBella2 : IDelaBella2<T,I>
 								N->SetEdgeBits(c, N->GetEdgeBits(b));
 								N->SetEdgeBits(b, F->GetEdgeBits(f));
 
-								// clear N->a & F->f
-								N->SetEdgeBits(a, 0);
-								F->SetEdgeBits(f, 0);
+								if (v == va && vr == vb)
+								{
+									// set N->a & F->f
+									N->SetEdgeBits(a, 0b00001001);
+									F->SetEdgeBits(f, 0b00001001);
+								}
+								else
+								{
+									N->SetEdgeBits(a, 0);
+									F->SetEdgeBits(f, 0);
+								}
 							}
 						}
 
-						// can we un-mark not flipped somehow?
-						// N->index &= 0x3fffffff;
-						// F->index &= 0x3fffffff;
-					}
-					else
-					{
-						// can we mark it as not flipped somehow?
-						// N->index |= 0x40000000;
-					}
+						// if v and vr are on strongly opposite sides of the edge
+						// push N's edge back to offenders otherwise push to the new edges
 
-					N = (Face*)N->next;
+						if (va == v || vr == vb)
+						{
+
+							// resolved!
+							N->next = flipped;
+							flipped = N;
+						}
+						else
+						{
+							// check if v and vr are on the same side of a--b
+							T abv = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, v->x, v->y);
+							T abr = predicates::adaptive::orient2d(va->x, va->y, vb->x, vb->y, vr->x, vr->y);
+
+							if (abv >= 0 && abr >= 0 || abv <= 0 && abr <= 0)
+							{
+								// resolved
+								N->next = flipped;
+								flipped = N;
+							}
+							else
+							{
+								// unresolved
+								*tail = N;
+								tail = (Face **)&N->next;
+							}
+						}
+					}
 				}
 
-				if (no_flips)
-					break;
-			}
+				// 3. Repeatedly until no flip occurs
+				// for every edge from new edges list,
+				// if 2 triangles sharing the edge violates delaunay criterion
+				// do diagonal flip
 
-			va = restart;
+				while (1)
+				{
+					bool no_flips = true;
+					Face *N = flipped;
+					while (N)
+					{
+						if (N->v[1] == va && N->v[2] == vb || N->v[1] == vb && N->v[2] == va)
+						{
+							N = (Face *)N->next;
+							continue;
+						}
+
+						const int a = 0, b = 1, c = 2;
+
+						Vert *v0 = (Vert *)(N->v[b]);
+						Vert *v1 = (Vert *)(N->v[c]);
+
+						Face *F = (Face *)(N->f[a]);
+						int d, e, f;
+
+						if (F->f[0] == N)
+						{
+							d = 0;
+							e = 1;
+							f = 2;
+						}
+						else if (F->f[1] == N)
+						{
+							d = 1;
+							e = 2;
+							f = 0;
+						}
+						else
+						{
+							d = 2;
+							e = 0;
+							f = 1;
+						}
+
+						Vert *v = (Vert *)N->v[0];
+						Vert *vr = (Vert *)(F->v[d]);
+
+						// fixed by calling F->cross()
+						// bool np = N->dotP(*vr);
+						// bool fp = F->dotP(*v);
+						// assert(np && fp || !np && !fp);
+
+						// can we check if it was flipped last time?
+						// if ((N->index & 0x40000000) == 0)
+						if (N->dotP(*vr) /* || F->dotP(*v)*/)
+						{
+							// if (classify)
+							{
+								// check if N->a or F->d is marked as fixed
+								// it should not ever happen -- i think
+
+								// ... but if it does happen
+								// remember we've broken fixed edge
+								// then display warning right before we return
+
+								if (N->IsEdgeFixed(a))
+								{
+									printf("IT DOES HAPPEN!\n");
+									unfixed++;
+#ifdef DELABELLA_AUTOTEST
+									assert(F->IsEdgeFixed(d));
+								}
+								else
+								{
+									assert(!F->IsEdgeFixed(d));
+#endif
+								}
+							}
+
+							no_flips = false;
+
+							if (f == 0)
+							{
+								Face *O = (Face *)N->f[c];
+								Face *P = (Face *)(N->f[b]);
+								Face *Q = (Face *)(F->f[e]);
+
+								// bad if O==P
+								// int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
+								// we have to look for Nac edge
+								int p = P->v[0] == v ? 2 : P->v[1] == v ? 0 : 1;
+
+								// int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
+								// look for Fdf edge
+								int q = Q->v[0] == vr ? 2 : Q->v[1] == vr ? 0 : 1;
+
+								// do flip
+								N->v[a] = v0;
+								N->v[b] = vr;
+								N->v[c] = v;
+								N->f[a] = F;
+								N->f[b] = O;
+								N->f[c] = Q;
+								F->v[f] = v; // from v0
+								F->f[d] = P; // from N
+								F->f[e] = N; // from Q
+								P->f[p] = F; // from N
+								Q->f[q] = N; // from F
+
+								v0->sew = N;
+								v1->sew = F;
+
+								#ifdef DELABELLA_AUTOTEST
+								CheckFace(N);
+								CheckFace(F);
+								CheckFace(O);
+								CheckFace(P);
+								CheckFace(Q);
+								#endif
+
+								// if (classify)
+								{
+									// TRANSFER bits:
+									// N->b -> F->d
+									// N->c -> N->b
+									// F->f -> F->f
+									// F->e -> N->c
+
+									F->SetEdgeBits(d, N->GetEdgeBits(b));
+									N->SetEdgeBits(b, N->GetEdgeBits(c));
+									N->SetEdgeBits(c, F->GetEdgeBits(e));
+
+									// clear N->a & F->e
+									N->SetEdgeBits(a, 0);
+									F->SetEdgeBits(e, 0);
+								}
+							}
+							else
+							{
+								Face *O = (Face *)N->f[b];
+								Face *P = (Face *)(N->f[c]);
+								Face *Q = (Face *)(F->f[f]);
+
+								// int p = P->f[0] == N ? 0 : P->f[1] == N ? 1 : 2;
+								// look for Nba edge
+								int p = P->v[0] == v0 ? 2 : P->v[1] == v0 ? 0 : 1;
+
+								//int q = Q->f[0] == F ? 0 : Q->f[1] == F ? 1 : 2;
+								// look for Fed edge
+								int q = Q->v[0] == v1 ? 2 : Q->v[1] == v1 ? 0 : 1;																		
+
+								// do flip
+								N->v[a] = v1;
+								N->v[b] = v;
+								N->v[c] = vr;
+								N->f[a] = F;
+								N->f[b] = Q;
+								N->f[c] = O;
+								F->v[e] = v; // from v1
+								F->f[d] = P; // from N
+								F->f[f] = N; // from Q
+								P->f[p] = F; // from N
+								Q->f[q] = N; // from F
+
+								v0->sew = F;
+								v1->sew = N;
+
+								#ifdef DELABELLA_AUTOTEST
+								CheckFace(N);
+								CheckFace(F);
+								CheckFace(O);
+								CheckFace(P);
+								CheckFace(Q);
+								#endif
+
+								// if (classify)
+								{
+									// TRANSFER bits:
+									// N->c -> F->d
+									// N->b -> N->c
+									// F->f -> N->b
+									// F->e -> F->e
+
+									F->SetEdgeBits(d, N->GetEdgeBits(c));
+									N->SetEdgeBits(c, N->GetEdgeBits(b));
+									N->SetEdgeBits(b, F->GetEdgeBits(f));
+
+									// clear N->a & F->f
+									N->SetEdgeBits(a, 0);
+									F->SetEdgeBits(f, 0);
+								}
+							}
+
+							// can we un-mark not flipped somehow?
+							// N->index &= 0x3fffffff;
+							// F->index &= 0x3fffffff;
+						}
+						else
+						{
+							// can we mark it as not flipped somehow?
+							// N->index |= 0x40000000;
+						}
+
+						N = (Face *)N->next;
+					}
+
+					if (no_flips)
+						break;
+				}
+
+				va = restart;
 			} while (va);
 		}
 
 		// clean up the mess we've made with dela faces list !!!
 		I hull_faces = 2 * unique_points - 4;
-		Face** tail = &first_dela_face;
+		Face **tail = &first_dela_face;
 		I index = 0;
 		for (I i = 0; i < hull_faces; i++)
 		{
 			if (face_alloc[i].IsDelaunay())
 			{
 				*tail = face_alloc + i;
-				tail = (Face**)&face_alloc[i].next;
+				tail = (Face **)&face_alloc[i].next;
 				face_alloc[i].index = index++;
 			}
 		}
@@ -2058,46 +2108,46 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		return polygons;
 	}
 
-	virtual I FloodFill(bool invert, const typename IDelaBella2<T, I>::Simplex** exterior)
+	virtual I FloodFill(bool invert, const typename IDelaBella2<T, I>::Simplex **exterior)
 	{
 		if (!first_dela_face)
 			return 0;
-		
+
 		const I marker = -1;
 		const I seeded = -2;
 		uint8_t fill = invert ? 0b01000000 : 0;
 
-		// 0. seed list with boundary faces 
+		// 0. seed list with boundary faces
 		//    excluding ones with all their boundary edges marked as fixed odd times
 		//    - iterate boundary verts, iterate faces around, check boundary and fixed edges
 
-		Face* seed = 0;
-		Face* flip = 0;
+		Face *seed = 0;
+		Face *flip = 0;
 
-		Vert* v = first_boundary_vert;
-		Vert* e = v;
+		Vert *v = first_boundary_vert;
+		Vert *e = v;
 		do
 		{
 			Iter it;
-			Face* hull = (Face*)v->StartIterator(&it);
-			Face* dela = (Face*)it.Next();
+			Face *hull = (Face *)v->StartIterator(&it);
+			Face *dela = (Face *)it.Next();
 
 			while (hull->IsDelaunay())
 			{
 				hull = dela;
-				dela = (Face*)it.Next();
+				dela = (Face *)it.Next();
 			}
 
 			while (!dela->IsDelaunay())
 			{
 				hull = dela;
-				dela = (Face*)it.Next();
+				dela = (Face *)it.Next();
 			}
 
 			// ok we're on the boundary dela(around,around+1)
 
-			static const int next[3] = { 1,2,0 };
-			static const int inside[3] = { 2,0,1 };
+			static const int next[3] = {1, 2, 0};
+			static const int inside[3] = {2, 0, 1};
 
 			int odds = 0, bounds = 1;
 			if (dela->flags & (0b1000 << inside[it.around]))
@@ -2127,6 +2177,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					seed = dela;
 				}
 			}
+			/*
 			else
 			if (!seed)
 			{
@@ -2138,33 +2189,36 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					flip = dela;
 				}
 			}
+			*/
 
-			v = (Vert*)v->next;
+			v = (Vert *)v->next;
 		} while (v != e);
 
 		if (!seed)
 		{
-			// invert if boundary is fully 
+			// invert if boundary is fully
 			// covered with odd-fixed edges
 			seed = flip;
 			flip = 0;
 			fill ^= 0b01000000;
+
+			assert(0); // uncomment flip
 		}
 
 		while (seed)
 		{
-			Face* stack = seed;
+			Face *stack = seed;
 			seed = 0;
 			// 1. convert seed list to stack
 			//    - for every face in list
 			//      - overwrite interior/exterior flag with current fill
 			//      - mark as proceed index = -1
-			Face* f = stack;
+			Face *f = stack;
 			while (f)
 			{
 				f->flags = (f->flags & 0b00111111) | fill;
 				f->index = marker;
-				f = (Face*)f->next;
+				f = (Face *)f->next;
 			}
 
 			// 2. until stack is not empty
@@ -2182,11 +2236,11 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			while (stack)
 			{
 				f = stack;
-				stack = (Face*)f->next;
+				stack = (Face *)f->next;
 
 				for (int i = 0; i < 3; i++)
 				{
-					Face* n = (Face*)f->f[i];
+					Face *n = (Face *)f->f[i];
 					if (n->index != marker && n->IsDelaunay())
 					{
 						if ((f->flags & (0b1000 << i)) == 0)
@@ -2195,14 +2249,14 @@ struct CDelaBella2 : IDelaBella2<T,I>
 							{
 								// can be slow - check / rethink
 								// try reverse pushing !!!
-								Face** p = &seed;
-								Face* s = seed;
+								Face **p = &seed;
+								Face *s = seed;
 								while (s != n)
 								{
-									p = (Face**)&s->next;
-									s = (Face*)s->next;
+									p = (Face **)&s->next;
+									s = (Face *)s->next;
 								}
-								*p = (Face*)n->next;
+								*p = (Face *)n->next;
 							}
 
 							n->next = stack;
@@ -2211,8 +2265,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 							n->flags = (n->flags & 0b00111111) | fill;
 							n->index = marker;
 						}
-						else
-						if (n->index != seeded)
+						else if (n->index != seeded)
 						{
 							n->index = seeded;
 							n->next = seed;
@@ -2230,7 +2283,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		}
 
 		// 4. rebuild face list and assign indexes
-		
+
 		// - run through face_alloc make 3 lists:
 		//   - interior
 		//   - exterior
@@ -2243,8 +2296,8 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		first_hull_face = 0;
 		first_dela_face = 0;
 
-		Face* last_interior_face = 0;
-		Face* first_exterior_face = 0;
+		Face *last_interior_face = 0;
+		Face *first_exterior_face = 0;
 
 		I interior = 0;
 
@@ -2254,7 +2307,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		for (int i = 0; i < faces; i++)
 		{
-			Face* f = face_alloc + i;
+			Face *f = face_alloc + i;
 			if (f->IsDelaunay())
 			{
 				if (f->flags & 0b01000000)
@@ -2297,27 +2350,26 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		return interior;
 	}
 
-	virtual I Polygonize(const typename IDelaBella2<T,I>::Simplex* poly[])
+	virtual I Polygonize(const typename IDelaBella2<T, I>::Simplex *poly[])
 	{
 		const I marker = (I)(-1);
-		
 
 		uint64_t time0 = uSec();
-		Face** buf = 0;
+		Face **buf = 0;
 		if (!poly)
 		{
-			buf = (Face**)malloc(sizeof(Face*) * (size_t)out_verts / 3);
-			poly = (const typename IDelaBella2<T,I>::Simplex**)buf;
+			buf = (Face **)malloc(sizeof(Face *) * (size_t)out_verts / 3);
+			poly = (const typename IDelaBella2<T, I>::Simplex **)buf;
 			if (!poly)
 				return -1;
 		}
 
 		// clear poly indices;
-		Face* f = first_dela_face;
+		Face *f = first_dela_face;
 		while (f)
 		{
 			f->index = marker;
-			f = (Face*)f->next;
+			f = (Face *)f->next;
 		}
 
 		I num = 0;
@@ -2341,16 +2393,16 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			i++;
 
 			bool new_poly = true;
-			Face* next = (Face*)f->next;
+			Face *next = (Face *)f->next;
 			for (int i = 0; i < 3; i++)
 			{
-				//if (classify)
+				// if (classify)
 				{
 					if (f->IsEdgeFixed(i))
 						continue;
 				}
 
-				Face* a = (Face*)f->f[i];
+				Face *a = (Face *)f->f[i];
 
 				I index = a->index;
 
@@ -2359,8 +2411,8 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					int j = 0;
 					for (; j < 3; j++)
 					{
-						Vert* v = (Vert*)a->v[j];
-						if (v!=f->v[0] && v!=f->v[1] && v!=f->v[2] && !f->dot0(*v))
+						Vert *v = (Vert *)a->v[j];
+						if (v != f->v[0] && v != f->v[1] && v != f->v[2] && !f->dot0(*v))
 							break;
 					}
 
@@ -2370,12 +2422,12 @@ struct CDelaBella2 : IDelaBella2<T,I>
 						if (dest != marker)
 						{
 							// merging polys !!!
-							Face* m = (Face*)poly[index];
+							Face *m = (Face *)poly[index];
 							while (m)
 							{
-								Face* n = (Face*)m->next;
+								Face *n = (Face *)m->next;
 								m->index = dest;
-								m->next = (Face*)poly[dest];
+								m->next = (Face *)poly[dest];
 								poly[dest] = m;
 								m = n;
 							}
@@ -2387,12 +2439,12 @@ struct CDelaBella2 : IDelaBella2<T,I>
 								index = num - 1;
 								poly[dest] = 0;
 
-								m = (Face*)poly[index];
+								m = (Face *)poly[index];
 								while (m)
 								{
-									Face* n = (Face*)m->next;
+									Face *n = (Face *)m->next;
 									m->index = dest;
-									m->next = (Face*)poly[dest];
+									m->next = (Face *)poly[dest];
 									poly[dest] = m;
 									m = n;
 								}
@@ -2405,7 +2457,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 							new_poly = false;
 							// merge f with existing poly
 							f->index = index;
-							f->next = (Face*)poly[index];
+							f->next = (Face *)poly[index];
 							poly[index] = f;
 						}
 					}
@@ -2425,7 +2477,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		polygons = num;
 
-		#if 1
+#if 1
 		// ALTER POST PROC:
 		// re-order triangles in every polygon and re-order indices in faces:
 		// - first face defines first 3 verts in contour with v[0],v[1],v[2]
@@ -2433,25 +2485,25 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		// thay can form fan or strip or arbitraty mix of both
 		// without changing existing edges!
 
-		for (I p = num-1; p >= 0; p--)
+		for (I p = num - 1; p >= 0; p--)
 		{
-			Face* f = (Face*)(poly[p]);
+			Face *f = (Face *)(poly[p]);
 			if (!f->next)
 			{
 				// single triangle
 				// just link into list of polys
 				if (p < num - 1)
-					f->next = (Face*)poly[p + 1];
+					f->next = (Face *)poly[p + 1];
 				continue;
 			}
 
-			Face* first = 0;
+			Face *first = 0;
 			// break list appart
 			// so we can unmark all poly faces
 
 			while (f)
 			{
-				Face* n = (Face*)f->next;
+				Face *n = (Face *)f->next;
 
 				if (!first)
 				{
@@ -2471,20 +2523,21 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				f = n;
 			}
 
-			#ifdef DELABELLA_AUTOTEST
+#ifdef DELABELLA_AUTOTEST
 			assert(first);
-			#endif
+#endif
 
-			Face* list = first; // here list is empty, first is used as sentinel
+			Face *list = first; // here list is empty, first is used as sentinel
 
 			f = first; // current face
 
-			Face* last = 0; // will be one inserted right after first
-			
+			Face *last = 0; // will be one inserted right after first
+
 			bool step_on = false; // is current vertex inserted
 
 			Iter it;
-			f->StartIterator(&it, f->f[0]->index == p ? 2 : f->f[1]->index == p ? 0 : 1);
+			f->StartIterator(&it, f->f[0]->index == p ? 2 : f->f[1]->index == p ? 0
+																				: 1);
 
 			int dbg = 0;
 
@@ -2502,8 +2555,8 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					// rotate such it.around becomes 0
 					if (it.around != 0)
 					{
-						Face* fr = (Face*)f->f[0];
-						Vert* vr = (Vert*)f->v[0];
+						Face *fr = (Face *)f->f[0];
+						Vert *vr = (Vert *)f->v[0];
 
 						if (it.around == 1)
 						{
@@ -2514,7 +2567,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 							f->v[1] = f->v[2];
 							f->v[2] = vr;
 
-							//if (classify)
+							// if (classify)
 							{
 								f->RotateEdgeFlagsCW();
 							}
@@ -2528,7 +2581,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 							f->v[2] = f->v[1];
 							f->v[1] = vr;
 
-							//if (classify)
+							// if (classify)
 							{
 								f->RotateEdgeFlagsCCW();
 							}
@@ -2539,18 +2592,18 @@ struct CDelaBella2 : IDelaBella2<T,I>
 					}
 				}
 
-				static const int next_probe[] = { 1,2,0 };
+				static const int next_probe[] = {1, 2, 0};
 				if (f->f[next_probe[it.around]]->index != p)
 				{
 					// step on other leg:
 					// and restart iterator
-					static const int other_leg[3] = { 2,0,1 };
+					static const int other_leg[3] = {2, 0, 1};
 					f->StartIterator(&it, other_leg[it.around]);
 					step_on = false;
 					continue;
 				}
 
-				f = (Face*)it.Next();
+				f = (Face *)it.Next();
 				if (f == first)
 					break;
 			}
@@ -2560,25 +2613,25 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			list = first;
 
 			// link last face with first face in next poly
-			last->next = (p < num - 1) ? (Face*)poly[p + 1] : 0;
+			last->next = (p < num - 1) ? (Face *)poly[p + 1] : 0;
 
 			// store ordered list in poly
 			poly[p] = list;
 		}
 
-		#else
+#else
 		// merge polys into single list
 		// they are separated by indexes
-		for (int i = 0; i < num-1; i++)
+		for (int i = 0; i < num - 1; i++)
 		{
-			f = (Face*)poly[i];
+			f = (Face *)poly[i];
 			while (f->next)
-				f = (Face*)f->next;
-			f->next = (Face*)poly[i + 1];
+				f = (Face *)f->next;
+			f->next = (Face *)poly[i + 1];
 		}
-		#endif
+#endif
 
-		first_dela_face = (Face*)poly[0];
+		first_dela_face = (Face *)poly[0];
 
 		if (buf)
 			free(buf);
@@ -2589,7 +2642,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		return num;
 	}
 
-	virtual I Triangulate(I points, const T* x, const T* y, size_t advance_bytes)
+	virtual I Triangulate(I points, const T *x, const T *y, size_t advance_bytes)
 	{
 		// const size_t max_triangulate_indices = (size_t)points * 6 - 15;
 		// const size_t max_voronoi_edge_indices = (size_t)points * 6 - 12;
@@ -2604,10 +2657,10 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		if (!x)
 			return 0;
-		
+
 		if (!y)
 			y = x + 1;
-		
+
 		if (advance_bytes < sizeof(T) * 2)
 			advance_bytes = sizeof(T) * 2;
 
@@ -2616,10 +2669,10 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		for (I i = 0; i < points; i++)
 		{
-			Vert* v = vert_alloc + i;
+			Vert *v = vert_alloc + i;
 			v->i = i;
-			v->x = *(const T*)((const char*)x + i*advance_bytes);
-			v->y = *(const T*)((const char*)y + i*advance_bytes);
+			v->x = *(const T *)((const char *)x + i * advance_bytes);
+			v->y = *(const T *)((const char *)y + i * advance_bytes);
 		}
 
 		out_hull_faces = 0;
@@ -2636,13 +2689,13 @@ struct CDelaBella2 : IDelaBella2<T,I>
 
 		if (face_alloc)
 		{
-			//delete [] face_alloc;
+			// delete [] face_alloc;
 			free(face_alloc);
 		}
 
 		if (vert_alloc)
 		{
-			//delete [] vert_alloc;
+			// delete [] vert_alloc;
 			free(vert_alloc);
 		}
 
@@ -2682,40 +2735,40 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		return polygons;
 	}
 
-	virtual const typename IDelaBella2<T,I>::Simplex* GetFirstDelaunaySimplex() const
+	virtual const typename IDelaBella2<T, I>::Simplex *GetFirstDelaunaySimplex() const
 	{
 		return first_dela_face;
 	}
 
-	virtual const typename IDelaBella2<T,I>::Simplex* GetFirstHullSimplex() const
+	virtual const typename IDelaBella2<T, I>::Simplex *GetFirstHullSimplex() const
 	{
 		return first_hull_face;
 	}
 
-	virtual const typename IDelaBella2<T,I>::Vertex* GetFirstBoundaryVertex() const
+	virtual const typename IDelaBella2<T, I>::Vertex *GetFirstBoundaryVertex() const
 	{
 		return first_boundary_vert;
 	}
 
-	virtual const typename IDelaBella2<T,I>::Vertex* GetFirstInternalVertex() const
+	virtual const typename IDelaBella2<T, I>::Vertex *GetFirstInternalVertex() const
 	{
 		return first_internal_vert;
 	}
 
-	virtual const typename IDelaBella2<T,I>::Vertex* GetVertexByIndex(I i) const
+	virtual const typename IDelaBella2<T, I>::Vertex *GetVertexByIndex(I i) const
 	{
 		if (i < 0 || i >= inp_verts)
 			return 0;
 		return vert_alloc + vert_map[i];
 	}
 
-	virtual void SetErrLog(int(*proc)(void* stream, const char* fmt, ...), void* stream)
+	virtual void SetErrLog(int (*proc)(void *stream, const char *fmt, ...), void *stream)
 	{
 		errlog_proc = proc;
 		errlog_file = stream;
 	}
 
-	virtual I GenVoronoiDiagramVerts(T* x, T* y, size_t advance_bytes) const
+	virtual I GenVoronoiDiagramVerts(T *x, T *y, size_t advance_bytes) const
 	{
 		if (!first_dela_face)
 			return 0;
@@ -2730,7 +2783,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		if (advance_bytes < sizeof(T) * 2)
 			advance_bytes = sizeof(T) * 2;
 
-		const Face* f = first_dela_face;
+		const Face *f = first_dela_face;
 		while (f)
 		{
 			const T v1x = f->v[1]->x - f->v[0]->x;
@@ -2749,41 +2802,41 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			// we possibly calc it multiple times
 			// and overwrite already calculated centers
 			size_t offs = advance_bytes * (size_t)f->index;
-			*(T*)((char*)x + offs) = cx;
-			*(T*)((char*)y + offs) = cy;
+			*(T *)((char *)x + offs) = cx;
+			*(T *)((char *)y + offs) = cy;
 
-			f = (Face*)f->next;
+			f = (Face *)f->next;
 		}
 
 		{
 			size_t offs = advance_bytes * (size_t)polys;
-			x = (T*)((char*)x + offs);
-			y = (T*)((char*)y + offs);
+			x = (T *)((char *)x + offs);
+			y = (T *)((char *)y + offs);
 		}
 
-		Vert* prev = first_boundary_vert;
-		Vert* vert = (Vert*)prev->next;
+		Vert *prev = first_boundary_vert;
+		Vert *vert = (Vert *)prev->next;
 		for (I i = 0; i < contour; i++)
 		{
 			T nx = prev->y - vert->y;
 			T ny = vert->x - prev->x;
 
-			T nn = 1/sqrt(nx * nx + ny * ny);
+			T nn = 1 / sqrt(nx * nx + ny * ny);
 			nx *= nn;
 			ny *= nn;
 
 			size_t offs = advance_bytes * (size_t)i;
-			*(T*)((char*)x + offs) = nx;
-			*(T*)((char*)y + offs) = ny;
+			*(T *)((char *)x + offs) = nx;
+			*(T *)((char *)y + offs) = ny;
 
 			prev = vert;
-			vert = (Vert*)vert->next;
+			vert = (Vert *)vert->next;
 		}
 
 		return ret;
 	}
 
-	virtual I GenVoronoiDiagramEdges(I* indices, size_t advance_bytes) const
+	virtual I GenVoronoiDiagramEdges(I *indices, size_t advance_bytes) const
 	{
 		if (!first_dela_face)
 			return 0;
@@ -2801,14 +2854,14 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		const I contour = out_boundary_verts;
 		const I inter = verts - contour;
 
-		I* idx = indices;
+		I *idx = indices;
 
-		Vert* vert = first_internal_vert;
+		Vert *vert = first_internal_vert;
 		for (I i = 0; i < inter; i++)
 		{
 			Iter it;
-			Face* t = (Face*)vert->StartIterator(&it);
-			Face* e = t;
+			Face *t = (Face *)vert->StartIterator(&it);
+			Face *e = t;
 
 			I a = t->index; // begin
 			do
@@ -2817,12 +2870,12 @@ struct CDelaBella2 : IDelaBella2<T,I>
 				if (a < b)
 				{
 					*idx = a;
-					idx = (I*)((char*)idx + advance_bytes);
+					idx = (I *)((char *)idx + advance_bytes);
 					*idx = b;
-					idx = (I*)((char*)idx + advance_bytes);
+					idx = (I *)((char *)idx + advance_bytes);
 				}
 				a = b;
-				t = (Face*)it.Next();
+				t = (Face *)it.Next();
 			} while (t != e);
 
 			// loop closing seg
@@ -2830,17 +2883,17 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			if (a < b)
 			{
 				*idx = a;
-				idx = (I*)((char*)idx + advance_bytes);
+				idx = (I *)((char *)idx + advance_bytes);
 				*idx = b;
-				idx = (I*)((char*)idx + advance_bytes);
+				idx = (I *)((char *)idx + advance_bytes);
 			}
 			a = b;
 
-			vert = (Vert*)vert->next;
+			vert = (Vert *)vert->next;
 		}
 
-		Vert* prev = first_boundary_vert;
-		vert = (Vert*)prev->next;
+		Vert *prev = first_boundary_vert;
+		vert = (Vert *)prev->next;
 		for (I i = 0; i < contour; i++)
 		{
 			I a = i + polys; // begin
@@ -2848,7 +2901,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			// iterate all dela faces around prev
 			// add their voro-vert index == dela face index
 			Iter it;
-			Face* t = (Face*)prev->StartIterator(&it);
+			Face *t = (Face *)prev->StartIterator(&it);
 
 			// it starts at random face, so lookup the prev->vert edge
 			while (1)
@@ -2860,7 +2913,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 						t->v[2] == prev && t->v[0] == vert)
 						break;
 				}
-				t = (Face*)it.Next();
+				t = (Face *)it.Next();
 			}
 
 			// now iterate around, till we're inside the boundary
@@ -2868,40 +2921,40 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			{
 				I b = t->index;
 
-				if (a<b)
+				if (a < b)
 				{
 					*idx = a;
-					idx = (I*)((char*)idx + advance_bytes);
+					idx = (I *)((char *)idx + advance_bytes);
 					*idx = b;
-					idx = (I*)((char*)idx + advance_bytes);
+					idx = (I *)((char *)idx + advance_bytes);
 				}
 				a = b;
 
-				t = (Face*)it.Next();
+				t = (Face *)it.Next();
 			}
 
 			I b = (i == 0 ? contour - 1 : i - 1) + polys; // loop-wrapping!
 			if (a < b)
 			{
 				*idx = a;
-				idx = (I*)((char*)idx + advance_bytes);
+				idx = (I *)((char *)idx + advance_bytes);
 				*idx = b;
-				idx = (I*)((char*)idx + advance_bytes);
+				idx = (I *)((char *)idx + advance_bytes);
 			}
 			a = b;
 
 			prev = vert;
-			vert = (Vert*)vert->next;
+			vert = (Vert *)vert->next;
 		}
 
-		#ifdef DELABELLA_AUTOTEST
-		assert(((char*)idx-(char*)indices) / advance_bytes == ret);
-		#endif
+#ifdef DELABELLA_AUTOTEST
+		assert(((char *)idx - (char *)indices) / advance_bytes == ret);
+#endif
 
 		return ret;
 	}
 
-	virtual I GenVoronoiDiagramPolys(I* indices, size_t advance_bytes, I* closed_indices) const
+	virtual I GenVoronoiDiagramPolys(I *indices, size_t advance_bytes, I *closed_indices) const
 	{
 		if (!first_dela_face)
 			return 0;
@@ -2920,50 +2973,50 @@ struct CDelaBella2 : IDelaBella2<T,I>
 		const I inter = verts - contour;
 		const I poly_ending = ~0;
 
-		I* idx = indices;
-		
+		I *idx = indices;
+
 		I closed = 0;
-		Vert* vert = first_internal_vert;
+		Vert *vert = first_internal_vert;
 		for (I i = 0; i < inter; i++)
 		{
 			Iter it;
-			Face* t = (Face*)vert->StartIterator(&it);
-			Face* e = t;
+			Face *t = (Face *)vert->StartIterator(&it);
+			Face *e = t;
 
 			do
 			{
 				I a = t->index;
 				*idx = a;
-				idx = (I*)((char*)idx + advance_bytes);
+				idx = (I *)((char *)idx + advance_bytes);
 				closed++;
 
-				t = (Face*)it.Next();
+				t = (Face *)it.Next();
 			} while (t != e);
 
 			// loop closing seg
 			I a = poly_ending;
 			*idx = a;
-			idx = (I*)((char*)idx + advance_bytes);
+			idx = (I *)((char *)idx + advance_bytes);
 			closed++;
 
-			vert = (Vert*)vert->next;
+			vert = (Vert *)vert->next;
 		}
 
 		if (closed_indices)
 			*closed_indices = closed;
 
-		Vert* prev = first_boundary_vert;
-		vert = (Vert*)prev->next;
+		Vert *prev = first_boundary_vert;
+		vert = (Vert *)prev->next;
 		for (I i = 0; i < contour; i++)
 		{
 			I a = i + polys; // begin
 			*idx = a;
-			idx = (I*)((char*)idx + advance_bytes);
+			idx = (I *)((char *)idx + advance_bytes);
 
 			// iterate all dela faces around prev
 			// add their voro-vert index == dela face index
 			Iter it;
-			Face* t = (Face*)prev->StartIterator(&it);
+			Face *t = (Face *)prev->StartIterator(&it);
 
 			// it starts at random face, so lookup the prev->vert edge
 			while (1)
@@ -2975,7 +3028,7 @@ struct CDelaBella2 : IDelaBella2<T,I>
 						t->v[2] == prev && t->v[0] == vert)
 						break;
 				}
-				t = (Face*)it.Next();
+				t = (Face *)it.Next();
 			}
 
 			// now iterate around, till we're inside the boundary
@@ -2983,38 +3036,172 @@ struct CDelaBella2 : IDelaBella2<T,I>
 			{
 				I a = t->index;
 				*idx = a;
-				idx = (I*)((char*)idx + advance_bytes);
+				idx = (I *)((char *)idx + advance_bytes);
 
-				t = (Face*)it.Next();
+				t = (Face *)it.Next();
 			}
 
 			a = (i == 0 ? contour - 1 : i - 1) + polys; // loop-wrapping!
 			*idx = a;
-			idx = (I*)((char*)idx + advance_bytes);
+			idx = (I *)((char *)idx + advance_bytes);
 
 			a = poly_ending;
 			*idx = a;
-			idx = (I*)((char*)idx + advance_bytes);
+			idx = (I *)((char *)idx + advance_bytes);
 
 			prev = vert;
-			vert = (Vert*)vert->next;
+			vert = (Vert *)vert->next;
 		}
 
-		#ifdef DELABELLA_AUTOTEST
-		assert(((char*)idx - (char*)indices) / advance_bytes == ret);
-		#endif
+#ifdef DELABELLA_AUTOTEST
+		assert(((char *)idx - (char *)indices) / advance_bytes == ret);
+#endif
 
 		return verts;
+	}
+
+	// private:
+	void CheckVert(Vert *v) const
+	{
+		int all_faces = out_hull_faces + out_verts / 3;
+
+		assert(v - vert_alloc >= 0);
+		assert(v - vert_alloc < unique_points);
+
+		Face *f = (Face *)v->sew;
+		assert(f);
+		assert(f - face_alloc >= 0);
+		assert(f - face_alloc < all_faces);
+
+		int refs = 0;
+		for (int i = 0; i < 3; i++)
+		{
+			if (f->v[i] == v)
+				refs++;
+		}
+
+		assert(refs == 1);
+	}
+
+	void CheckFace(Face *f) const
+	{
+		int all_faces = out_hull_faces + out_verts / 3;
+
+		assert(f - face_alloc >= 0);
+		assert(f - face_alloc < all_faces);
+
+		for (int i = 0; i < 3; i++)
+		{
+			assert(f->v[i]);
+			assert((Vert *)f->v[i] - vert_alloc >= 0);
+			assert((Vert *)f->v[i] - vert_alloc < unique_points);
+		}
+
+		assert(f->v[0] != f->v[1] && f->v[1] != f->v[2] && f->v[2] != f->v[0]);
+
+		for (int i = 0; i < 3; i++)
+		{
+			assert(f->f[i]);
+			assert((Face *)f->f[i] - face_alloc >= 0);
+			assert((Face *)f->f[i] - face_alloc < all_faces);
+		}
+
+		assert(f->f[0] != f && f->f[1] != f && f->f[2] != f);
+
+		// check back refs
+		// TODO: check flags
+		Vert *fv[][2] =
+			{
+				{(Vert *)f->v[1], (Vert *)f->v[2]},
+				{(Vert *)f->v[2], (Vert *)f->v[0]},
+				{(Vert *)f->v[0], (Vert *)f->v[1]}};
+		for (int i = 0; i < 3; i++)
+		{
+			Face *h = (Face *)f->f[i];
+			Vert *a = fv[i][0];
+			Vert *b = fv[i][1];
+			if (h->v[0] == b && h->v[1] == a)
+				assert(h->f[2] == f);
+			else if (h->v[1] == b && h->v[2] == a)
+				assert(h->f[0] == f);
+			else
+			{
+				assert(h->v[2] == b && h->v[0] == a);
+				assert(h->f[1] == f);
+			}
+		}
+	}
+
+	virtual void CheckTopology() const
+	{
+		assert(first_boundary_vert);
+		if (unique_points > out_boundary_verts)
+			assert(first_internal_vert);
+		assert(first_internal_vert != first_boundary_vert);
+
+		{
+			int check = 0;
+			Vert *v = first_boundary_vert;
+			while (v)
+			{
+				CheckVert(v);
+				check++;
+				v = (Vert *)v->next;
+				if (v == first_boundary_vert)
+					break;
+			}
+			assert(check == out_boundary_verts);
+		}
+
+		{
+			int check = 0;
+			Vert *v = first_internal_vert;
+			while (v)
+			{
+				CheckVert(v);
+				check++;
+				v = (Vert *)v->next;
+			}
+			assert(check == unique_points - out_boundary_verts);
+		}
+
+		assert(first_dela_face);
+		assert(first_hull_face);
+		assert(first_dela_face != first_hull_face);
+
+		{
+			int check = 0;
+			Face *f = first_dela_face;
+			while (f)
+			{
+				CheckFace(f);
+				check++;
+				f = (Face *)f->next;
+			}
+			assert(check == out_verts / 3);
+		}
+
+		{
+			int check = 0;
+			Face *f = first_hull_face;
+			while (f)
+			{
+				CheckFace(f);
+				check++;
+				f = (Face *)f->next;
+			}
+			assert(check == out_hull_faces);
+		}
 	}
 };
 
 template <typename T, typename I>
-IDelaBella2<T,I>* IDelaBella2<T,I>::Create()
+IDelaBella2<T, I> *IDelaBella2<T, I>::Create()
 {
-	IDelaBella2<T, I>* ret = 0;
+	IDelaBella2<T, I> *ret = 0;
 	try
-	{ 
-		ret = new CDelaBella2<T,I>;
+	{
+		ret = new CDelaBella2<T, I>;
 	}
 	catch (...)
 	{
@@ -3023,26 +3210,25 @@ IDelaBella2<T,I>* IDelaBella2<T,I>::Create()
 	return ret;
 }
 
-template<typename T, typename I>
-const T CDelaBella2<T,I>::Face::iccerrboundA = ((T(10) + T(96) * std::exp2(-(T)std::numeric_limits<T>::digits)) * std::exp2(-(T)std::numeric_limits<T>::digits));
+template <typename T, typename I>
+const T CDelaBella2<T, I>::Face::iccerrboundA = ((T(10) + T(96) * std::exp2(-(T)std::numeric_limits<T>::digits)) * std::exp2(-(T)std::numeric_limits<T>::digits));
 
-template<typename T, typename I>
-const T CDelaBella2<T,I>::Vert::resulterrbound = (T( 3) + T(   8) * std::exp2(-(T)std::numeric_limits<T>::digits)) * std::exp2(-(T)std::numeric_limits<T>::digits);
+template <typename T, typename I>
+const T CDelaBella2<T, I>::Vert::resulterrbound = (T(3) + T(8) * std::exp2(-(T)std::numeric_limits<T>::digits)) * std::exp2(-(T)std::numeric_limits<T>::digits);
 
 // this should cover all malcontents
-template IDelaBella2<float, int8_t>* IDelaBella2<float, int8_t>::Create();
-template IDelaBella2<double, int8_t>* IDelaBella2<double, int8_t>::Create();
-template IDelaBella2<long double, int8_t>* IDelaBella2<long double, int8_t>::Create();
+template IDelaBella2<float, int8_t> *IDelaBella2<float, int8_t>::Create();
+template IDelaBella2<double, int8_t> *IDelaBella2<double, int8_t>::Create();
+template IDelaBella2<long double, int8_t> *IDelaBella2<long double, int8_t>::Create();
 
-template IDelaBella2<float, int16_t>* IDelaBella2<float, int16_t>::Create();
-template IDelaBella2<double, int16_t>* IDelaBella2<double, int16_t>::Create();
-template IDelaBella2<long double, int16_t>* IDelaBella2<long double, int16_t>::Create();
+template IDelaBella2<float, int16_t> *IDelaBella2<float, int16_t>::Create();
+template IDelaBella2<double, int16_t> *IDelaBella2<double, int16_t>::Create();
+template IDelaBella2<long double, int16_t> *IDelaBella2<long double, int16_t>::Create();
 
-template IDelaBella2<float, int32_t>* IDelaBella2<float, int32_t>::Create();
-template IDelaBella2<double, int32_t>* IDelaBella2<double, int32_t>::Create();
-template IDelaBella2<long double, int32_t>* IDelaBella2<long double, int32_t>::Create();
+template IDelaBella2<float, int32_t> *IDelaBella2<float, int32_t>::Create();
+template IDelaBella2<double, int32_t> *IDelaBella2<double, int32_t>::Create();
+template IDelaBella2<long double, int32_t> *IDelaBella2<long double, int32_t>::Create();
 
-template IDelaBella2<float, int64_t>* IDelaBella2<float, int64_t>::Create();
-template IDelaBella2<double, int64_t>* IDelaBella2<double, int64_t>::Create();
-template IDelaBella2<long double, int64_t>* IDelaBella2<long double, int64_t>::Create();
-
+template IDelaBella2<float, int64_t> *IDelaBella2<float, int64_t>::Create();
+template IDelaBella2<double, int64_t> *IDelaBella2<double, int64_t>::Create();
+template IDelaBella2<long double, int64_t> *IDelaBella2<long double, int64_t>::Create();

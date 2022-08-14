@@ -1429,9 +1429,9 @@ int main(int argc, char* argv[])
         }
         printf("generating random " IDXF " points\n", n);
         std::random_device rd{};
-        uint64_t seed = 0x00000000AA67F0F5ULL; // 0x00000000CEA84754ULL; //0x12345678ULL+1 rd();
+        uint64_t seed = 0x00000000FCDC9FCAULL;//rd();
         std::mt19937_64 gen{ seed };
-        printf("SEED = 0x%016llX\n", seed);
+        printf("SEED = 0x%016llX\n", (long long unsigned int)seed);
 
         std::uniform_real_distribution<MyCoord> d_uni((MyCoord)-1.0, (MyCoord)+1.0);
         std::normal_distribution<MyCoord> d_std{(MyCoord)0.0,(MyCoord)2.0};
@@ -1953,7 +1953,7 @@ int main(int argc, char* argv[])
     printf("running delabella...\n");
     uint64_t t6 = uSec();
     MyIndex verts = idb->Triangulate(points, &cloud.data()->x, &cloud.data()->y, sizeof(MyPoint));
-
+    //idb->CheckTopology();
     #ifdef BENCH
     idb_bench->removing_dups = sorting_bench;
     idb_bench->triangulation = uSec()-t6 - sorting_bench;
@@ -2000,6 +2000,7 @@ int main(int argc, char* argv[])
         #endif
 
         idb->ConstrainEdges((MyIndex)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge));
+        //idb->CheckTopology();
 
         #ifdef BENCH
         idb_bench->constrain_edges = uSec() - idb_bench->constrain_edges;
@@ -2007,6 +2008,7 @@ int main(int argc, char* argv[])
 
         uint64_t ff0 = uSec();
         MyIndex num_interior = idb->FloodFill(false, 0);
+        //idb->CheckTopology();
         uint64_t ff1 = uSec();
 
         printf("interior %d faces in %d ms\n", num_interior, (int)((ff1 - ff0) / 1000));
@@ -2027,6 +2029,7 @@ int main(int argc, char* argv[])
     #endif    
     
     MyIndex polys_delabella = idb->Polygonize(dela_polys);
+    //idb->CheckTopology();
     
     #ifdef BENCH
     idb_bench->polygons = uSec() - idb_bench->polygons;
@@ -2736,7 +2739,7 @@ int main(int argc, char* argv[])
 
     int test_size[] =
     {
-        90,0,
+        1000,0,
         /*1000,2500,5000,
         10000,25000,50000, 
         100000,250000,500000,

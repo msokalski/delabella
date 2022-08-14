@@ -203,6 +203,8 @@ struct IDelaBella2
 	// function returns number of indices filled (I) on success, otherwise 0
 	virtual I GenVoronoiDiagramPolys(I* indices, size_t advance_bytes=0, I* closed_indices=0) const = 0;
 
+	virtual void CheckTopology() const = 0;
+
 	protected: virtual ~IDelaBella2() = 0; // please use Destroy()
 };
 
