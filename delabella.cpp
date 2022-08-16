@@ -335,7 +335,8 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			errlog_proc(errlog_file, "[...] sorting vertices");
 		I points = inp_verts;
 
-		std::sort(vert_alloc, vert_alloc + points);
+		// skip srting super geom
+		std::sort(vert_alloc + 4, vert_alloc + points);
 
 		// rmove dups
 		{
@@ -2604,16 +2605,58 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		if (advance_bytes < sizeof(T) * 2)
 			advance_bytes = sizeof(T) * 2;
 
-		if (!ReallocVerts(points))
+		if (!ReallocVerts(points+4))
 			return 0;
+
+		T xlo, xhi, ylo, yhi;
+		xlo = xhi = *x;
+		ylo = yhi = *y;
 
 		for (I i = 0; i < points; i++)
 		{
-			Vert *v = vert_alloc + i;
+			Vert* v = vert_alloc + i + 4;
 			v->i = i;
 			v->x = *(const T *)((const char *)x + i * advance_bytes);
 			v->y = *(const T *)((const char *)y + i * advance_bytes);
+
+			xlo = std::min(xlo,v->x);
+			ylo = std::min(ylo,v->y);
+			xhi = std::max(xhi,v->x);
+			yhi = std::max(yhi,v->y);
 		}
+
+		// todo: scale up more robust!
+		T xr = (xhi - xlo) / 2;
+		T yr = (yhi - ylo) / 2;
+
+		xlo -= xr;
+		xhi += xr;
+		ylo -= yr;
+		yhi += yr;
+
+		Vert* v = vert_alloc;
+
+		v->i = points + 0;
+		v->x = xlo;
+		v->y = ylo;
+		
+		v++;
+
+		v->i = points + 1;
+		v->x = xlo;
+		v->y = yhi;
+		
+		v++;
+
+		v->i = points + 2;
+		v->x = xhi;
+		v->y = yhi;
+		
+		v++;
+
+		v->i = points + 3;
+		v->x = xhi;
+		v->y = ylo;
 
 		out_hull_faces = 0;
 		unique_points = 0;
