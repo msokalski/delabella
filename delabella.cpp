@@ -17,6 +17,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #undef FP_FAST_FMAL
 #define FP_FAST_FMAL
 
+#include <random>
 #include <cassert>
 #include <cstdio>
 #include <cstdlib>
@@ -97,6 +98,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			return v1->x == v2->x && v1->y == v2->y;
 		}
 
+		/*
 		bool operator<(const Vert &v) const
 		{
 			// assuming no dups
@@ -156,6 +158,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				return true;
 			return false;
 		}
+		*/
 	};
 
 	struct Face : IDelaBella2<T, I>::Simplex
@@ -324,6 +327,8 @@ struct CDelaBella2 : IDelaBella2<T, I>
 	I out_boundary_verts;
 	I unique_points;
 
+	T trans[2]; // experimental
+
 	int (*errlog_proc)(void *file, const char *fmt, ...);
 	void *errlog_file;
 
@@ -335,8 +340,30 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			errlog_proc(errlog_file, "[...] sorting vertices");
 		I points = inp_verts;
 
-		// skip srting super geom
-		std::sort(vert_alloc + 4, vert_alloc + points);
+		struct CMP
+		{
+			bool operator () (const Vert& l, const Vert& r) const
+			{
+				// reversing paraboloid, somewhat faster without predicate
+				T ax = l.x + tx;
+				T ay = l.y + ty;
+				T bx = r.x + tx;
+				T by = r.y + ty;
+				T a = ax * ax + ay * ay;
+				T b = bx * bx + by * by;
+				if (a == b)
+				{
+					if (l.x > r.x || l.x == r.x && l.y > r.y)
+						return true;
+					return false;
+				}
+				return a > b;
+			}
+
+			const T tx, ty;
+		} cmp = { trans[0], trans[1] };
+
+		std::sort(vert_alloc, vert_alloc + points, cmp);
 
 		// rmove dups
 		{
@@ -373,6 +400,79 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				}
 
 				d = w - 1;
+			}
+
+			// move pinch of random verts intro front
+			{
+				if (w > 100 && 1)
+				{
+					const I tail = w - 1;
+					Vert tmp = vert_alloc[tail];
+					memmove(vert_alloc + 1, vert_alloc, sizeof(Vert)*tail);
+					vert_alloc[0] = tmp;
+					for (int i = 0; i < points; i++)
+					{
+						if (vert_map[i] == tail)
+							vert_map[i] = 0;
+						else
+							vert_map[i]++;
+					}
+
+					/*
+					const int num_rnd = 1;
+
+					std::mt19937_64 gen{ 0x000000006DA95FD9ULL };
+					I rnd[num_rnd + 1]; // +1 to account for num=0
+					for (I r = 0; r < num_rnd; r++)
+					{
+						I at = gen() % w;
+						if (vert_alloc[at].i >= 0)
+						{
+							vert_alloc[at].i = ~vert_alloc[at].i;
+							rnd[r] = at;
+						}
+						else
+							r--;
+					}
+
+					std::sort(rnd, rnd + num_rnd);
+
+					Vert hdr[num_rnd + 1];
+					for (int h = num_rnd - 1, o = 1; h >= 0; h--, o++)
+					{
+						hdr[h] = vert_alloc[rnd[h]]; // store 
+						hdr[h].i = ~hdr[h].i;        // & unmark
+
+						I b = 0, e = rnd[h];
+
+						if (h)
+							b = rnd[h - 1] + 1;
+
+						memmove(vert_alloc + b + o, vert_alloc + b, sizeof(Vert) * (e - b));
+					}
+
+					memcpy(vert_alloc, hdr, sizeof(Vert) * num_rnd);
+
+					// remap vert_map
+					for (int i = 0; i < points; i++)
+					{
+						for (int h = 0; h < num_rnd; h++)
+						{
+							if (vert_map[i] < rnd[h])
+							{
+								vert_map[i] += num_rnd - h;
+								break;
+							}
+							else
+							if (vert_map[i] == rnd[h])
+							{
+								vert_map[i] = h;
+								break;
+							}
+						}
+					}
+					*/
+				}
 			}
 
 			uint64_t time1 = uSec();
@@ -2605,8 +2705,18 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		if (advance_bytes < sizeof(T) * 2)
 			advance_bytes = sizeof(T) * 2;
 
-		if (!ReallocVerts(points+4))
+		if (!ReallocVerts(points))
 			return 0;
+
+		/*
+		for (I i = 0; i < points; i++)
+		{
+			Vert* v = vert_alloc + i;
+			v->i = i;
+			v->x = *(const T *)((const char *)x + i * advance_bytes);
+			v->y = *(const T *)((const char *)y + i * advance_bytes);
+		}
+		*/
 
 		T xlo, xhi, ylo, yhi;
 		xlo = xhi = *x;
@@ -2614,7 +2724,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 		for (I i = 0; i < points; i++)
 		{
-			Vert* v = vert_alloc + i + 4;
+			Vert* v = vert_alloc + i;
 			v->i = i;
 			v->x = *(const T *)((const char *)x + i * advance_bytes);
 			v->y = *(const T *)((const char *)y + i * advance_bytes);
@@ -2634,29 +2744,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		ylo -= yr;
 		yhi += yr;
 
-		Vert* v = vert_alloc;
+		trans[0] = -xlo;
+		trans[1] = -ylo;
 
-		v->i = points + 0;
-		v->x = xlo;
-		v->y = ylo;
-		
-		v++;
-
-		v->i = points + 1;
-		v->x = xlo;
-		v->y = yhi;
-		
-		v++;
-
-		v->i = points + 2;
-		v->x = xhi;
-		v->y = yhi;
-		
-		v++;
-
-		v->i = points + 3;
-		v->x = xhi;
-		v->y = ylo;
 
 		out_hull_faces = 0;
 		unique_points = 0;
@@ -3046,7 +3136,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 	// private:
 	void CheckVert(Vert *v) const
 	{
-		int all_faces = out_hull_faces + out_verts / 3;
+		I all_faces = out_hull_faces + out_verts / 3;
 
 		assert(v - vert_alloc >= 0);
 		assert(v - vert_alloc < unique_points);
@@ -3068,7 +3158,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 	void CheckFace(Face *f) const
 	{
-		int all_faces = out_hull_faces + out_verts / 3;
+		I all_faces = out_hull_faces + out_verts / 3;
 
 		assert(f - face_alloc >= 0);
 		assert(f - face_alloc < all_faces);

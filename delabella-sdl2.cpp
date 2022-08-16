@@ -15,7 +15,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 // override build define
 #undef WITH_DELAUNATOR 
-//#define WITH_DELAUNATOR
+#define WITH_DELAUNATOR
 
 // override build define
 #undef WITH_CDT
@@ -23,7 +23,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 // override build define
 #undef WITH_FADE 
-//#define WITH_FADE
+#define WITH_FADE
 
 
 #include <math.h>
@@ -1429,7 +1429,7 @@ int main(int argc, char* argv[])
         }
         printf("generating random " IDXF " points\n", n);
         std::random_device rd{};
-        uint64_t seed = rd();
+		uint64_t seed = rd();
         std::mt19937_64 gen{ seed };
         printf("SEED = 0x%016llX\n", (long long unsigned int)seed);
 
@@ -1440,11 +1440,17 @@ int main(int argc, char* argv[])
         MyCoord max_coord = sizeof(MyCoord) < 8 ? /*float*/0x1.p31 : /*double*/0x1.p255;
 
         MyCoord bias_xy[] = { 0,0 };
-        if (bias[0])
+        if (bias[0]=='+')
         {
             bias_xy[0] = 50;
             bias_xy[1] = 50;
         }
+		else
+		if (bias[0] == '-')
+		{
+			bias_xy[0] = -50;
+			bias_xy[1] = -50;
+		}
 
         if (strcmp(dist, "uni") == 0)
         {
@@ -1796,7 +1802,7 @@ int main(int argc, char* argv[])
     #endif
 
     #ifdef WITH_FADE
-    if (points < 500000 || strcmp(dist,"gam") || strcmp(bias,"+"))
+    if (points < 250000 || strcmp(dist,"gam") || bias[0]==0)
     {
         printf("running fade ...");
         uint64_t t0 = uSec(), t1, t2;
@@ -1850,6 +1856,7 @@ int main(int argc, char* argv[])
         fad_bench->flood_fill = t3 - t2;
         #endif
     }
+	if (0) // very unstable run time!
     {
         printf("running fade_mt ...");
         uint64_t t0 = uSec(), t1;
@@ -2735,7 +2742,7 @@ int main(int argc, char* argv[])
     setlocale(LC_ALL, "");
 
     const char* test_dist[] = { "uni","std","gam","sym","cir","hex",0};
-    const char* test_bias[] = { "","+", 0 };
+    const char* test_bias[] = { "","+","-", 0 };
 
     int test_size[] =
     {
@@ -2762,7 +2769,7 @@ int main(int argc, char* argv[])
             sprintf(test_path, "bench_%s%s.txt", test_dist[d], test_bias[b]);
             FILE* bench_file = fopen(test_path, "w");
 
-            fprintf(bench_file, "        DLB[us]     CDT[us]     FAD[us]   FADMT[us]     DEL[us]\n");
+            fprintf(bench_file, "        DLB[us]     CDT[us]     FAD[us]" /*"   FADMT[us]"*/ "     DEL[us]\n");
 
             char* args[] = 
             { 
@@ -2786,13 +2793,21 @@ int main(int argc, char* argv[])
 
                 uint64_t t0 = uSec();
                 int acc = 0;
+
+				int num_tests = 1000000 / test_size[i];
+				if (!num_tests)
+					num_tests = 1;
+
                 do
                 {
-                    memset(bench, 0, sizeof(bench));
-                    bench_main(2, args);
-                    for (int i=0; i< players; i++)
-                        accum[i] += bench[i];
-                    acc++;
+					for (int test = 0; test < num_tests; test++)
+					{
+						memset(bench, 0, sizeof(bench));
+						bench_main(2, args);
+						for (int i = 0; i < players; i++)
+							accum[i] += bench[i];
+						acc++;
+					}
                 } while (uSec() - t0 < 5000000);
 
                 for (int i = 0; i < players; i++)
@@ -2842,41 +2857,41 @@ int main(int argc, char* argv[])
 
                 // write bench results...
                 fprintf(bench_file, "N=%s\n", f[0](0, test_size[i]));
-                fprintf(bench_file, "RD: %s %s %s %s %s\n", 
+                fprintf(bench_file, "RD: %s %s %s" /*" %s"*/ " %s\n", 
                     f[0](11, accum[0].removing_dups), 
                     f[1](11, accum[1].removing_dups), 
                     accum[2].removing_dups ? "    INVALID" : f[2](11, accum[2].removing_dups), 
-                    accum[3].removing_dups ? "    INVALID" : f[3](11, accum[3].removing_dups), 
+                //  accum[3].removing_dups ? "    INVALID" : f[3](11, accum[3].removing_dups), 
                     accum[4].removing_dups ? "    INVALID" : f[4](11, accum[4].removing_dups));
-                fprintf(bench_file, "TR: %s %s %s %s %s\n", 
+                fprintf(bench_file, "TR: %s %s %s" /*" %s"*/ " %s\n",
                     f[0](11, accum[0].triangulation), 
                     f[1](11, accum[1].triangulation), 
                     f[2](11, accum[2].triangulation), 
-                    f[3](11, accum[3].triangulation), 
+                //  f[3](11, accum[3].triangulation), 
                     f[4](11, accum[4].triangulation));
-                fprintf(bench_file, "CE: %s %s %s %s %s\n", 
+                fprintf(bench_file, "CE: %s %s %s" /*" %s"*/ " %s\n",
                     f[0](11, accum[0].constrain_edges), 
                     f[1](11, accum[1].constrain_edges), 
                     f[2](11, accum[2].constrain_edges), 
-                    f[3](11, accum[3].constrain_edges), 
+                //  f[3](11, accum[3].constrain_edges), 
                     f[4](11, accum[4].constrain_edges));
-                fprintf(bench_file, "ES: %s %s %s %s %s\n", 
+                fprintf(bench_file, "ES: %s %s %s" /*" %s"*/ " %s\n",
                     f[0](11, accum[0].erase_super), 
                     f[1](11, accum[1].erase_super),
                     f[2](11, accum[2].erase_super),
-                    f[3](11, accum[3].erase_super),
+                //  f[3](11, accum[3].erase_super),
                     f[4](11, accum[4].erase_super));
-                fprintf(bench_file, "FF: %s %s %s %s %s\n", 
+                fprintf(bench_file, "FF: %s %s %s" /*" %s"*/ " %s\n",
                     f[0](11, accum[0].flood_fill), 
                     f[1](11, accum[1].flood_fill), 
                     f[2](11, accum[2].flood_fill), 
-                    f[3](11, accum[3].flood_fill), 
+                //  f[3](11, accum[3].flood_fill), 
                     f[4](11, accum[4].flood_fill));
-                fprintf(bench_file, "PL: %s %s %s %s %s\n", 
+                fprintf(bench_file, "PL: %s %s %s" /*" %s"*/ " %s\n",
                     f[0](11, accum[0].polygons), 
                     f[1](11, accum[1].polygons),
                     f[2](11, accum[2].polygons),
-                    f[3](11, accum[3].polygons),
+                //  f[3](11, accum[3].polygons),
                     f[4](11, accum[4].polygons));
                 fprintf(bench_file, "\n");
 
