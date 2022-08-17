@@ -161,6 +161,100 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		*/
 	};
 
+	//template <typename T, typename I>
+	struct Node
+	{
+		T x; // split pos x (if not INF)
+		union
+		{
+			T y;
+			I n;
+		};
+
+		union
+		{
+			Node* sub[4];
+
+			struct
+			{
+				Vert* head;
+				Vert* tail;
+				void* spare[2];
+			};
+		};
+
+		void Finish(I n, Vert* h, Vert* t)
+		{
+			this->x = INFINITY;
+			this->n = n;
+			this->head = h;
+			this->tail = t;
+		}
+
+		I Split(T avr_x, T avr_y, Vert* h, Vert* t)
+		{
+			const int node_thresh = 6;
+
+			// todo: limit depth!!!
+			// todo: don't split if ALL parent's points are in the same sub
+			I tree_used = 1; // this node
+			I sub_size[4] = { 0,0,0,0 };
+			Vert* sub_head[4] = { 0,0,0,0 };
+			Vert* sub_tail[4] = { 0,0,0,0 };
+			T sub_avr_x[4] = { 0,0,0,0 };
+			T sub_avr_y[4] = { 0,0,0,0 };
+
+			this->x = avr_x;
+			this->y = avr_y;
+
+			Vert* v = h;
+			while (v) // or v!=t
+			{
+				Vert* n = (Vert*)v->next;
+
+				int s = (v->y >= avr_y) * 2 + (v->x >= avr_x);
+				sub_size[s]++;
+
+				if (!sub_head[s])
+					sub_head[s] = v;
+				else
+					sub_tail[s]->next = v;
+				sub_tail[s] = v;
+
+				sub_avr_x[s] += v->x;
+				sub_avr_y[s] += v->y;
+
+				v = n;
+			}
+
+			for (int s = 0; s < 4; s++)
+			{
+				if (sub_size[s] > node_thresh)
+				{
+					sub_tail[s]->next = 0;
+					this->sub[s] = this + tree_used;
+					tree_used += (this + tree_used)->Split(sub_avr_x[s] / sub_size[s], sub_avr_y[s] / sub_size[s], sub_head[s], sub_tail[s]);
+				}
+				else
+				if (sub_size[s] > 0)
+				{
+					// finish with leaf
+					sub_tail[s]->next = 0;
+					this->sub[s] = this + tree_used;
+					(this + tree_used)->Finish(sub_size[s], sub_head[s], sub_tail[s]);
+					tree_used++;
+				}
+				else
+					this->sub[s] = 0;
+			}
+
+			return tree_used;
+		}
+	};
+
+	I tree_size;
+	Node* tree;
+
 	struct Face : IDelaBella2<T, I>::Simplex
 	{
 		static const T iccerrboundA;
@@ -2708,15 +2802,100 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		if (!ReallocVerts(points))
 			return 0;
 
+		Vert* v = vert_alloc;
+		T avr_x = *x, avr_y = *y;
+		v->i = 0;
+		v->x = *x;
+		v->y = *y;
+
+		for (I i = 1; i < points; i++)
+		{
+			v = vert_alloc + i;
+			v->i = i;
+			v->x = *(const T*)((const char*)x + i * advance_bytes);
+			v->y = *(const T*)((const char*)y + i * advance_bytes);
+
+			// todo: improve precision!
+			avr_x += v->x;
+			avr_y += v->y;
+		}
+
+		avr_x /= points;
+		avr_y /= points;
+
+		const int node_thresh = 6;
+		
+		// todo: alloc nodes as list of packs
 		/*
+			struct Pack
+			{
+				Pack* next;
+				int num
+				Node dat[1];
+			}
+		*/
+		tree_size = (int)round( points * log2((double)points) / (2.0 * node_thresh));
+		Node* tree = (Node*)malloc(sizeof(Node) * tree_size);
+		assert(tree);
+
+		tree->x = avr_x;
+		tree->y = avr_y;
+
+		// initial split (arr->lists)
+		I sub_size[4] = { 0,0,0,0 };
+		Vert* sub_head[4] = { 0,0,0,0 };
+		Vert* sub_tail[4] = { 0,0,0,0 };
+		T sub_avr_x[4] = { 0,0,0,0 };
+		T sub_avr_y[4] = { 0,0,0,0 };
 		for (I i = 0; i < points; i++)
 		{
-			Vert* v = vert_alloc + i;
-			v->i = i;
-			v->x = *(const T *)((const char *)x + i * advance_bytes);
-			v->y = *(const T *)((const char *)y + i * advance_bytes);
+			v = vert_alloc + i;
+			int s = (v->y >= avr_y) * 2 + (v->x >= avr_x);
+			sub_size[s]++;
+
+			if (!sub_head[s])
+				sub_head[s] = v;
+			else
+				sub_tail[s]->next = v;
+			sub_tail[s] = v;
+			sub_avr_x[s] += v->x;
+			sub_avr_y[s] += v->y;
 		}
-		*/
+
+		// todo: limit depth!!!
+		// todo: don't split if ALL parent's points are in the same sub
+		I tree_used = 1; // root is taken
+		for (int s = 0; s < 4; s++)
+		{
+			if (sub_size[s] > node_thresh)
+			{
+				sub_tail[s]->next = 0;
+				tree->sub[s] = tree + tree_used;
+				tree_used += (tree + tree_used)->Split(sub_avr_x[s] / sub_size[s], sub_avr_y[s] / sub_size[s], sub_head[s], sub_tail[s]);
+			}
+			else
+			if (sub_size[s])
+			{
+				// finish with leaf
+				sub_tail[s]->next = 0;
+				tree->sub[s] = tree + tree_used;
+				(tree + tree_used)->Finish(sub_size[s], sub_head[s], sub_tail[s]);
+				tree_used++;
+			}
+			else
+			{
+				tree->sub[s] = 0;
+			}
+		}
+
+		// todo:
+		// visit leafs in the order of Hilbert curve
+		// sort every leaf in xy direction of the curve
+		// remove duplicates 
+		// link all leafs into single list
+
+
+		exit(0);
 
 		T xlo, xhi, ylo, yhi;
 		xlo = xhi = *x;
@@ -3317,3 +3496,4 @@ template IDelaBella2<long double, int32_t> *IDelaBella2<long double, int32_t>::C
 template IDelaBella2<float, int64_t> *IDelaBella2<float, int64_t>::Create();
 template IDelaBella2<double, int64_t> *IDelaBella2<double, int64_t>::Create();
 template IDelaBella2<long double, int64_t> *IDelaBella2<long double, int64_t>::Create();
+
