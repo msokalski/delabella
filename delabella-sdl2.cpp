@@ -23,7 +23,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 // override build define
 #undef WITH_FADE 
-//#define WITH_FADE
+#define WITH_FADE
 
 
 #include <math.h>
@@ -2741,14 +2741,13 @@ int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, "");
 
-    const char* test_dist[] = { /*"uni","std","gam","sym",*/"cir",/*"hex",*/0};
-    const char* test_bias[] = { /*"","+",*/"-", 0 };
+    const char* test_dist[] = { /*"uni","std",*/"gam","sym","cir","hex",0};
+    const char* test_bias[] = { "","+","-", 0 };
 
     int test_size[] =
     {
-        /*
-        1000,2500,5000,
-        10000,25000,50000,*/ 
+        //1000,2500,5000,
+        10000,25000,50000,
         100000,250000,500000,
         1000000, /*2500000,5000000,
         10000000,25000000,50000000,*/

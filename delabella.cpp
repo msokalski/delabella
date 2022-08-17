@@ -183,19 +183,75 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			};
 		};
 
+		template <typename C>
+		C Hilbert(int ctx) const
+		{
+			/*
+			sample C
+			{
+				C() : num(0) {}
+				C(const Node* node) : num(node->n) {}
+				void operator () (const C& c) { num += c.num; }
+				int num;
+			};
+			*/
+
+			if (this->x == T(INFINITY))
+				return C{this,ctx};
+
+			// visiting order of sub nodes
+			static const int sub_ord[4][4] = { {0,2,3,1}, {3,1,0,2}, {0,1,3,2}, {3,2,0,1} }; /* 
+			                                     2-->3      2   3      2<--3      2---3
+			                                     | 0 |      | 1 |        2 |      | 3
+			                                     0   1      0<--1      0---1      0-->1      */
+
+			// context transitions
+			static const int sub_ctx[4][4] = { {2,0,0,3}, {3,1,1,2}, {0,2,2,1}, {1,3,3,0} }; /*
+			                                     0-->0      2   3      1<--2      3---1
+			                                     | 0 |      | 1 |        2 |      | 3
+			                                     2   3      1<--1      0---2      3-->0      */
+
+			/* 3x recursion example
+			1---2   1---2   1-- 2   1---2
+			| A-|---|-A |   | A-|---|-A |
+			0 | 3   0 | 3   0 | 3   0 | 3
+			  |   A---|-------|---A   |
+			3-|-2 | 1-|-0   3-|-2 | 1-|-0
+			  D | | | C       D | | | C
+			0---1 | 2---3   0---1 | 2---3
+			      |       A       |
+			3   0 | 3---2   1---0 | 3   0
+			| U-|-|---D |   | C---|-|-U |
+			2---1 | 0-|-1   2-|-3 | 2---1
+				  D   |       |   C
+			1---2   3-|-2   1-|-0   1---2
+			| A-|-----D |   | C-----|-A |
+			0   3   0---1   2---3   0   3
+			*/
+
+			C c{};
+			for (int i = 0; i < 4; i++)
+			{
+				int s = sub_ord[ctx][i];
+				if (this->sub[s])
+					c(this->sub[s]->Hilbert<C>(sub_ctx[ctx][i]));
+			}
+
+			return c;
+		}
+
 		void Finish(I n, Vert* h, Vert* t)
 		{
-			this->x = INFINITY;
+			this->x = T(INFINITY);
 			this->n = n;
 			this->head = h;
 			this->tail = t;
 		}
 
-		I Split(T avr_x, T avr_y, Vert* h, Vert* t)
+		I Split(T avr_x, T avr_y, Vert* h, Vert* t, I* max_len, int rem)
 		{
 			const int node_thresh = 6;
 
-			// todo: limit depth!!!
 			// todo: don't split if ALL parent's points are in the same sub
 			I tree_used = 1; // this node
 			I sub_size[4] = { 0,0,0,0 };
@@ -229,11 +285,11 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 			for (int s = 0; s < 4; s++)
 			{
-				if (sub_size[s] > node_thresh)
+				if (rem && sub_size[s] > node_thresh)
 				{
 					sub_tail[s]->next = 0;
 					this->sub[s] = this + tree_used;
-					tree_used += (this + tree_used)->Split(sub_avr_x[s] / sub_size[s], sub_avr_y[s] / sub_size[s], sub_head[s], sub_tail[s]);
+					tree_used += (this + tree_used)->Split(sub_avr_x[s] / sub_size[s], sub_avr_y[s] / sub_size[s], sub_head[s], sub_tail[s], max_len, rem--);
 				}
 				else
 				if (sub_size[s] > 0)
@@ -242,6 +298,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					sub_tail[s]->next = 0;
 					this->sub[s] = this + tree_used;
 					(this + tree_used)->Finish(sub_size[s], sub_head[s], sub_tail[s]);
+					*max_len = std::max(*max_len, sub_size[s]);
 					tree_used++;
 				}
 				else
@@ -428,12 +485,13 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 	I Prepare(I *start, Face **hull, I *out_hull_faces, Face **cache, uint64_t *sort_stamp)
 	{
-		uint64_t time0 = uSec();
+		//uint64_t time0 = uSec();
 
 		if (errlog_proc)
 			errlog_proc(errlog_file, "[...] sorting vertices");
 		I points = inp_verts;
 
+		#if 0
 		struct CMP
 		{
 			bool operator () (const Vert& l, const Vert& r) const
@@ -457,7 +515,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			const T tx, ty;
 		} cmp = { trans[0], trans[1] };
 
+
 		std::sort(vert_alloc, vert_alloc + points, cmp);
+		#endif
 
 		// rmove dups
 		{
@@ -497,6 +557,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			}
 
 			// move pinch of random verts intro front
+			#if 0
 			{
 				if (w > 100 && 1)
 				{
@@ -568,17 +629,16 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					*/
 				}
 			}
+			#endif
 
 			uint64_t time1 = uSec();
 
-			sorting_bench = time1 - time0;
-
-			if (sort_stamp)
-				*sort_stamp = time1;
+			sorting_bench = time1 - *sort_stamp;
 
 			if (errlog_proc)
-				errlog_proc(errlog_file, "\r[100] sorting vertices (%lld ms)\n", (time1 - time0) / 1000);
-			time0 = time1;
+				errlog_proc(errlog_file, "\r[100] sorting vertices (%lld ms)\n", (time1 - *sort_stamp) / 1000);
+			
+			*sort_stamp = time1;
 
 			if (points - w)
 			{
@@ -1080,15 +1140,14 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		return points;
 	}
 
-	I Triangulate(I *other_faces)
+	I Triangulate(I *other_faces, uint64_t* sort_stamp)
 	{
 		I i = 0;
 		Face *hull = 0;
 		I hull_faces = 0;
 		Face *cache = 0;
 
-		uint64_t sort_stamp;
-		I points = Prepare(&i, &hull, &hull_faces, &cache, &sort_stamp);
+		I points = Prepare(&i, &hull, &hull_faces, &cache, sort_stamp);
 		unique_points = points < 0 ? -points : points;
 		if (points <= 0)
 		{
@@ -1362,7 +1421,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		}
 
 		if (errlog_proc)
-			errlog_proc(errlog_file, "\r[100] convex hull triangulation (%lld ms)\n", (uSec() - sort_stamp) / 1000);
+			errlog_proc(errlog_file, "\r[100] convex hull triangulation (%lld ms)\n", (uSec() - *sort_stamp) / 1000);
 
 		return 3 * i;
 	}
@@ -2779,6 +2838,8 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 	virtual I Triangulate(I points, const T *x, const T *y, size_t advance_bytes)
 	{
+		uint64_t sort_stamp = uSec();
+
 		// const size_t max_triangulate_indices = (size_t)points * 6 - 15;
 		// const size_t max_voronoi_edge_indices = (size_t)points * 6 - 12;
 		const size_t max_voronoi_poly_indices = (size_t)points * 7 - 9; // winner of shame!
@@ -2835,6 +2896,11 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			}
 		*/
 		tree_size = (int)round( points * log2((double)points) / (2.0 * node_thresh));
+		tree_size *= 10; // just check
+		int max_depth = (int)round(log2((double)points));
+		if (!max_depth)
+			max_depth = 1;
+
 		Node* tree = (Node*)malloc(sizeof(Node) * tree_size);
 		assert(tree);
 
@@ -2864,6 +2930,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 		// todo: limit depth!!!
 		// todo: don't split if ALL parent's points are in the same sub
+		I max_len = 0;
 		I tree_used = 1; // root is taken
 		for (int s = 0; s < 4; s++)
 		{
@@ -2871,7 +2938,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			{
 				sub_tail[s]->next = 0;
 				tree->sub[s] = tree + tree_used;
-				tree_used += (tree + tree_used)->Split(sub_avr_x[s] / sub_size[s], sub_avr_y[s] / sub_size[s], sub_head[s], sub_tail[s]);
+				tree_used += (tree + tree_used)->Split(sub_avr_x[s] / sub_size[s], sub_avr_y[s] / sub_size[s], sub_head[s], sub_tail[s], &max_len, max_depth);
 			}
 			else
 			if (sub_size[s])
@@ -2880,21 +2947,133 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				sub_tail[s]->next = 0;
 				tree->sub[s] = tree + tree_used;
 				(tree + tree_used)->Finish(sub_size[s], sub_head[s], sub_tail[s]);
+				max_len = std::max(max_len, sub_size[s]);
 				tree_used++;
 			}
 			else
 			{
 				tree->sub[s] = 0;
 			}
+
+			assert(tree_used <= tree_size);
 		}
 
-		// todo:
-		// visit leafs in the order of Hilbert curve
-		// sort every leaf in xy direction of the curve
-		// remove duplicates 
-		// link all leafs into single list
+		//printf("                                               NODES   = %d / %d\n", (int)tree_used, (int)tree_size);
+		//printf("                                               MAX LEN = %d\n", (int)max_len);
 
+		static Vert** tmp = 0; // NOT THREAD SAFE!!!
+		tmp = (Vert**)malloc(sizeof(Vert*) * max_len);
 
+		struct C
+		{
+			// init parent
+			C() : head(0), tail(0) {}
+
+			// init leaf, sort em!
+			C(const Node* node, int ctx)
+			{
+				
+				head = node->head;
+				tail = node->tail;
+				tail->next = 0;
+				return;
+				
+
+				// use tmp array of pointers to verts
+				// fill arr, sort, re-link verts, KEEP DUPS!
+				Vert* v = node->head;
+				I n = 0;
+				while (v)
+				{
+					tmp[n++] = v;
+					v = (Vert*)v->next;
+				}
+
+				switch (ctx)
+				{
+					case 0: // right (type A)
+					{
+						struct { bool operator () (const Vert* const & a, const Vert* const & b) const { return a->x < b->x; } } p;
+						std::sort(tmp, tmp + n, p);
+						break;
+					}
+
+					case 1: // left (type U)
+					{
+						struct { bool operator () (const Vert* const & a, const Vert* const & b) const { return a->x > b->x; } } p;
+						std::sort(tmp, tmp + n, p);
+						break;
+					}
+
+					case 2: // up (type D)
+					{
+						struct { bool operator () (const Vert* const & a, const Vert* const & b) const { return a->y < b->y; } } p;
+						std::sort(tmp, tmp + n, p);
+						break;
+					}
+
+					case 3: // down (type C)
+					{
+						struct { bool operator () (const Vert* const & a, const Vert* const & b) const { return a->y > b->y; } } p;
+						std::sort(tmp, tmp + n, p);
+						break;
+					}
+
+					default:
+						break;
+				}
+
+				// relink
+				I last = n - 1;
+				head = tmp[0];
+				tail = tmp[last];
+				tail->next = 0;
+				for (I i = 0; i < last; i++)
+					tmp[i]->next = tmp[i + 1];
+			}
+
+			// accum child to parent
+			void operator () (const C& c)
+			{
+				if (!head)
+					head = c.head;
+				else
+					tail->next = c.head;
+				tail = c.tail;
+			}
+
+			// final move
+			C(const C&& c) : head(c.head), tail(c.tail) {}
+
+			Vert* head;
+			Vert* tail;
+		};
+
+		// connect hilbert clusters
+		C c = tree->Hilbert<C>(0);
+
+		free(tmp);
+		tmp = 0;
+
+		// assign indexes (sew field) to all verts
+		v = c.head;
+		I index = 0;
+		while (v)
+		{
+			v->sew = (Face*)(intptr_t)index++;
+			v = (Vert*)v->next;
+		}
+
+		struct { bool operator () (const Vert& a, const Vert& b) const { return a.sew < b.sew; } } p;
+		std::sort(vert_alloc,vert_alloc + points, p);
+
+		for (I i = 0; i < points; i++)
+		{
+			vert_alloc[i].next = 0;
+			vert_alloc[i].sew = 0;
+		}
+
+		#if 0
 		exit(0);
 
 		T xlo, xhi, ylo, yhi;
@@ -2925,11 +3104,12 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 		trans[0] = -xlo;
 		trans[1] = -ylo;
+		#endif
 
 
 		out_hull_faces = 0;
 		unique_points = 0;
-		out_verts = Triangulate(&out_hull_faces);
+		out_verts = Triangulate(&out_hull_faces, &sort_stamp);
 		polygons = out_verts / 3;
 		return out_verts;
 	}
