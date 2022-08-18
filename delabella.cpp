@@ -5,6 +5,10 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 //#define DELABELLA_AUTOTEST
 
+//#define USE_AVR // otherwise we use middle of bbox 
+
+#define USE_MIDDLE_BIAS // shift split point by ~15% of bbox size
+
 // in case of troubles, allows to see if any assert pops up.
 // define it globally (like with -DDELABELLA_AUTOTEST)
 
@@ -186,16 +190,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		template <typename C>
 		C Hilbert(int ctx) const
 		{
-			/*
-			sample C
-			{
-				C() : num(0) {}
-				C(const Node* node) : num(node->n) {}
-				void operator () (const C& c) { num += c.num; }
-				int num;
-			};
-			*/
-
 			if (this->x == T(INFINITY))
 				return C{this,ctx};
 
@@ -257,8 +251,15 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			I sub_size[4] = { 0,0,0,0 };
 			Vert* sub_head[4] = { 0,0,0,0 };
 			Vert* sub_tail[4] = { 0,0,0,0 };
+			#ifdef USE_AVR
 			T sub_avr_x[4] = { 0,0,0,0 };
 			T sub_avr_y[4] = { 0,0,0,0 };
+			#else
+			T sub_lo_x[4] = { +INFINITY,+INFINITY,+INFINITY,+INFINITY };
+			T sub_hi_x[4] = { -INFINITY,-INFINITY,-INFINITY,-INFINITY };
+			T sub_lo_y[4] = { +INFINITY,+INFINITY,+INFINITY,+INFINITY };
+			T sub_hi_y[4] = { -INFINITY,-INFINITY,-INFINITY,-INFINITY };
+			#endif
 
 			this->x = avr_x;
 			this->y = avr_y;
@@ -277,8 +278,15 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					sub_tail[s]->next = v;
 				sub_tail[s] = v;
 
+				#ifdef USE_AVR
 				sub_avr_x[s] += v->x;
 				sub_avr_y[s] += v->y;
+				#else
+				sub_lo_x[s] = std::min(sub_lo_x[s], v->x);
+				sub_hi_x[s] = std::max(sub_hi_x[s], v->x);
+				sub_lo_y[s] = std::min(sub_lo_y[s], v->y);
+				sub_hi_y[s] = std::max(sub_hi_y[s], v->y);
+				#endif
 
 				v = n;
 			}
@@ -289,7 +297,16 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				{
 					sub_tail[s]->next = 0;
 					this->sub[s] = this + tree_used;
-					tree_used += (this + tree_used)->Split(sub_avr_x[s] / sub_size[s], sub_avr_y[s] / sub_size[s], sub_head[s], sub_tail[s], max_len, rem--);
+
+					#ifdef USE_AVR
+					tree_used += (this + tree_used)->Split(sub_avr_x[s] / sub_size[s], sub_avr_y[s] / sub_size[s], sub_head[s], sub_tail[s], max_len, --rem);
+					#else
+						#ifdef USE_MIDDLE_BIAS
+						tree_used += (this + tree_used)->Split((sub_lo_x[s]*T(0.9) + sub_hi_x[s]*T(1.1)) / 2, (sub_lo_y[s]*T(0.8) + sub_hi_y[s]*T(1.2)) / 2, sub_head[s], sub_tail[s], max_len, --rem);
+						#else
+						tree_used += (this + tree_used)->Split((sub_lo_x[s] + sub_hi_x[s]) / 2, (sub_lo_y[s] + sub_hi_y[s]) / 2, sub_head[s], sub_tail[s], max_len, --rem);
+						#endif
+					#endif
 				}
 				else
 				if (sub_size[s] > 0)
@@ -556,10 +573,11 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				d = w - 1;
 			}
 
-			// move pinch of random verts intro front
-			#if 0
+			// MAKE CRACK IN THE CRYSTAL
+			// - move last point into front
+			// #if 0
 			{
-				if (w > 100 && 1)
+				if (w > 3)
 				{
 					const I tail = w - 1;
 					Vert tmp = vert_alloc[tail];
@@ -572,64 +590,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 						else
 							vert_map[i]++;
 					}
-
-					/*
-					const int num_rnd = 1;
-
-					std::mt19937_64 gen{ 0x000000006DA95FD9ULL };
-					I rnd[num_rnd + 1]; // +1 to account for num=0
-					for (I r = 0; r < num_rnd; r++)
-					{
-						I at = gen() % w;
-						if (vert_alloc[at].i >= 0)
-						{
-							vert_alloc[at].i = ~vert_alloc[at].i;
-							rnd[r] = at;
-						}
-						else
-							r--;
-					}
-
-					std::sort(rnd, rnd + num_rnd);
-
-					Vert hdr[num_rnd + 1];
-					for (int h = num_rnd - 1, o = 1; h >= 0; h--, o++)
-					{
-						hdr[h] = vert_alloc[rnd[h]]; // store 
-						hdr[h].i = ~hdr[h].i;        // & unmark
-
-						I b = 0, e = rnd[h];
-
-						if (h)
-							b = rnd[h - 1] + 1;
-
-						memmove(vert_alloc + b + o, vert_alloc + b, sizeof(Vert) * (e - b));
-					}
-
-					memcpy(vert_alloc, hdr, sizeof(Vert) * num_rnd);
-
-					// remap vert_map
-					for (int i = 0; i < points; i++)
-					{
-						for (int h = 0; h < num_rnd; h++)
-						{
-							if (vert_map[i] < rnd[h])
-							{
-								vert_map[i] += num_rnd - h;
-								break;
-							}
-							else
-							if (vert_map[i] == rnd[h])
-							{
-								vert_map[i] = h;
-								break;
-							}
-						}
-					}
-					*/
 				}
 			}
-			#endif
+			// #endif
 
 			uint64_t time1 = uSec();
 
@@ -2864,7 +2827,11 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			return 0;
 
 		Vert* v = vert_alloc;
+		#ifdef USE_AVR
 		T avr_x = *x, avr_y = *y;
+		#else
+		T lo_x = *x, hi_x = *x, lo_y = *y, hi_y = *y;
+		#endif
 		v->i = 0;
 		v->x = *x;
 		v->y = *y;
@@ -2877,12 +2844,27 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			v->y = *(const T*)((const char*)y + i * advance_bytes);
 
 			// todo: improve precision!
+			#ifdef USE_AVR
 			avr_x += v->x;
 			avr_y += v->y;
+			#else
+			lo_x = std::min(lo_x, v->x);
+			hi_x = std::max(hi_x, v->x);
+			lo_y = std::min(lo_y, v->y);
+			hi_y = std::max(hi_y, v->y);
+			#endif
 		}
 
+		#ifdef USE_AVR
 		avr_x /= points;
 		avr_y /= points;
+		#else
+			#ifdef USE_MIDDLE_BIAS
+			T avr_x = (lo_x*T(0.9) + hi_x* T(1.1)) / 2, avr_y = (lo_y*T(0.8) + hi_y*T(1.2)) / 2;
+			#else
+			T avr_x = (lo_x + hi_x) / 2, avr_y = (lo_y + hi_y) / 2;
+			#endif
+		#endif
 
 		const int node_thresh = 6;
 		
@@ -2895,8 +2877,8 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				Node dat[1];
 			}
 		*/
-		tree_size = (int)round( points * log2((double)points) / (2.0 * node_thresh));
-		tree_size *= 10; // just check
+		tree_size = (int)round( points * log2((double)points) / node_thresh );
+		tree_size *= 10; //???
 		int max_depth = (int)round(log2((double)points));
 		if (!max_depth)
 			max_depth = 1;
@@ -2911,8 +2893,15 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		I sub_size[4] = { 0,0,0,0 };
 		Vert* sub_head[4] = { 0,0,0,0 };
 		Vert* sub_tail[4] = { 0,0,0,0 };
+		#ifdef USE_AVR
 		T sub_avr_x[4] = { 0,0,0,0 };
 		T sub_avr_y[4] = { 0,0,0,0 };
+		#else
+		T sub_lo_x[4] = { +INFINITY,+INFINITY,+INFINITY,+INFINITY };
+		T sub_hi_x[4] = { -INFINITY,-INFINITY,-INFINITY,-INFINITY };
+		T sub_lo_y[4] = { +INFINITY,+INFINITY,+INFINITY,+INFINITY };
+		T sub_hi_y[4] = { -INFINITY,-INFINITY,-INFINITY,-INFINITY };
+		#endif
 		for (I i = 0; i < points; i++)
 		{
 			v = vert_alloc + i;
@@ -2924,8 +2913,16 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			else
 				sub_tail[s]->next = v;
 			sub_tail[s] = v;
+
+			#ifdef USE_AVR
 			sub_avr_x[s] += v->x;
 			sub_avr_y[s] += v->y;
+			#else
+			sub_lo_x[s] = std::min(sub_lo_x[s], v->x);
+			sub_hi_x[s] = std::max(sub_hi_x[s], v->x);
+			sub_lo_y[s] = std::min(sub_lo_y[s], v->y);
+			sub_hi_y[s] = std::max(sub_hi_y[s], v->y);
+			#endif
 		}
 
 		// todo: limit depth!!!
@@ -2938,7 +2935,15 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			{
 				sub_tail[s]->next = 0;
 				tree->sub[s] = tree + tree_used;
+				#ifdef USE_AVR
 				tree_used += (tree + tree_used)->Split(sub_avr_x[s] / sub_size[s], sub_avr_y[s] / sub_size[s], sub_head[s], sub_tail[s], &max_len, max_depth);
+				#else
+					#ifdef USE_MIDDLE_BIAS
+					tree_used += (tree + tree_used)->Split((sub_lo_x[s]*T(0.9) + sub_hi_x[s]*T(1.1)) / 2, (sub_lo_y[s]*T(0.8) + sub_hi_y[s]*T(1.2)) / 2, sub_head[s], sub_tail[s], &max_len, max_depth);
+					#else
+					tree_used += (tree + tree_used)->Split((sub_lo_x[s] + sub_hi_x[s]) / 2, (sub_lo_y[s] + sub_hi_y[s]) / 2, sub_head[s], sub_tail[s], &max_len, max_depth);
+					#endif
+				#endif
 			}
 			else
 			if (sub_size[s])
@@ -2972,13 +2977,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			// init leaf, sort em!
 			C(const Node* node, int ctx)
 			{
-				
-				head = node->head;
-				tail = node->tail;
-				tail->next = 0;
-				return;
-				
-
 				// use tmp array of pointers to verts
 				// fill arr, sort, re-link verts, KEEP DUPS!
 				Vert* v = node->head;
@@ -2993,28 +2991,60 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				{
 					case 0: // right (type A)
 					{
-						struct { bool operator () (const Vert* const & a, const Vert* const & b) const { return a->x < b->x; } } p;
+						struct 
+						{ 
+							bool operator () (const Vert* const & a, const Vert* const & b) const 
+							{
+								if (a->x == b->x)
+									return a->y < b->y;
+								return a->x < b->x; 
+							} 
+						} p;
 						std::sort(tmp, tmp + n, p);
 						break;
 					}
 
 					case 1: // left (type U)
 					{
-						struct { bool operator () (const Vert* const & a, const Vert* const & b) const { return a->x > b->x; } } p;
+						struct
+						{
+							bool operator () (const Vert* const & a, const Vert* const & b) const
+							{
+								if (a->x == b->x)
+									return a->y > b->y;
+								return a->x > b->x;
+							}
+						} p;
 						std::sort(tmp, tmp + n, p);
 						break;
 					}
 
 					case 2: // up (type D)
 					{
-						struct { bool operator () (const Vert* const & a, const Vert* const & b) const { return a->y < b->y; } } p;
+						struct
+						{
+							bool operator () (const Vert* const & a, const Vert* const & b) const
+							{
+								if (a->y == b->y)
+									return a->x < b->x;
+								return a->y < b->y;
+							}
+						} p;
 						std::sort(tmp, tmp + n, p);
 						break;
 					}
 
 					case 3: // down (type C)
 					{
-						struct { bool operator () (const Vert* const & a, const Vert* const & b) const { return a->y > b->y; } } p;
+						struct
+						{
+							bool operator () (const Vert* const & a, const Vert* const & b) const
+							{
+								if (a->y == b->y)
+									return a->x > b->x;
+								return a->y > b->y;
+							}
+						} p;
 						std::sort(tmp, tmp + n, p);
 						break;
 					}
@@ -3054,6 +3084,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 		free(tmp);
 		tmp = 0;
+
+		free(tree);
+		tree = 0;
 
 		// assign indexes (sew field) to all verts
 		v = c.head;

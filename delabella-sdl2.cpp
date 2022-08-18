@@ -1382,7 +1382,7 @@ int bench_main(int argc, char* argv[])
 #else
 int main(int argc, char* argv[])
 {
-    const char* dist = "cir";
+    const char* dist = "sym";
     const char* bias = "";
 #endif
 
@@ -1808,35 +1808,38 @@ int main(int argc, char* argv[])
         uint64_t t0 = uSec(), t1, t2;
         Point2** handles = (Point2**)malloc(sizeof(Point2*) * cloud.size());
         MyIndex tris_fade;
-        try {
-            Fade_2D dt;
-            dt.insert((int)cloud.size(), &cloud.data()->x, handles);
-            tris_fade = (MyIndex)dt.numberOfTriangles();
+		try {
+			Fade_2D dt;
+			dt.insert((int)cloud.size(), &cloud.data()->x, handles);
+			tris_fade = (MyIndex)dt.numberOfTriangles();
 
-            t1 = uSec();
+			t1 = uSec();
 
-            // we need to map using handles
-            std::vector<Segment2> ve;
-            ve.reserve(force.size());
-            for (int i = 0; i < force.size(); i++)
-            {
-                Segment2 e{ *handles[force[i].a], *handles[force[i].b] };
-                ve.push_back(e);
-            }
-            auto cgr = dt.createConstraint(ve, ConstraintInsertionStrategy::CIS_CONSTRAINED_DELAUNAY, true);
+			// we need to map using handles
+			if (force.size())
+			{
+				std::vector<Segment2> ve;
+				ve.reserve(force.size());
+				for (int i = 0; i < force.size(); i++)
+				{
+					Segment2 e{ *handles[force[i].a], *handles[force[i].b] };
+					ve.push_back(e);
+				}
+				auto cgr = dt.createConstraint(ve, ConstraintInsertionStrategy::CIS_CONSTRAINED_DELAUNAY, true);
 
-            t2 = uSec();
+				t2 = uSec();
 
-            auto zon = dt.createZone(cgr, ZL_INSIDE, false);
+				auto zon = dt.createZone(cgr, ZL_INSIDE, false);
 
-            //#ifndef BENCH
-            //zon->show("zone.ps", false, false);
-            //#endif
+				//#ifndef BENCH
+				//zon->show("zone.ps", false, false);
+				//#endif
 
-            printf("ZONE has %d triangles", (int)zon->getNumberOfTriangles());
+				printf("ZONE has %d triangles", (int)zon->getNumberOfTriangles());
 
-            //delete cgr;
-            //delete zon;
+				//delete cgr;
+				//delete zon;
+			}
         }
         catch (...)
         {
@@ -2741,12 +2744,12 @@ int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, "");
 
-    const char* test_dist[] = { /*"uni","std",*/"gam","sym","cir","hex",0};
+    const char* test_dist[] = { /*"uni","std","gam",*/"sym","cir","hex",0};
     const char* test_bias[] = { "","+","-", 0 };
 
     int test_size[] =
     {
-        //1000,2500,5000,
+        1000,2500,5000,
         10000,25000,50000,
         100000,250000,500000,
         1000000, /*2500000,5000000,
@@ -2808,7 +2811,7 @@ int main(int argc, char* argv[])
 							accum[i] += bench[i];
 						acc++;
 					}
-                } while (uSec() - t0 < 5000000);
+                } while (uSec() - t0 < 5/*000000*/);
 
                 for (int i = 0; i < players; i++)
                     accum[i] /= acc;
