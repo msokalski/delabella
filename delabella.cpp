@@ -3,11 +3,7 @@ DELABELLA - Delaunay triangulation library
 Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 */
 
-//#define DELABELLA_AUTOTEST
-
-//#define USE_AVR // otherwise we use middle of bbox 
-
-#define USE_MIDDLE_BIAS // shift split point by ~15% of bbox size
+// #define DELABELLA_AUTOTEST
 
 // in case of troubles, allows to see if any assert pops up.
 // define it globally (like with -DDELABELLA_AUTOTEST)
@@ -165,169 +161,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		*/
 	};
 
-	//template <typename T, typename I>
-	struct Node
-	{
-		T x; // split pos x (if not INF)
-		union
-		{
-			T y;
-			I n;
-		};
-
-		union
-		{
-			Node* sub[4];
-
-			struct
-			{
-				Vert* head;
-				Vert* tail;
-				void* spare[2];
-			};
-		};
-
-		template <typename C>
-		C Hilbert(int ctx) const
-		{
-			if (this->x == T(INFINITY))
-				return C{this,ctx};
-
-			// visiting order of sub nodes
-			static const int sub_ord[4][4] = { {0,2,3,1}, {3,1,0,2}, {0,1,3,2}, {3,2,0,1} }; /* 
-			                                     2-->3      2   3      2<--3      2---3
-			                                     | 0 |      | 1 |        2 |      | 3
-			                                     0   1      0<--1      0---1      0-->1      */
-
-			// context transitions
-			static const int sub_ctx[4][4] = { {2,0,0,3}, {3,1,1,2}, {0,2,2,1}, {1,3,3,0} }; /*
-			                                     0-->0      2   3      1<--2      3---1
-			                                     | 0 |      | 1 |        2 |      | 3
-			                                     2   3      1<--1      0---2      3-->0      */
-
-			/* 3x recursion example
-			1---2   1---2   1-- 2   1---2
-			| A-|---|-A |   | A-|---|-A |
-			0 | 3   0 | 3   0 | 3   0 | 3
-			  |   A---|-------|---A   |
-			3-|-2 | 1-|-0   3-|-2 | 1-|-0
-			  D | | | C       D | | | C
-			0---1 | 2---3   0---1 | 2---3
-			      |       A       |
-			3   0 | 3---2   1---0 | 3   0
-			| U-|-|---D |   | C---|-|-U |
-			2---1 | 0-|-1   2-|-3 | 2---1
-				  D   |       |   C
-			1---2   3-|-2   1-|-0   1---2
-			| A-|-----D |   | C-----|-A |
-			0   3   0---1   2---3   0   3
-			*/
-
-			C c{};
-			for (int i = 0; i < 4; i++)
-			{
-				int s = sub_ord[ctx][i];
-				if (this->sub[s])
-					c(this->sub[s]->Hilbert<C>(sub_ctx[ctx][i]));
-			}
-
-			return c;
-		}
-
-		void Finish(I n, Vert* h, Vert* t)
-		{
-			this->x = T(INFINITY);
-			this->n = n;
-			this->head = h;
-			this->tail = t;
-		}
-
-		I Split(T avr_x, T avr_y, Vert* h, Vert* t, I* max_len, int rem)
-		{
-			const int node_thresh = 6;
-
-			// todo: don't split if ALL parent's points are in the same sub
-			I tree_used = 1; // this node
-			I sub_size[4] = { 0,0,0,0 };
-			Vert* sub_head[4] = { 0,0,0,0 };
-			Vert* sub_tail[4] = { 0,0,0,0 };
-			#ifdef USE_AVR
-			T sub_avr_x[4] = { 0,0,0,0 };
-			T sub_avr_y[4] = { 0,0,0,0 };
-			#else
-			T sub_lo_x[4] = { +INFINITY,+INFINITY,+INFINITY,+INFINITY };
-			T sub_hi_x[4] = { -INFINITY,-INFINITY,-INFINITY,-INFINITY };
-			T sub_lo_y[4] = { +INFINITY,+INFINITY,+INFINITY,+INFINITY };
-			T sub_hi_y[4] = { -INFINITY,-INFINITY,-INFINITY,-INFINITY };
-			#endif
-
-			this->x = avr_x;
-			this->y = avr_y;
-
-			Vert* v = h;
-			while (v) // or v!=t
-			{
-				Vert* n = (Vert*)v->next;
-
-				int s = (v->y >= avr_y) * 2 + (v->x >= avr_x);
-				sub_size[s]++;
-
-				if (!sub_head[s])
-					sub_head[s] = v;
-				else
-					sub_tail[s]->next = v;
-				sub_tail[s] = v;
-
-				#ifdef USE_AVR
-				sub_avr_x[s] += v->x;
-				sub_avr_y[s] += v->y;
-				#else
-				sub_lo_x[s] = std::min(sub_lo_x[s], v->x);
-				sub_hi_x[s] = std::max(sub_hi_x[s], v->x);
-				sub_lo_y[s] = std::min(sub_lo_y[s], v->y);
-				sub_hi_y[s] = std::max(sub_hi_y[s], v->y);
-				#endif
-
-				v = n;
-			}
-
-			for (int s = 0; s < 4; s++)
-			{
-				if (rem && sub_size[s] > node_thresh)
-				{
-					sub_tail[s]->next = 0;
-					this->sub[s] = this + tree_used;
-
-					#ifdef USE_AVR
-					tree_used += (this + tree_used)->Split(sub_avr_x[s] / sub_size[s], sub_avr_y[s] / sub_size[s], sub_head[s], sub_tail[s], max_len, --rem);
-					#else
-						#ifdef USE_MIDDLE_BIAS
-						tree_used += (this + tree_used)->Split((sub_lo_x[s]*T(0.9) + sub_hi_x[s]*T(1.1)) / 2, (sub_lo_y[s]*T(0.8) + sub_hi_y[s]*T(1.2)) / 2, sub_head[s], sub_tail[s], max_len, --rem);
-						#else
-						tree_used += (this + tree_used)->Split((sub_lo_x[s] + sub_hi_x[s]) / 2, (sub_lo_y[s] + sub_hi_y[s]) / 2, sub_head[s], sub_tail[s], max_len, --rem);
-						#endif
-					#endif
-				}
-				else
-				if (sub_size[s] > 0)
-				{
-					// finish with leaf
-					sub_tail[s]->next = 0;
-					this->sub[s] = this + tree_used;
-					(this + tree_used)->Finish(sub_size[s], sub_head[s], sub_tail[s]);
-					*max_len = std::max(*max_len, sub_size[s]);
-					tree_used++;
-				}
-				else
-					this->sub[s] = 0;
-			}
-
-			return tree_used;
-		}
-	};
-
-	I tree_size;
-	Node* tree;
 
 	struct Face : IDelaBella2<T, I>::Simplex
 	{
@@ -575,7 +408,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 			// MAKE CRACK IN THE CRYSTAL
 			// - move last point into front
-			// #if 0
+			#if 1
 			{
 				if (w > 3)
 				{
@@ -592,7 +425,42 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					}
 				}
 			}
-			// #endif
+			#endif
+
+			#if 0
+			{
+				// more cracks
+				const int cracks = 1000;
+				if (w > cracks)
+				{
+					Vert crack[cracks];
+					for (I c = 0; c < cracks; c++)
+					{
+						I d = w - 1 - w * c / cracks;
+						I b = w - 1 - w * (c + 1) / cracks;
+
+						crack[c] = vert_alloc[d];
+						memmove(vert_alloc + b + c + 2, vert_alloc + b + 1, sizeof(Vert)*(d - b - 1));
+					}
+					memcpy(vert_alloc, crack, sizeof(Vert)*cracks);
+
+					const I ofs = cracks * (w - 1) / w;
+					for (int i = 0; i < points; i++)
+					{
+						I m = vert_map[i];
+						I c  = ofs - cracks * m / w;
+						I cc = ofs - cracks * (m + 1) / w;
+
+						if (cc < c)
+							vert_map[i] = c;
+						else
+							vert_map[i] += c + 1;
+					}
+					
+				}
+			}
+			#endif
+
 
 			uint64_t time1 = uSec();
 
@@ -1154,6 +1022,26 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					while (f->dotNP(*q))
 					{
 #ifdef DELABELLA_AUTOTEST
+
+						if (f == face_alloc)
+						{
+							//dups test
+							struct
+							{
+								bool operator () (const Vert& a, const Vert& b) const
+								{
+									return a.x == b.x ? a.y < b.y : a.x < b.x;
+								}
+							} dup;
+
+							std::sort(vert_alloc, vert_alloc + points, dup);
+							for (I d = 1; d < points; d++)
+							{
+								assert(vert_alloc[d - 1].x != vert_alloc[d].x ||
+									vert_alloc[d - 1].y != vert_alloc[d].y);
+							}
+						}
+
 						assert(f != face_alloc); // no face is visible? you must be kidding!
 #endif
 						f--;
@@ -2826,12 +2714,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		if (!ReallocVerts(points))
 			return 0;
 
-		Vert* v = vert_alloc;
-		#ifdef USE_AVR
-		T avr_x = *x, avr_y = *y;
-		#else
 		T lo_x = *x, hi_x = *x, lo_y = *y, hi_y = *y;
-		#endif
+
+		Vert* v = vert_alloc;
 		v->i = 0;
 		v->x = *x;
 		v->y = *y;
@@ -2842,269 +2727,136 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			v->i = i;
 			v->x = *(const T*)((const char*)x + i * advance_bytes);
 			v->y = *(const T*)((const char*)y + i * advance_bytes);
-
-			// todo: improve precision!
-			#ifdef USE_AVR
-			avr_x += v->x;
-			avr_y += v->y;
-			#else
-			lo_x = std::min(lo_x, v->x);
-			hi_x = std::max(hi_x, v->x);
-			lo_y = std::min(lo_y, v->y);
-			hi_y = std::max(hi_y, v->y);
-			#endif
 		}
 
-		#ifdef USE_AVR
-		avr_x /= points;
-		avr_y /= points;
-		#else
-			#ifdef USE_MIDDLE_BIAS
-			T avr_x = (lo_x*T(0.9) + hi_x* T(1.1)) / 2, avr_y = (lo_y*T(0.8) + hi_y*T(1.2)) / 2;
-			#else
-			T avr_x = (lo_x + hi_x) / 2, avr_y = (lo_y + hi_y) / 2;
-			#endif
-		#endif
-
-		const int node_thresh = 6;
-		
-		// todo: alloc nodes as list of packs
-		/*
-			struct Pack
+		struct KD
+		{
+			KD(T lo_x, T hi_x, T lo_y, T hi_y)
 			{
-				Pack* next;
-				int num
-				Node dat[1];
+				bbox[0] = lo_x;
+				bbox[1] = hi_x;
+				bbox[2] = lo_y;
+				bbox[3] = hi_y;
 			}
-		*/
-		tree_size = (int)round( points * log2((double)points) / node_thresh );
-		tree_size *= 10; //???
-		int max_depth = (int)round(log2((double)points));
-		if (!max_depth)
-			max_depth = 1;
 
-		Node* tree = (Node*)malloc(sizeof(Node) * tree_size);
-		assert(tree);
+			T bbox[4];
 
-		tree->x = avr_x;
-		tree->y = avr_y;
-
-		// initial split (arr->lists)
-		I sub_size[4] = { 0,0,0,0 };
-		Vert* sub_head[4] = { 0,0,0,0 };
-		Vert* sub_tail[4] = { 0,0,0,0 };
-		#ifdef USE_AVR
-		T sub_avr_x[4] = { 0,0,0,0 };
-		T sub_avr_y[4] = { 0,0,0,0 };
-		#else
-		T sub_lo_x[4] = { +INFINITY,+INFINITY,+INFINITY,+INFINITY };
-		T sub_hi_x[4] = { -INFINITY,-INFINITY,-INFINITY,-INFINITY };
-		T sub_lo_y[4] = { +INFINITY,+INFINITY,+INFINITY,+INFINITY };
-		T sub_hi_y[4] = { -INFINITY,-INFINITY,-INFINITY,-INFINITY };
-		#endif
-		for (I i = 0; i < points; i++)
-		{
-			v = vert_alloc + i;
-			int s = (v->y >= avr_y) * 2 + (v->x >= avr_x);
-			sub_size[s]++;
-
-			if (!sub_head[s])
-				sub_head[s] = v;
-			else
-				sub_tail[s]->next = v;
-			sub_tail[s] = v;
-
-			#ifdef USE_AVR
-			sub_avr_x[s] += v->x;
-			sub_avr_y[s] += v->y;
-			#else
-			sub_lo_x[s] = std::min(sub_lo_x[s], v->x);
-			sub_hi_x[s] = std::max(sub_hi_x[s], v->x);
-			sub_lo_y[s] = std::min(sub_lo_y[s], v->y);
-			sub_hi_y[s] = std::max(sub_hi_y[s], v->y);
-			#endif
-		}
-
-		// todo: limit depth!!!
-		// todo: don't split if ALL parent's points are in the same sub
-		I max_len = 0;
-		I tree_used = 1; // root is taken
-		for (int s = 0; s < 4; s++)
-		{
-			if (sub_size[s] > node_thresh)
+			void Split(Vert* v, I n)
 			{
-				sub_tail[s]->next = 0;
-				tree->sub[s] = tree + tree_used;
-				#ifdef USE_AVR
-				tree_used += (tree + tree_used)->Split(sub_avr_x[s] / sub_size[s], sub_avr_y[s] / sub_size[s], sub_head[s], sub_tail[s], &max_len, max_depth);
-				#else
-					#ifdef USE_MIDDLE_BIAS
-					tree_used += (tree + tree_used)->Split((sub_lo_x[s]*T(0.9) + sub_hi_x[s]*T(1.1)) / 2, (sub_lo_y[s]*T(0.8) + sub_hi_y[s]*T(1.2)) / 2, sub_head[s], sub_tail[s], &max_len, max_depth);
-					#else
-					tree_used += (tree + tree_used)->Split((sub_lo_x[s] + sub_hi_x[s]) / 2, (sub_lo_y[s] + sub_hi_y[s]) / 2, sub_head[s], sub_tail[s], &max_len, max_depth);
+				if (n < 2)
+					return;
+
+				bbox[0] = bbox[1] = v[0].x;
+				bbox[2] = bbox[3] = v[0].y;
+				for (I i = 1; i < n; i++)
+				{
+					bbox[0] = std::min(bbox[0], v[i].x);
+					bbox[1] = std::max(bbox[1], v[i].x);
+					bbox[2] = std::min(bbox[2], v[i].y);
+					bbox[3] = std::max(bbox[3], v[i].y);
+				}
+
+				I m = n / 2;
+				if (bbox[1] - bbox[0] >= bbox[3] - bbox[2] && bbox[0] < bbox[1])
+				{
+					if (n == 2)
+					{
+						if (v[0].x > v[1].x || v[0].x == v[1].x && v[0].y > v[1].y)
+						{
+							Vert u = v[0];
+							v[0] = v[1];
+							v[1] = u;
+						}
+						return;
+					}
+
+					T half = (bbox[1] + bbox[0]) / 2;
+					if (half == bbox[0])
+						half = bbox[1];
+
+					struct
+					{
+						bool operator () (const Vert& a, const Vert& b) const
+						{
+							return a.x < b.x;
+						}
+						bool operator () (const Vert& v) const
+						{
+							return v.x < t;
+						}
+						T t;
+					} p = { half };
+
+					if (bbox[2] == bbox[3])
+					{
+						std::sort(v, v + n, p);
+						return;
+					}
+
+					Vert* u = std::partition(v, v + n, p);
+					#ifdef DELABELLA_AUTOTEST
+					assert(u != v && u != v + n);
 					#endif
-				#endif
-			}
-			else
-			if (sub_size[s])
-			{
-				// finish with leaf
-				sub_tail[s]->next = 0;
-				tree->sub[s] = tree + tree_used;
-				(tree + tree_used)->Finish(sub_size[s], sub_head[s], sub_tail[s]);
-				max_len = std::max(max_len, sub_size[s]);
-				tree_used++;
-			}
-			else
-			{
-				tree->sub[s] = 0;
-			}
-
-			assert(tree_used <= tree_size);
-		}
-
-		//printf("                                               NODES   = %d / %d\n", (int)tree_used, (int)tree_size);
-		//printf("                                               MAX LEN = %d\n", (int)max_len);
-
-		static Vert** tmp = 0; // NOT THREAD SAFE!!!
-		tmp = (Vert**)malloc(sizeof(Vert*) * max_len);
-
-		struct C
-		{
-			// init parent
-			C() : head(0), tail(0) {}
-
-			// init leaf, sort em!
-			C(const Node* node, int ctx)
-			{
-				// use tmp array of pointers to verts
-				// fill arr, sort, re-link verts, KEEP DUPS!
-				Vert* v = node->head;
-				I n = 0;
-				while (v)
-				{
-					tmp[n++] = v;
-					v = (Vert*)v->next;
+					
+					Split(v, (I)(u - v));
+					Split(u, n - (I)(u-v));
 				}
-
-				switch (ctx)
-				{
-					case 0: // right (type A)
-					{
-						struct 
-						{ 
-							bool operator () (const Vert* const & a, const Vert* const & b) const 
-							{
-								if (a->x == b->x)
-									return a->y < b->y;
-								return a->x < b->x; 
-							} 
-						} p;
-						std::sort(tmp, tmp + n, p);
-						break;
-					}
-
-					case 1: // left (type U)
-					{
-						struct
-						{
-							bool operator () (const Vert* const & a, const Vert* const & b) const
-							{
-								if (a->x == b->x)
-									return a->y > b->y;
-								return a->x > b->x;
-							}
-						} p;
-						std::sort(tmp, tmp + n, p);
-						break;
-					}
-
-					case 2: // up (type D)
-					{
-						struct
-						{
-							bool operator () (const Vert* const & a, const Vert* const & b) const
-							{
-								if (a->y == b->y)
-									return a->x < b->x;
-								return a->y < b->y;
-							}
-						} p;
-						std::sort(tmp, tmp + n, p);
-						break;
-					}
-
-					case 3: // down (type C)
-					{
-						struct
-						{
-							bool operator () (const Vert* const & a, const Vert* const & b) const
-							{
-								if (a->y == b->y)
-									return a->x > b->x;
-								return a->y > b->y;
-							}
-						} p;
-						std::sort(tmp, tmp + n, p);
-						break;
-					}
-
-					default:
-						break;
-				}
-
-				// relink
-				I last = n - 1;
-				head = tmp[0];
-				tail = tmp[last];
-				tail->next = 0;
-				for (I i = 0; i < last; i++)
-					tmp[i]->next = tmp[i + 1];
-			}
-
-			// accum child to parent
-			void operator () (const C& c)
-			{
-				if (!head)
-					head = c.head;
 				else
-					tail->next = c.head;
-				tail = c.tail;
+				if (bbox[2] < bbox[3])
+				{
+					if (n == 2)
+					{
+						if (v[0].y > v[1].y || v[0].y == v[1].y && v[0].x > v[1].x)
+						{
+							Vert u = v[0];
+							v[0] = v[1];
+							v[1] = u;
+						}
+						return;
+					}
+
+					T half = (bbox[3] + bbox[2]) / 2;
+					if (half == bbox[2])
+						half = bbox[3];
+
+					struct
+					{
+						bool operator () (const Vert& a, const Vert& b) const
+						{
+							return a.y < b.y;
+						}
+						bool operator () (const Vert& v) const
+						{
+							return v.y < t;
+						}
+						T t;
+					} p = { half };
+
+					if (bbox[0] == bbox[1])
+					{
+						std::sort(v, v + n, p);
+						return;
+					}
+
+					Vert* u = std::partition(v, v + n, p);
+
+					#ifdef DELABELLA_AUTOTEST
+					assert(u != v && u != v + n);
+					#endif
+
+					Split(v, (I)(u - v));
+					Split(u, n - (I)(u - v));
+				}
+				else
+				{
+					// all verts are dups
+					// dont touch
+				}
 			}
-
-			// final move
-			C(const C&& c) : head(c.head), tail(c.tail) {}
-
-			Vert* head;
-			Vert* tail;
 		};
 
-		// connect hilbert clusters
-		C c = tree->Hilbert<C>(0);
-
-		free(tmp);
-		tmp = 0;
-
-		free(tree);
-		tree = 0;
-
-		// assign indexes (sew field) to all verts
-		v = c.head;
-		I index = 0;
-		while (v)
-		{
-			v->sew = (Face*)(intptr_t)index++;
-			v = (Vert*)v->next;
-		}
-
-		struct { bool operator () (const Vert& a, const Vert& b) const { return a.sew < b.sew; } } p;
-		std::sort(vert_alloc,vert_alloc + points, p);
-
-		for (I i = 0; i < points; i++)
-		{
-			vert_alloc[i].next = 0;
-			vert_alloc[i].sew = 0;
-		}
+		KD kd{ lo_x,hi_x,lo_y,hi_y };
+		kd.Split(vert_alloc, points);
 
 		#if 0
 		exit(0);

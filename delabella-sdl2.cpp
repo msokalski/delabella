@@ -1488,7 +1488,27 @@ int main(int argc, char* argv[])
         else
         if (strcmp(dist, "sym") == 0)
         {
-            n /= 8;
+			// soft sym
+			/*
+			for (MyIndex i = 0; i < n; i++)
+			{
+				int r = gen() & 0x3;
+				MyPoint p = { d_gam(gen), d_gam(gen) };
+
+				if (r & 1)
+					p.x = -p.x;
+				if (r & 2)
+					p.y = -p.y;
+
+				// please, leave some headroom for arithmetics!
+				assert(std::abs(p.x) <= max_coord && std::abs(p.y) <= max_coord);
+
+				cloud.push_back(MyPoint(p.x + bias_xy[0], p.y + bias_xy[1]));
+			}
+			*/
+
+			// hard sym
+			n /= 8;
             for (MyIndex i = 0; i < n; i++)
             {
                 MyPoint p = { d_gam(gen), d_gam(gen) };
@@ -1802,7 +1822,7 @@ int main(int argc, char* argv[])
     #endif
 
     #ifdef WITH_FADE
-    if (points < 250000 || strcmp(dist,"gam") || bias[0]==0)
+    if (points<=1000000 && (points < 250000 || strcmp(dist,"gam") || bias[0]==0))
     {
         printf("running fade ...");
         uint64_t t0 = uSec(), t1, t2;
@@ -1917,6 +1937,7 @@ int main(int argc, char* argv[])
     #endif
 
     #ifdef WITH_DELAUNATOR
+	if ((strcmp(dist,"cir") || points <= 1000000) && (strcmp(dist, "gam") || bias[0]==0 || points <= 2500000))
     {
         std::vector<double> coords;
         for (int i=0; i<points; i++)
@@ -2206,6 +2227,7 @@ int main(int argc, char* argv[])
                 }
             }
             printf(compare_ok ? "OK\n" : "DIFFERENT!\n");
+			assert(compare_ok);
         }
         #endif
     }
@@ -2744,16 +2766,19 @@ int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, "");
 
-    const char* test_dist[] = { /*"uni","std","gam",*/"sym","cir","hex",0};
-    const char* test_bias[] = { "","+","-", 0 };
+    const char* test_dist[] = { "uni","std","gam",/*"sym","cir","hex",*/0};
+    const char* test_bias[] = { "","+","-",0 };
 
     int test_size[] =
     {
+		100000,
+		/*
+		100,250,500,
         1000,2500,5000,
         10000,25000,50000,
         100000,250000,500000,
-        1000000, /*2500000,5000000,
-        10000000,25000000,50000000,*/
+        1000000,2500000,5000000,
+        10000000,/*25000000,50000000,*/
         0
     };
 
@@ -2765,9 +2790,14 @@ int main(int argc, char* argv[])
 
     char test_path[100];
 
-    for (int d = 0; test_dist[d]; d++)
+	// fast skip
+	int d = 0;
+	int b = 0;
+	int i = 0;
+
+    for (/*int d = 0*/; test_dist[d]; d++)
     {
-        for (int b = 0; test_bias[b]; b++)
+        for (/*int b = 0*/; test_bias[b]; b++)
         {
             sprintf(test_path, "bench_%s%s.txt", test_dist[d], test_bias[b]);
             FILE* bench_file = fopen(test_path, "w");
@@ -2787,7 +2817,7 @@ int main(int argc, char* argv[])
                 (char*)test_bias[b]
             };
 
-            for (int i = 0; test_size[i]; i++)
+            for (/*int i = 0*/; test_size[i]; i++)
             {
                 Bench accum[players];
                 memset(accum, 0, sizeof(accum));
@@ -2797,7 +2827,7 @@ int main(int argc, char* argv[])
                 uint64_t t0 = uSec();
                 int acc = 0;
 
-				int num_tests = 1000000 / test_size[i];
+				int num_tests = 1000/*000*/ / test_size[i];
 				if (!num_tests)
 					num_tests = 1;
 
@@ -2903,7 +2933,11 @@ int main(int argc, char* argv[])
             }
 
             fclose(bench_file);
+
+			i = 0;
         }
+
+		b = 0;
     }
 
     return 0;
