@@ -1538,6 +1538,17 @@ int main(int argc, char* argv[])
 
             }
             n *= 8;
+
+			// does rotation fix anything? YES!!!
+			/*
+			MyCoord xx = 1.1, xy = 0.1, yx = -0.1, yy = 1.1;
+			for (MyIndex i = 0; i < n; i++)
+			{
+				MyPoint p = cloud[i];
+				cloud[i].x = p.x * xx + p.y * xy;
+				cloud[i].y = p.x * yx + p.y * yy;
+			}
+			*/
         }
         else
         if (strcmp(dist, "cir") == 0)
@@ -2766,12 +2777,12 @@ int main(int argc, char* argv[])
 {
     setlocale(LC_ALL, "");
 
-    const char* test_dist[] = { "uni","std","gam",/*"sym","cir","hex",*/0};
+    const char* test_dist[] = { "uni","std","gam","sym","cir","hex",0};
     const char* test_bias[] = { "","+","-",0 };
 
     int test_size[] =
     {
-		100000,
+		1000000,
 		/*
 		100,250,500,
         1000,2500,5000,

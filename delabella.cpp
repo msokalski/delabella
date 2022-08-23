@@ -2714,16 +2714,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		if (!ReallocVerts(points))
 			return 0;
 
-		T lo_x = *x, hi_x = *x, lo_y = *y, hi_y = *y;
-
-		Vert* v = vert_alloc;
-		v->i = 0;
-		v->x = *x;
-		v->y = *y;
-
-		for (I i = 1; i < points; i++)
+		for (I i = 0; i < points; i++)
 		{
-			v = vert_alloc + i;
+			Vert* v = vert_alloc + i;
 			v->i = i;
 			v->x = *(const T*)((const char*)x + i * advance_bytes);
 			v->y = *(const T*)((const char*)y + i * advance_bytes);
@@ -2731,63 +2724,62 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 		struct KD
 		{
-			KD(T lo_x, T hi_x, T lo_y, T hi_y)
+			const T xx, xy;
+			const T yx, yy;
+			T bbox[4];
+
+			T X(const Vert& v) const
 			{
-				bbox[0] = lo_x;
-				bbox[1] = hi_x;
-				bbox[2] = lo_y;
-				bbox[3] = hi_y;
+				return v.x * xx + v.y * xy;
 			}
 
-			T bbox[4];
+			T Y(const Vert& v) const
+			{
+				return v.x * yx + v.y * yy;
+			}
 
 			void Split(Vert* v, I n)
 			{
 				if (n < 2)
 					return;
 
-				bbox[0] = bbox[1] = v[0].x;
-				bbox[2] = bbox[3] = v[0].y;
+				bbox[0] = bbox[1] = X(v[0]);
+				bbox[2] = bbox[3] = Y(v[0]);
 				for (I i = 1; i < n; i++)
 				{
-					bbox[0] = std::min(bbox[0], v[i].x);
-					bbox[1] = std::max(bbox[1], v[i].x);
-					bbox[2] = std::min(bbox[2], v[i].y);
-					bbox[3] = std::max(bbox[3], v[i].y);
+					T x = X(v[i]);
+					T y = Y(v[i]);
+					bbox[0] = std::min(bbox[0], x);
+					bbox[1] = std::max(bbox[1], x);
+					bbox[2] = std::min(bbox[2], y);
+					bbox[3] = std::max(bbox[3], y);
 				}
 
-				I m = n / 2;
 				if (bbox[1] - bbox[0] >= bbox[3] - bbox[2] && bbox[0] < bbox[1])
 				{
-					if (n == 2)
-					{
-						if (v[0].x > v[1].x || v[0].x == v[1].x && v[0].y > v[1].y)
-						{
-							Vert u = v[0];
-							v[0] = v[1];
-							v[1] = u;
-						}
-						return;
-					}
-
 					T half = (bbox[1] + bbox[0]) / 2;
 					if (half == bbox[0])
 						half = bbox[1];
 
 					struct
 					{
+						T X(const Vert& v) const
+						{
+							return v.x * xx + v.y * xy;
+						}
 						bool operator () (const Vert& a, const Vert& b) const
 						{
-							return a.x < b.x;
+							return X(a) < X(b);
 						}
 						bool operator () (const Vert& v) const
 						{
-							return v.x < t;
+							return X(v) < t;
 						}
-						T t;
-					} p = { half };
+						const T t;
+						const T xx, xy;
+					} p = { half,xx,xy };
 
-					if (bbox[2] == bbox[3])
+					if (bbox[2] == bbox[3] || n == 2)
 					{
 						std::sort(v, v + n, p);
 						return;
@@ -2804,35 +2796,29 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				else
 				if (bbox[2] < bbox[3])
 				{
-					if (n == 2)
-					{
-						if (v[0].y > v[1].y || v[0].y == v[1].y && v[0].x > v[1].x)
-						{
-							Vert u = v[0];
-							v[0] = v[1];
-							v[1] = u;
-						}
-						return;
-					}
-
 					T half = (bbox[3] + bbox[2]) / 2;
 					if (half == bbox[2])
 						half = bbox[3];
 
 					struct
 					{
+						T Y(const Vert& v) const
+						{
+							return v.x * yx + v.y * yy;
+						}
 						bool operator () (const Vert& a, const Vert& b) const
 						{
-							return a.y < b.y;
+							return Y(a) < Y(b);
 						}
 						bool operator () (const Vert& v) const
 						{
-							return v.y < t;
+							return Y(v) < t;
 						}
-						T t;
-					} p = { half };
+						const T t;
+						const T yx, yy;
+					} p = { half,yx,yy };
 
-					if (bbox[0] == bbox[1])
+					if (bbox[0] == bbox[1] || n == 2)
 					{
 						std::sort(v, v + n, p);
 						return;
@@ -2855,7 +2841,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			}
 		};
 
-		KD kd{ lo_x,hi_x,lo_y,hi_y };
+		KD kd = { (T)1.1, (T)0.1, (T)-0.1, (T)1.1 };
 		kd.Split(vert_alloc, points);
 
 		#if 0
