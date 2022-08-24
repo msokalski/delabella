@@ -3,7 +3,7 @@ DELABELLA - Delaunay triangulation library
 Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 */
 
-// #define DELABELLA_AUTOTEST
+//#define DELABELLA_AUTOTEST
 
 // in case of troubles, allows to see if any assert pops up.
 // define it globally (like with -DDELABELLA_AUTOTEST)
@@ -22,6 +22,8 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #include <cstdio>
 #include <cstdlib>
 #include <algorithm>
+#include <stdint.h>
+
 #include "delabella.h"
 #include "predicates.h"
 
@@ -2761,6 +2763,20 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					if (half == bbox[0])
 						half = bbox[1];
 
+					Vert* u = v;
+					T temp = X(v[0]);
+					for (int i = 0; i < n; i++)
+					{
+						T vx = X(v[i]);
+						if (vx >= half)
+						{
+							u = v + i;
+							temp = vx;
+						}
+					}
+
+					half = temp;
+
 					struct
 					{
 						T X(const Vert& v) const
@@ -2769,25 +2785,81 @@ struct CDelaBella2 : IDelaBella2<T, I>
 						}
 						bool operator () (const Vert& a, const Vert& b) const
 						{
-							return X(a) < X(b);
+							const T ax = X(a);
+							const T bx = X(b);
+							if (ax == bx)
+							{
+								if (a.x == b.x)
+									return a.y < b.y;
+								return a.x < b.x;
+							}
+							return ax < bx;
 						}
 						bool operator () (const Vert& v) const
 						{
-							return X(v) < t;
+							const T vx = X(v);
+							if (vx == t)
+							{
+								if (v.x == u.x)
+									return v.y < u.y;
+								return v.x < u.x;
+							}
+							return vx < t;
+
+							// return X(v) < t;
 						}
+						const Vert& u;
 						const T t;
 						const T xx, xy;
-					} p = { half,xx,xy };
+					} p = { *u, half,xx,xy };
 
 					if (bbox[2] == bbox[3] || n == 2)
 					{
 						std::sort(v, v + n, p);
+
+						#ifdef DELABELLA_AUTOTEST
+						/*
+						for (int i = 0; i < n; i++)
+						{
+							bool dup_allowed = true;
+							for (int j = i+1; j < n; j++)
+							{
+								// all dups can occur only right after i
+								bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
+								assert(dup_allowed || diff);
+								if (dup_allowed && diff)
+									dup_allowed = false;
+							}
+						}
+						*/
+						#endif
 						return;
 					}
 
-					Vert* u = std::partition(v, v + n, p);
+					u = std::partition(v, v + n, p);
+
 					#ifdef DELABELLA_AUTOTEST
 					assert(u != v && u != v + n);
+					/*
+					for (int i = 0; i < (int)(u - v); i++)
+					{
+						for (int j = (int)(u - v); j < n; j++)
+						{
+							// all dups of i must be in the same partition!
+							bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
+							assert(diff);
+						}
+					}
+					for (int i = (int)(u - v); i < n; i++)
+					{
+						for (int j = 0; j < (int)(u - v); j++)
+						{
+							// all dups of i must be in the same partition!
+							bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
+							assert(diff);
+						}
+					}
+					*/
 					#endif
 					
 					Split(v, (I)(u - v));
@@ -2800,6 +2872,20 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					if (half == bbox[2])
 						half = bbox[3];
 
+					Vert* u = v;
+					T temp = Y(v[0]);
+					for (int i = 0; i < n; i++)
+					{
+						T vy = Y(v[i]);
+						if (vy >= half)
+						{
+							u = v + i;
+							temp = vy;
+						}
+					}
+
+					half = temp;
+
 					struct
 					{
 						T Y(const Vert& v) const
@@ -2808,26 +2894,86 @@ struct CDelaBella2 : IDelaBella2<T, I>
 						}
 						bool operator () (const Vert& a, const Vert& b) const
 						{
-							return Y(a) < Y(b);
+							const T ay = Y(a);
+							const T by = Y(b);
+							if (ay == by)
+							{
+								if (a.y == b.y)
+									return a.x < b.x;
+								return a.y < b.y;
+							}
+							return ay < by;
 						}
 						bool operator () (const Vert& v) const
 						{
-							return Y(v) < t;
+							const T vy = Y(v);
+							if (vy == t)
+							{
+								if (v.y == u.y)
+									return v.x < u.x;
+								return v.y < u.y;
+							}
+							return vy < t;
+
+							//return Y(v) < t;
 						}
+						const Vert& u;
 						const T t;
 						const T yx, yy;
-					} p = { half,yx,yy };
+					} p = { *u,half,yx,yy };
 
 					if (bbox[0] == bbox[1] || n == 2)
 					{
 						std::sort(v, v + n, p);
+
+						#ifdef DELABELLA_AUTOTEST
+						/*
+						for (int i = 0; i < n; i++)
+						{
+							bool dup_allowed = true;
+							for (int j = i+1; j < n; j++)
+							{
+								// all dups can occur only right after i
+								bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
+								assert(dup_allowed || diff);
+								if (dup_allowed && diff)
+									dup_allowed = false;
+							}
+						}
+						*/
+						#endif
+
 						return;
 					}
 
-					Vert* u = std::partition(v, v + n, p);
+					u = std::partition(v, v + n, p);
 
 					#ifdef DELABELLA_AUTOTEST
 					assert(u != v && u != v + n);
+					/*
+					for (int i = 0; i < (int)(u - v); i++)
+					{
+						for (int j = (int)(u - v); j < n; j++)
+						{
+							// all dups of i must be in the same partition!
+							bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
+							if (!diff)
+							{
+								int a = 0;
+							}
+							assert(diff);
+						}
+					}
+					for (int i = (int)(u - v); i < n; i++)
+					{
+						for (int j = 0; j < (int)(u - v); j++)
+						{
+							// all dups of i must be in the same partition!
+							bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
+							assert(diff);
+						}
+					}
+					*/
 					#endif
 
 					Split(v, (I)(u - v));
@@ -2837,11 +2983,43 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				{
 					// all verts are dups
 					// dont touch
+
+					// ehm, actually they can appear as dups (inexact rot) 
+					// but there may be a non dup hidden in the middle
+					struct
+					{
+						bool operator () (const Vert& a, const Vert& b) const
+						{
+							if (a.x == b.x)
+								return a.y < b.y;
+							return a.x < b.x;
+						}
+					} p;
+
+					std::sort(v, v + n, p);
+
+					#ifdef DELABELLA_AUTOTEST
+					/*
+					for (int i = 0; i < n; i++)
+					{
+						bool dup_allowed = true;
+						for (int j = i+1; j < n; j++)
+						{
+							// all dups can occur only right after i
+							bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
+							assert(dup_allowed || diff);
+							if (dup_allowed && diff)
+								dup_allowed = false;
+						}
+					}
+					*/
+					#endif
 				}
 			}
 		};
 
-		KD kd = { (T)1.1, (T)0.1, (T)-0.1, (T)1.1 };
+		KD kd = { (T)2, (T)1, (T)-1, (T)2 };
+		// KD kd = { (T)1.1, (T)0.1, (T)-0.1, (T)1.1 }; // robustenss test
 		kd.Split(vert_alloc, points);
 
 		#if 0

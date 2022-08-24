@@ -30,7 +30,7 @@ struct IDelaBella2
 		Simplex* next; // next triangle (of delaunay set or hull set)
 		I index;       // list index
 		
-		uint8_t flags; 
+		unsigned char flags; 
 
 		bool IsDelaunay() const
 		{

@@ -25,7 +25,6 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #undef WITH_FADE 
 #define WITH_FADE
 
-
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -1429,7 +1428,7 @@ int main(int argc, char* argv[])
         }
         printf("generating random " IDXF " points\n", n);
         std::random_device rd{};
-		uint64_t seed = rd();
+		uint64_t seed = 0x00000000E6F82B72ULL;// rd();
         std::mt19937_64 gen{ seed };
         printf("SEED = 0x%016llX\n", (long long unsigned int)seed);
 
@@ -1833,7 +1832,8 @@ int main(int argc, char* argv[])
     #endif
 
     #ifdef WITH_FADE
-    if (points<=1000000 && (points < 250000 || strcmp(dist,"gam") || bias[0]==0))
+    if (!(points > 1000000) &&
+		!(strcmp(dist,"gam")==0 && bias[0]!=0 && points>=250000))
     {
         printf("running fade ...");
         uint64_t t0 = uSec(), t1, t2;
@@ -1948,7 +1948,9 @@ int main(int argc, char* argv[])
     #endif
 
     #ifdef WITH_DELAUNATOR
-	if ((strcmp(dist,"cir") || points <= 1000000) && (strcmp(dist, "gam") || bias[0]==0 || points <= 2500000))
+	if (!(strcmp(dist,"cir")==0 && points >= 1000000) &&
+		!(strcmp(dist,"gam")==0 && bias[0]==0 && points >= 10000000) &&
+		!(strcmp(dist,"gam")==0 && bias[0]!=0 && points >= 5000000))
     {
         std::vector<double> coords;
         for (int i=0; i<points; i++)
@@ -2775,181 +2777,180 @@ int main(int argc, char* argv[])
 
 int main(int argc, char* argv[])
 {
-    setlocale(LC_ALL, "");
+	const char* test_dist[] = { "uni","std","gam","sym","cir","hex",0 };
+	const char* test_bias[] = { "","+","-",0 };
 
-    const char* test_dist[] = { "uni","std","gam","sym","cir","hex",0};
-    const char* test_bias[] = { "","+","-",0 };
-
-    int test_size[] =
-    {
-		1000000,
-		/*
+	int test_size[] =
+	{
 		100,250,500,
-        1000,2500,5000,
-        10000,25000,50000,
-        100000,250000,500000,
-        1000000,2500000,5000000,
-        10000000,/*25000000,50000000,*/
-        0
-    };
+		1000,2500,5000,
+		10000,25000,50000,
+		100000,250000,500000,
+		1000000,2500000,5000000,
+		10000000,/*25000000,50000000,*/
+		0
+	};
 
-    const int players = 5;
-    Bench bench[players];
+	const int players = 5;
+	Bench bench[players];
 
-    char bin[2] = "";
-    char num[16];
+	char bin[2] = "";
+	char num[16];
 
-    char test_path[100];
+	char test_path[100];
 
 	// fast skip
 	int d = 0;
 	int b = 0;
 	int i = 0;
 
-    for (/*int d = 0*/; test_dist[d]; d++)
-    {
-        for (/*int b = 0*/; test_bias[b]; b++)
-        {
-            sprintf(test_path, "bench_%s%s.txt", test_dist[d], test_bias[b]);
-            FILE* bench_file = fopen(test_path, "w");
+	do
+	{
+		for (/*int d = 0*/; test_dist[d]; d++)
+		{
+			for (/*int b = 0*/; test_bias[b]; b++)
+			{
+				sprintf(test_path, "bench_%s%s.txt", test_dist[d], test_bias[b]);
+				FILE* bench_file = fopen(test_path, "w");
 
-            fprintf(bench_file, "        DLB[us]     CDT[us]     FAD[us]" /*"   FADMT[us]"*/ "     DEL[us]\n");
+				fprintf(bench_file, "        DLB[us]     CDT[us]     FAD[us]" /*"   FADMT[us]"*/ "     DEL[us]\n");
 
-            char* args[] = 
-            { 
-                bin,
-                num, 
-                (char*)(bench + 0), 
-                (char*)(bench + 1), 
-                (char*)(bench + 2), 
-                (char*)(bench + 3),
-                (char*)(bench + 4),
-                (char*)test_dist[d], 
-                (char*)test_bias[b]
-            };
+				char* args[] =
+				{
+					bin,
+					num,
+					(char*)(bench + 0),
+					(char*)(bench + 1),
+					(char*)(bench + 2),
+					(char*)(bench + 3),
+					(char*)(bench + 4),
+					(char*)test_dist[d],
+					(char*)test_bias[b]
+				};
 
-            for (/*int i = 0*/; test_size[i]; i++)
-            {
-                Bench accum[players];
-                memset(accum, 0, sizeof(accum));
+				for (/*int i = 0*/; test_size[i]; i++)
+				{
+					Bench accum[players];
+					memset(accum, 0, sizeof(accum));
 
-                sprintf(num,"%d",test_size[i]);
+					sprintf(num, "%d", test_size[i]);
 
-                uint64_t t0 = uSec();
-                int acc = 0;
+					uint64_t t0 = uSec();
+					int acc = 0;
 
-				int num_tests = 1000/*000*/ / test_size[i];
-				if (!num_tests)
-					num_tests = 1;
+					int num_tests = 1000/*000*/ / test_size[i];
+					if (!num_tests)
+						num_tests = 1;
 
-                do
-                {
-					for (int test = 0; test < num_tests; test++)
+					do
 					{
-						memset(bench, 0, sizeof(bench));
-						bench_main(2, args);
-						for (int i = 0; i < players; i++)
-							accum[i] += bench[i];
-						acc++;
-					}
-                } while (uSec() - t0 < 5/*000000*/);
+						for (int test = 0; test < num_tests; test++)
+						{
+							memset(bench, 0, sizeof(bench));
+							bench_main(2, args);
+							for (int i = 0; i < players; i++)
+								accum[i] += bench[i];
+							acc++;
+						}
+					} while (uSec() - t0 < 5/*000000*/);
 
-                for (int i = 0; i < players; i++)
-                    accum[i] /= acc;
+					for (int i = 0; i < players; i++)
+						accum[i] /= acc;
 
-                struct F
-                {
-                    const char* operator () (int n, uint64_t v)
-                    {
-                        int len = sprintf(buf, "%llu", (long long unsigned int)v);
-                        if (len <= 0)
-                            return 0;
-                        int sep = (len - 1) / 3;
+					struct F
+					{
+						const char* operator () (int n, uint64_t v)
+						{
+							int len = sprintf(buf, "%llu", (long long unsigned int)v);
+							if (len <= 0)
+								return 0;
+							int sep = (len - 1) / 3;
 
-                        int len2 = len + sep;
-                        int pad = n > len2 ? n - len2 : 0;
+							int len2 = len + sep;
+							int pad = n > len2 ? n - len2 : 0;
 
-                        int ofs = pad + len2;
+							int ofs = pad + len2;
 
-                        if (ofs >= sizeof(buf))
-                            return 0;
+							if (ofs >= sizeof(buf))
+								return 0;
 
-                        buf[ofs] = 0;
-                        ofs--;
+							buf[ofs] = 0;
+							ofs--;
 
-                        for (int i = len - 1, j = 0; i >= 0; i--, j++)
-                        {
-                            if (j == 3)
-                            {
-                                buf[ofs] = ',';
-                                ofs--;
-                                j = 0;
-                            }
+							for (int i = len - 1, j = 0; i >= 0; i--, j++)
+							{
+								if (j == 3)
+								{
+									buf[ofs] = ',';
+									ofs--;
+									j = 0;
+								}
 
-                            buf[ofs] = buf[i];
-                            ofs--;
-                        }
+								buf[ofs] = buf[i];
+								ofs--;
+							}
 
-                        for (int i = 0; i < pad; i++)
-                            buf[i] = ' ';
+							for (int i = 0; i < pad; i++)
+								buf[i] = ' ';
 
-                        return buf;
-                    }
+							return buf;
+						}
 
-                    char buf[32];
-                } f[players] = {0};
+						char buf[32];
+					} f[players] = { 0 };
 
-                // write bench results...
-                fprintf(bench_file, "N=%s\n", f[0](0, test_size[i]));
-                fprintf(bench_file, "RD: %s %s %s" /*" %s"*/ " %s\n", 
-                    f[0](11, accum[0].removing_dups), 
-                    f[1](11, accum[1].removing_dups), 
-                    accum[2].removing_dups ? "    INVALID" : f[2](11, accum[2].removing_dups), 
-                //  accum[3].removing_dups ? "    INVALID" : f[3](11, accum[3].removing_dups), 
-                    accum[4].removing_dups ? "    INVALID" : f[4](11, accum[4].removing_dups));
-                fprintf(bench_file, "TR: %s %s %s" /*" %s"*/ " %s\n",
-                    f[0](11, accum[0].triangulation), 
-                    f[1](11, accum[1].triangulation), 
-                    f[2](11, accum[2].triangulation), 
-                //  f[3](11, accum[3].triangulation), 
-                    f[4](11, accum[4].triangulation));
-                fprintf(bench_file, "CE: %s %s %s" /*" %s"*/ " %s\n",
-                    f[0](11, accum[0].constrain_edges), 
-                    f[1](11, accum[1].constrain_edges), 
-                    f[2](11, accum[2].constrain_edges), 
-                //  f[3](11, accum[3].constrain_edges), 
-                    f[4](11, accum[4].constrain_edges));
-                fprintf(bench_file, "ES: %s %s %s" /*" %s"*/ " %s\n",
-                    f[0](11, accum[0].erase_super), 
-                    f[1](11, accum[1].erase_super),
-                    f[2](11, accum[2].erase_super),
-                //  f[3](11, accum[3].erase_super),
-                    f[4](11, accum[4].erase_super));
-                fprintf(bench_file, "FF: %s %s %s" /*" %s"*/ " %s\n",
-                    f[0](11, accum[0].flood_fill), 
-                    f[1](11, accum[1].flood_fill), 
-                    f[2](11, accum[2].flood_fill), 
-                //  f[3](11, accum[3].flood_fill), 
-                    f[4](11, accum[4].flood_fill));
-                fprintf(bench_file, "PL: %s %s %s" /*" %s"*/ " %s\n",
-                    f[0](11, accum[0].polygons), 
-                    f[1](11, accum[1].polygons),
-                    f[2](11, accum[2].polygons),
-                //  f[3](11, accum[3].polygons),
-                    f[4](11, accum[4].polygons));
-                fprintf(bench_file, "\n");
+					// write bench results...
+					fprintf(bench_file, "N=%s\n", f[0](0, test_size[i]));
+					fprintf(bench_file, "RD: %s %s %s" /*" %s"*/ " %s\n",
+						f[0](11, accum[0].removing_dups),
+						f[1](11, accum[1].removing_dups),
+						accum[2].removing_dups ? "    INVALID" : f[2](11, accum[2].removing_dups),
+						//  accum[3].removing_dups ? "    INVALID" : f[3](11, accum[3].removing_dups), 
+						accum[4].removing_dups ? "    INVALID" : f[4](11, accum[4].removing_dups));
+					fprintf(bench_file, "TR: %s %s %s" /*" %s"*/ " %s\n",
+						f[0](11, accum[0].triangulation),
+						f[1](11, accum[1].triangulation),
+						f[2](11, accum[2].triangulation),
+						//  f[3](11, accum[3].triangulation), 
+						f[4](11, accum[4].triangulation));
+					fprintf(bench_file, "CE: %s %s %s" /*" %s"*/ " %s\n",
+						f[0](11, accum[0].constrain_edges),
+						f[1](11, accum[1].constrain_edges),
+						f[2](11, accum[2].constrain_edges),
+						//  f[3](11, accum[3].constrain_edges), 
+						f[4](11, accum[4].constrain_edges));
+					fprintf(bench_file, "ES: %s %s %s" /*" %s"*/ " %s\n",
+						f[0](11, accum[0].erase_super),
+						f[1](11, accum[1].erase_super),
+						f[2](11, accum[2].erase_super),
+						//  f[3](11, accum[3].erase_super),
+						f[4](11, accum[4].erase_super));
+					fprintf(bench_file, "FF: %s %s %s" /*" %s"*/ " %s\n",
+						f[0](11, accum[0].flood_fill),
+						f[1](11, accum[1].flood_fill),
+						f[2](11, accum[2].flood_fill),
+						//  f[3](11, accum[3].flood_fill), 
+						f[4](11, accum[4].flood_fill));
+					fprintf(bench_file, "PL: %s %s %s" /*" %s"*/ " %s\n",
+						f[0](11, accum[0].polygons),
+						f[1](11, accum[1].polygons),
+						f[2](11, accum[2].polygons),
+						//  f[3](11, accum[3].polygons),
+						f[4](11, accum[4].polygons));
+					fprintf(bench_file, "\n");
 
-                // live view
-                fflush(bench_file);
-            }
+					// live view
+					fflush(bench_file);
+				}
 
-            fclose(bench_file);
+				fclose(bench_file);
 
-			i = 0;
-        }
-
-		b = 0;
-    }
+				i = 0;
+			}
+			b = 0;
+		}
+		d = 0;
+	} while (0);
 
     return 0;
 }
