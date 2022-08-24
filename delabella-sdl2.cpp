@@ -1381,7 +1381,7 @@ int bench_main(int argc, char* argv[])
 #else
 int main(int argc, char* argv[])
 {
-    const char* dist = "cir";
+    const char* dist = "std";
     const char* bias = "";
 #endif
 
