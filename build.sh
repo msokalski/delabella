@@ -8,7 +8,7 @@ LNK=""
 
 if [ -d "fade" ]; then
     OPT="$OPT -DWITH_FADE"
-    LNK="-Lfade -lfade2d -Wl,-rpath=fade"
+    LNK="-Lfade/lib_ubuntu20.04_x86_64 -lfade2d -Wl,-rpath=fade/lib_ubuntu20.04_x86_64"
 fi
 
 if [ -d "delaunator-cpp" ]; then
