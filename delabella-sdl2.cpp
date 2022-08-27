@@ -5,25 +5,25 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 #define _CRT_SECURE_NO_WARNINGS
 
-//#define BENCH
+#define BENCH
 
 //#define CULLING
 
-#define VORONOI
+//#define VORONOI
 //#define VORONOI_POLYS
 // otherwise EDGES
 
 // override build define
 #undef WITH_DELAUNATOR 
-//#define WITH_DELAUNATOR
+#define WITH_DELAUNATOR
 
 // override build define
 #undef WITH_CDT
-//#define WITH_CDT
+#define WITH_CDT
 
 // override build define
 #undef WITH_FADE 
-//#define WITH_FADE
+#define WITH_FADE
 
 #include <math.h>
 #include <stdlib.h>
@@ -37,6 +37,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #include <SDL2/SDL_opengl.h>
 
 #include <random>
+#include "dirichlet.h"
 
 #include "delabella.h"
 
@@ -1430,6 +1431,7 @@ int main(int argc, char* argv[])
         std::random_device rd{};
 		uint64_t seed = 0x00000000E6F82B72ULL;// rd();
         std::mt19937_64 gen{ seed };
+        std::mt19937 gen32{ seed };
         printf("SEED = 0x%016llX\n", (long long unsigned int)seed);
 
         std::uniform_real_distribution<MyCoord> d_uni((MyCoord)-1.0, (MyCoord)+1.0);
@@ -1485,6 +1487,46 @@ int main(int argc, char* argv[])
             }
         }
         else
+        if (strcmp(dist, "bar") == 0)
+        {
+            MyPoint tri[3]=
+            {
+                {(MyCoord)-1,(MyCoord)0},
+                {(MyCoord)0,sqrt((MyCoord)3)},
+                {(MyCoord)+1,(MyCoord)0}
+            };
+            for (MyIndex i = 0; i < n; i++)
+            {
+                // baryc. coords.
+                MyCoord baryc[3];
+
+                baryc[0] = d_gam(gen);
+                baryc[1] = d_gam(gen);
+                baryc[2] = d_gam(gen);
+
+    
+                MyCoord l = baryc[0] + baryc[1] + baryc[2]; 
+                baryc[0] /= l;
+                baryc[1] /= l;
+                baryc[2] /= l;
+
+                MyPoint p =
+                {
+                    tri[0].x * baryc[0] +
+                    tri[1].x * baryc[1] + 
+                    tri[2].x * baryc[2] + bias_xy[0],
+                    tri[0].y * baryc[0] +
+                    tri[1].y * baryc[1] + 
+                    tri[2].y * baryc[2] + bias_xy[1]
+                };
+
+
+                // please, leave some headroom for arithmetics!
+                assert(std::abs(p.x) <= max_coord && std::abs(p.y) <= max_coord);
+                cloud.push_back(p);
+            }
+        }
+        else        
         if (strcmp(dist, "sym") == 0)
         {
 			// soft sym
@@ -1844,7 +1886,7 @@ int main(int argc, char* argv[])
 			dt.insert((int)cloud.size(), &cloud.data()->x, handles);
 			tris_fade = (MyIndex)dt.numberOfTriangles();
 
-			t1 = uSec();
+			t1 = t2 = uSec();
 
 			// we need to map using handles
 			if (force.size())
@@ -1902,7 +1944,7 @@ int main(int argc, char* argv[])
             dt.insert((int)cloud.size(), &cloud.data()->x, handles);
             tris_fade = (MyIndex)dt.numberOfTriangles();
 
-            t1 = uSec();
+            t1 = t2 = uSec();
 
             // we need to map using handles
             if (points < 500000 || strcmp(dist, "gam"))
@@ -2777,7 +2819,15 @@ int main(int argc, char* argv[])
 
 int main(int argc, char* argv[])
 {
-	const char* test_dist[] = { "uni","std","gam","sym","cir","hex",0 };
+    uint32_t seed = 0xDEADBEEF;
+    std::mt19937 mt(seed);
+    std::uniform_real_distribution<double> uni(-1.0, +1.0);
+    printf("seed->0x%08X\n",seed);
+    printf("std::mt19937->0x%08lX\n",mt());
+    printf("std::uniform_real_distribution->%E\n",uni(mt));
+    exit(0);
+
+	const char* test_dist[] = { "uni","std","gam","sym","cir","hex","bar",0 };
 	const char* test_bias[] = { "","+","-",0 };
 
 	int test_size[] =
@@ -2800,7 +2850,7 @@ int main(int argc, char* argv[])
 	char test_path[100];
 
 	// fast skip
-	int d = 0;
+	int d = 6;
 	int b = 0;
 	int i = 0;
 
