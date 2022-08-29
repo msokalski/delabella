@@ -108,7 +108,53 @@
 ![terminal](images/terminal.gif)
 
 ## Benchmarks
+For more tests and informations please see ./bench/bench.md
 
-
-
-
+<table>
+  <caption>Barycentric</camption>
+  <tbody>
+    <tr>
+      <td>
+        <img alt="bar1" src="./bar1.svg" height="300">
+      </td>
+      <td>
+        <img alt="bar" src="./bar.png" width="300" height="300">
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2">
+        <pre lang="cpp">
+        std::random_device rd{};
+        uint64_t seed = rd();
+        std::mt19937_64 gen{seed};
+        std::gamma_distribution&lt;double&gt; gam(0.1, 2.0);
+        const double tri[3][2]=
+        {
+            {-1.0,0.0},
+            {0.0,sqrt(3.0)},
+            {+1.0,0.0}
+        };
+        for (int i = 0; i &lt; n; i++)
+        {
+          double baryc[3];
+          baryc[0] = gam(gen);
+          baryc[1] = gam(gen);
+          baryc[2] = gam(gen);
+          double l = baryc[0] + baryc[1] + baryc[2]; 
+          baryc[0] /= l;
+          baryc[1] /= l;
+          baryc[2] /= l;
+          v[i].x =
+              tri[0][0] * baryc[0] +
+              tri[1][0] * baryc[1] + 
+              tri[2][0] * baryc[2];
+          v[i].y =
+              tri[0][1] * baryc[0] +
+              tri[1][1] * baryc[1] + 
+              tri[2][1] * baryc[2];
+        }
+        </pre>
+      </td>
+    </tr>
+  </tbody>
+ </table>
