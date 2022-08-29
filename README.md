@@ -13,22 +13,6 @@
 
   https://github.com/wlenthe/GeometricPredicates
   
-
-## Benchmarks
-For more tests and informations please see [bench](./bench/bench.md)
-<table>
-  <tbody>
-    <tr>
-      <td>
-        <img alt="bar1" src="./bench/bar1.svg" height="300">
-      </td>
-      <td>
-        <img alt="bar" src="./bench/bar.png" width="300" height="300">
-      </td>
-    </tr>
-  </tbody>
- </table>
-
 ## What you can do with DelaBella?
 
 - Delaunay triangulations
@@ -110,3 +94,9 @@ For more tests and informations please see [bench](./bench/bench.md)
 ## On the go progress information for all lengthy functions
 
 ![terminal](images/terminal.gif)
+
+## Benchmarks
+
+![Benchmarks](./bench/bar1.svg)
+
+For more tests and informations please see [Benchmarks](./bench/bench.md)
