@@ -15,7 +15,7 @@
   
 
 ## Benchmarks
-For more tests and informations please see ./bench/bench.md
+For more tests and informations please see [bench](./bench/bench.md)
 <table>
   <tbody>
     <tr>
