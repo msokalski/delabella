@@ -32,7 +32,7 @@ Platform details:
         <img alt="uni3" src="./uni3.svg" height="300">
       </td>
       <td>
-        <img alt="uni" src="./uni.png" width="300" height="300">
+        <img alt="uni" src="./uni.png" width="300">
       </td>
     </tr>
     <tr>
@@ -61,7 +61,7 @@ Platform details:
         <img alt="std1" src="./std1.svg" height="300">
       </td>
       <td>
-        <img alt="std" src="./std.png" width="300" height="300">
+        <img alt="std" src="./std.png" width="300">
       </td>
     </tr>
     <tr>
@@ -90,7 +90,7 @@ Platform details:
         <img alt="gam1" src="./gam1.svg" height="300">
       </td>
       <td>
-        <img alt="gam" src="./gam.png" width="300" height="300">
+        <img alt="gam" src="./gam.png" width="300">
       </td>
     </tr>
     <tr>
@@ -119,7 +119,7 @@ Platform details:
         <img alt="sym3" src="./sym3.svg" height="300">
       </td>
       <td>
-        <img alt="sym" src="./sym.png" width="300" height="300">
+        <img alt="sym" src="./sym.png" width="300">
       </td>
     </tr>
     <tr>
@@ -162,7 +162,7 @@ Platform details:
         <img alt="cir3" src="./cir3.svg" height="300">
       </td>
       <td>
-        <img alt="cir" src="./cir.png" width="300" height="300">
+        <img alt="cir" src="./cir.png" width="300">
       </td>
     </tr>
     <tr>
@@ -194,7 +194,7 @@ Platform details:
         <img alt="bar1" src="./bar1.svg" height="300">
       </td>
       <td>
-        <img alt="bar" src="./bar.png" width="300" height="300">
+        <img alt="bar" src="./bar.png" width="300">
       </td>
     </tr>
     <tr>
@@ -243,7 +243,7 @@ Platform details:
         <img alt="hex2" src="./hex2.svg" height="300">
       </td>
       <td>
-        <img alt="hex" src="./hex.png" width="300" height="300">
+        <img alt="hex" src="./hex.png" width="300">
       </td>
     </tr>
     <tr>
