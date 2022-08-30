@@ -12,7 +12,7 @@
 - Currently DelaBella makes use of adaptive-exact predicates by William C. Lenthe
 
   https://github.com/wlenthe/GeometricPredicates
-
+  
 ## What you can do with DelaBella?
 
 - Delaunay triangulations
@@ -91,24 +91,12 @@
 
 ```
 
-## If you're migrating from the previous version 
-
-```cpp
-
-#define DELABELLA_LEGACY double // or float or whatever you've used before
-#include "delabella.h"
-
-// Your old code should work without additional changes
-// ...
-
-```
-
 ## On the go progress information for all lengthy functions
 
 ![terminal](images/terminal.gif)
 
 ## Benchmarks
 
+![Benchmarks](./bench/bar1.svg)
 
-
-
+For more tests and informations please see [Benchmarks](./bench/bench.md)
