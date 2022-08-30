@@ -340,8 +340,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 	{
 		//uint64_t time0 = uSec();
 
-		if (errlog_proc)
-			errlog_proc(errlog_file, "[...] sorting vertices");
+		//if (errlog_proc)
+		//	errlog_proc(errlog_file, "[...] sorting vertices");
+
 		I points = inp_verts;
 
 		#if 0
@@ -2694,6 +2695,10 @@ struct CDelaBella2 : IDelaBella2<T, I>
 	{
 		uint64_t sort_stamp = uSec();
 
+		if (errlog_proc)
+			errlog_proc(errlog_file, "[...] sorting vertices");
+
+
 		// const size_t max_triangulate_indices = (size_t)points * 6 - 15;
 		// const size_t max_voronoi_edge_indices = (size_t)points * 6 - 12;
 		const size_t max_voronoi_poly_indices = (size_t)points * 7 - 9; // winner of shame!
@@ -2741,10 +2746,31 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				return v.x * yx + v.y * yy;
 			}
 
+			void Progress(I n)
+			{
+				acc += n;
+				if (acc >= pro)
+				{
+					uint64_t p = (int)((uint64_t)100 * acc / tot);
+					pro = (int)((p + 1) * tot / 100);
+					if (pro >= tot)
+						pro = (int)tot - 1;
+					if (acc == tot - 1)
+					{
+						p = 100;
+					}
+					if (errlog_proc)
+						errlog_proc(errlog_file, "\r[%2d%s] sorting vertices ", p, p >= 100 ? "" : "%");
+				}
+			}
+
 			void Split(Vert* v, I n)
 			{
 				if (n < 2)
+				{
+					Progress(n);
 					return;
+				}
 
 				bbox[0] = bbox[1] = X(v[0]);
 				bbox[2] = bbox[3] = Y(v[0]);
@@ -2816,7 +2842,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 					if (bbox[2] == bbox[3] || n == 2)
 					{
-						std::sort(v, v + n, p);
+						if (n>2)
+							std::sort(v, v + n, p);
+						Progress(n);
 
 						#ifdef DELABELLA_AUTOTEST
 						/*
@@ -2925,7 +2953,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 					if (bbox[0] == bbox[1] || n == 2)
 					{
-						std::sort(v, v + n, p);
+						if (n > 2)
+							std::sort(v, v + n, p);
+						Progress(n);
 
 						#ifdef DELABELLA_AUTOTEST
 						/*
@@ -2997,7 +3027,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 						}
 					} p;
 
-					std::sort(v, v + n, p);
+					if (n > 2)
+						std::sort(v, v + n, p);
+					Progress(n);
 
 					#ifdef DELABELLA_AUTOTEST
 					/*
@@ -3017,9 +3049,19 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					#endif
 				}
 			}
+
+			I pro,acc,tot;
+			int(*errlog_proc)(void *file, const char *fmt, ...);
+			void *errlog_file;
 		};
 
 		KD kd = { (T)2, (T)1, (T)-1, (T)2 };
+		kd.pro = 0;
+		kd.acc = 0;
+		kd.tot = points;
+		kd.errlog_proc = errlog_proc;
+		kd.errlog_file = errlog_file;
+
 		// KD kd = { (T)1.1, (T)0.1, (T)-0.1, (T)1.1 }; // robustenss test
 		kd.Split(vert_alloc, points);
 

@@ -9,7 +9,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 //#define CULLING
 
-#define VORONOI
+//#define VORONOI
 //#define VORONOI_POLYS
 // otherwise EDGES
 
@@ -410,7 +410,7 @@ int errlog(void* stream, const char* fmt, ...)
 	va_start(arg,fmt);
 	int ret = vfprintf((FILE*)stream, fmt, arg);
 	va_end(arg);
-    fflush((FILE*)stream);
+    //fflush((FILE*)stream);
 	return ret;
 }
 
@@ -1381,8 +1381,8 @@ int bench_main(int argc, char* argv[])
 #else
 int main(int argc, char* argv[])
 {
-    const char* dist = "std";
-    const char* bias = "";
+    const char* dist = "bar";
+    const char* bias = "+";
 #endif
 
 	#ifdef _WIN32
@@ -1411,11 +1411,11 @@ int main(int argc, char* argv[])
 	std::vector<MyPoint> cloud;
     std::vector<MyEdge> force;
 
-    #ifdef BENCH
-    FILE* f = 0;
-    #else
-	FILE* f = fopen(argv[1],"r");
-    #endif
+//    #ifdef BENCH
+//    FILE* f = 0;
+//    #else
+	  FILE* f = fopen(argv[1],"r");
+//    #endif
 
     if (!f)
     {
@@ -1561,6 +1561,38 @@ int main(int argc, char* argv[])
 
                 x = x / l;
                 y = y / l;
+
+                MyPoint p{ x + bias_xy[0],y + bias_xy[1] };
+                cloud.push_back(p);
+            }
+        }
+        else
+        if (strcmp(dist, "bar") == 0)
+        {
+			const MyCoord tri[3][2] =
+			{
+				{-1.0,0.0},
+				{0.0,sqrt(3.0)},
+				{+1.0,0.0}
+			};
+            for (MyIndex i = 0; i < n; i++)
+            {
+				MyCoord baryc[3];
+				baryc[0] = d_gam(gen);
+				baryc[1] = d_gam(gen);
+				baryc[2] = d_gam(gen);
+				MyCoord l = baryc[0] + baryc[1] + baryc[2];
+				baryc[0] /= l;
+				baryc[1] /= l;
+				baryc[2] /= l;
+				MyCoord x =
+					tri[0][0] * baryc[0] +
+					tri[1][0] * baryc[1] +
+					tri[2][0] * baryc[2];
+				MyCoord y =
+					tri[0][1] * baryc[0] +
+					tri[1][1] * baryc[1] +
+					tri[2][1] * baryc[2];
 
                 MyPoint p{ x + bias_xy[0],y + bias_xy[1] };
                 cloud.push_back(p);
@@ -2777,6 +2809,135 @@ int main(int argc, char* argv[])
 
 int main(int argc, char* argv[])
 {
+	const int players = 5;
+	Bench bench[players];
+	char test_path[100];
+
+	struct F
+	{
+		const char* operator () (int n, uint64_t v)
+		{
+			int len = sprintf(buf, "%llu", (long long unsigned int)v);
+			if (len <= 0)
+				return 0;
+			int sep = (len - 1) / 3;
+
+			int len2 = len + sep;
+			int pad = n > len2 ? n - len2 : 0;
+
+			int ofs = pad + len2;
+
+			if (ofs >= sizeof(buf))
+				return 0;
+
+			buf[ofs] = 0;
+			ofs--;
+
+			for (int i = len - 1, j = 0; i >= 0; i--, j++)
+			{
+				if (j == 3)
+				{
+					buf[ofs] = ',';
+					ofs--;
+					j = 0;
+				}
+
+				buf[ofs] = buf[i];
+				ofs--;
+			}
+
+			for (int i = 0; i < pad; i++)
+				buf[i] = ' ';
+
+			return buf;
+		}
+
+		char buf[32];
+	} f[players] = { 0 };
+
+	if (argc > 1)
+	{
+		sprintf(test_path, "%s.bench.txt", argv[1]);
+		FILE* bench_file = fopen(test_path, "w");
+
+		char dummy[2] = "x";
+
+		char* args[] =
+		{
+			argv[0],
+			argv[1],
+			(char*)(bench + 0),
+			(char*)(bench + 1),
+			(char*)(bench + 2),
+			(char*)(bench + 3),
+			(char*)(bench + 4),
+			dummy,
+			dummy
+		};
+
+
+		fprintf(bench_file, "        DLB[us]     CDT[us]     FAD[us]" /*"   FADMT[us]"*/ "     DEL[us]\n");
+
+		Bench accum[players];
+		memset(accum, 0, sizeof(accum));
+
+		uint64_t t0 = uSec();
+		int acc = 0;
+
+		do
+		{
+			memset(bench, 0, sizeof(bench));
+			bench_main(2, args);
+			for (int i = 0; i < players; i++)
+				accum[i] += bench[i];
+			acc++;
+		} while (uSec()-t0 < 10000000); // 10 sec
+
+
+		// write bench results...
+		fprintf(bench_file, "N=\"%s\"\n", argv[1]);
+		fprintf(bench_file, "RD: %s %s %s" /*" %s"*/ " %s\n",
+			f[0](11, accum[0].removing_dups),
+			f[1](11, accum[1].removing_dups),
+			accum[2].removing_dups ? "    INVALID" : f[2](11, accum[2].removing_dups),
+			//  accum[3].removing_dups ? "    INVALID" : f[3](11, accum[3].removing_dups), 
+			accum[4].removing_dups ? "    INVALID" : f[4](11, accum[4].removing_dups));
+		fprintf(bench_file, "TR: %s %s %s" /*" %s"*/ " %s\n",
+			f[0](11, accum[0].triangulation),
+			f[1](11, accum[1].triangulation),
+			f[2](11, accum[2].triangulation),
+			//  f[3](11, accum[3].triangulation), 
+			f[4](11, accum[4].triangulation));
+		fprintf(bench_file, "CE: %s %s %s" /*" %s"*/ " %s\n",
+			f[0](11, accum[0].constrain_edges),
+			f[1](11, accum[1].constrain_edges),
+			f[2](11, accum[2].constrain_edges),
+			//  f[3](11, accum[3].constrain_edges), 
+			f[4](11, accum[4].constrain_edges));
+		fprintf(bench_file, "ES: %s %s %s" /*" %s"*/ " %s\n",
+			f[0](11, accum[0].erase_super),
+			f[1](11, accum[1].erase_super),
+			f[2](11, accum[2].erase_super),
+			//  f[3](11, accum[3].erase_super),
+			f[4](11, accum[4].erase_super));
+		fprintf(bench_file, "FF: %s %s %s" /*" %s"*/ " %s\n",
+			f[0](11, accum[0].flood_fill),
+			f[1](11, accum[1].flood_fill),
+			f[2](11, accum[2].flood_fill),
+			//  f[3](11, accum[3].flood_fill), 
+			f[4](11, accum[4].flood_fill));
+		fprintf(bench_file, "PL: %s %s %s" /*" %s"*/ " %s\n",
+			f[0](11, accum[0].polygons),
+			f[1](11, accum[1].polygons),
+			f[2](11, accum[2].polygons),
+			//  f[3](11, accum[3].polygons),
+			f[4](11, accum[4].polygons));
+		fprintf(bench_file, "\n");
+
+		fclose(bench_file);
+		return 0;
+	}
+
 	const char* test_dist[] = { "uni","std","gam","sym","cir","hex",0 };
 	const char* test_bias[] = { "","+","-",0 };
 
@@ -2791,13 +2952,8 @@ int main(int argc, char* argv[])
 		0
 	};
 
-	const int players = 5;
-	Bench bench[players];
-
 	char bin[2] = "";
 	char num[16];
-
-	char test_path[100];
 
 	// fast skip
 	int d = 0;
@@ -2856,48 +3012,6 @@ int main(int argc, char* argv[])
 
 					for (int i = 0; i < players; i++)
 						accum[i] /= acc;
-
-					struct F
-					{
-						const char* operator () (int n, uint64_t v)
-						{
-							int len = sprintf(buf, "%llu", (long long unsigned int)v);
-							if (len <= 0)
-								return 0;
-							int sep = (len - 1) / 3;
-
-							int len2 = len + sep;
-							int pad = n > len2 ? n - len2 : 0;
-
-							int ofs = pad + len2;
-
-							if (ofs >= sizeof(buf))
-								return 0;
-
-							buf[ofs] = 0;
-							ofs--;
-
-							for (int i = len - 1, j = 0; i >= 0; i--, j++)
-							{
-								if (j == 3)
-								{
-									buf[ofs] = ',';
-									ofs--;
-									j = 0;
-								}
-
-								buf[ofs] = buf[i];
-								ofs--;
-							}
-
-							for (int i = 0; i < pad; i++)
-								buf[i] = ' ';
-
-							return buf;
-						}
-
-						char buf[32];
-					} f[players] = { 0 };
 
 					// write bench results...
 					fprintf(bench_file, "N=%s\n", f[0](0, test_size[i]));
