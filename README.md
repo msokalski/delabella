@@ -1,6 +1,6 @@
 # DelaBella
 ## 2D Exact Delaunay triangulation
-<img src="images/delabella.gif" width=100%>
+<img alt="delabella" src="images/delabella.gif" width=100%>
 
 - Bunch of credits must go to David for inventing such beautiful algorithm (Newton Apple Wrapper):
 
