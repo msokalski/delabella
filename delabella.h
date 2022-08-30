@@ -108,7 +108,7 @@ struct IDelaBella2
 	// positive: output hull vertices form counter-clockwise ordered segment contour, delaunay and hull triangles are available
 	// if 'y' pointer is null, y coords are treated to be located immediately after every x
 	// if advance_bytes is less than 2*sizeof coordinate type, it is treated as 2*sizeof coordinate type  
-	virtual I Triangulate(I points, const T* x, const T* y = 0, size_t advance_bytes = 0) = 0;
+	virtual I Triangulate(I points, const T* x, const T* y = 0, size_t advance_bytes = 0, I stop = -1) = 0;
 
 	// num of points passed to last call to Triangulate()
 	virtual I GetNumInputPoints() const = 0;

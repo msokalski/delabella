@@ -336,7 +336,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 	int (*errlog_proc)(void *file, const char *fmt, ...);
 	void *errlog_file;
 
-	I Prepare(I *start, Face **hull, I *out_hull_faces, Face **cache, uint64_t *sort_stamp)
+	I Prepare(I *start, Face **hull, I *out_hull_faces, Face **cache, uint64_t *sort_stamp, I stop)
 	{
 		//uint64_t time0 = uSec();
 
@@ -344,6 +344,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		//	errlog_proc(errlog_file, "[...] sorting vertices");
 
 		I points = inp_verts;
+
+		if (stop >= 0 && points > stop)
+			points = stop;
 
 		#if 0
 		struct CMP
@@ -368,7 +371,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 			const T tx, ty;
 		} cmp = { trans[0], trans[1] };
-
 
 		std::sort(vert_alloc, vert_alloc + points, cmp);
 		#endif
@@ -975,14 +977,14 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		return points;
 	}
 
-	I Triangulate(I *other_faces, uint64_t* sort_stamp)
+	I Triangulate(I *other_faces, uint64_t* sort_stamp, I stop)
 	{
 		I i = 0;
 		Face *hull = 0;
 		I hull_faces = 0;
 		Face *cache = 0;
 
-		I points = Prepare(&i, &hull, &hull_faces, &cache, sort_stamp);
+		I points = Prepare(&i, &hull, &hull_faces, &cache, sort_stamp, stop);
 		unique_points = points < 0 ? -points : points;
 		if (points <= 0)
 		{
@@ -2734,7 +2736,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		return num;
 	}
 
-	virtual I Triangulate(I points, const T *x, const T *y, size_t advance_bytes)
+	virtual I Triangulate(I points, const T *x, const T *y, size_t advance_bytes, I stop)
 	{
 		uint64_t sort_stamp = uSec();
 
@@ -3268,7 +3270,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 		out_hull_faces = 0;
 		unique_points = 0;
-		out_verts = Triangulate(&out_hull_faces, &sort_stamp);
+		out_verts = Triangulate(&out_hull_faces, &sort_stamp, stop);
 		polygons = out_verts / 3;
 		return out_verts;
 	}

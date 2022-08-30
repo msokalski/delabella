@@ -5,6 +5,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 #define _CRT_SECURE_NO_WARNINGS
 
+//#define ANIMATION
 //#define BENCH
 
 //#define CULLING
@@ -1367,6 +1368,649 @@ struct Bench
 };
 #endif
 
+#ifndef BENCH
+#ifdef ANIMATION
+int Animate(const std::vector<MyPoint>& cloud, const std::vector<MyEdge>& force)
+{
+	struct Shot
+	{
+		static void Screenshot(int x, int y, int w, int h, const char * filename)
+		{
+			unsigned char * pixels = new unsigned char[w*h * 4]; // 4 bytes for RGBA
+			glReadPixels(x, y, w, h, GL_BGRA, GL_UNSIGNED_BYTE, pixels);
+
+			for (int y = 0; y < h / 2; y++)
+			{
+				for (int x = 0; x < w; x++)
+				{
+					uint32_t s = *((uint32_t*)pixels + x + w * y);
+					*((uint32_t*)pixels + x + w * y) = *((uint32_t*)pixels + x + w * (h - 1 - y));
+					*((uint32_t*)pixels + x + w * (h - 1 - y)) = s;
+				}
+			}
+
+			SDL_Surface * surf = SDL_CreateRGBSurfaceFrom(pixels, w, h, 8 * 4, w * 4, 0, 0, 0, 0);
+			SDL_SaveBMP(surf, filename);
+
+			SDL_FreeSurface(surf);
+			delete[] pixels;
+		}
+	};
+
+	bool save_bmp = true;
+	int points = (int)cloud.size();
+	int edges = (int)force.size();
+	int frames = points + 200;
+	int frame = 0;
+	int speed = 1;
+
+	MyCoord box[4] = { cloud[0].x,cloud[0].y,cloud[0].x,cloud[0].y };
+	for (int i = 1; i < points; i++)
+	{
+		box[0] = std::min(box[0], cloud[i].x);
+		box[1] = std::min(box[1], cloud[i].y);
+		box[2] = std::max(box[2], cloud[i].x);
+		box[3] = std::max(box[3], cloud[i].y);
+	}
+
+	SDL_SetHint(SDL_HINT_NO_SIGNAL_HANDLERS, "1");
+	SDL_Init(SDL_INIT_VIDEO);
+	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+	SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
+	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+
+	// we want it at least 3.3 but would be nice to have 4.1 or above
+	//    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+	//    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+
+	// create viewer wnd
+	int width = 800, height = 200;
+	const char* title = "delablella-sdl2";
+	SDL_Window * window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+	if (!window)
+	{
+		printf("SDL_CreateWindow failed, terminating!\n");
+		return -1;
+	}
+
+	SDL_GLContext context = SDL_GL_CreateContext(window);
+	if (!context)
+	{
+		printf("SDL_GL_CreateContext failed, terminating!\n");
+		return -1;
+	}
+
+	int glsl_ver = 0;
+	const char* glsl_str = (const char*)glGetString(GL_SHADING_LANGUAGE_VERSION);
+	if (glsl_str && glGetError() == GL_NO_ERROR)
+	{
+		int v[2];
+		int from, to;
+		if (2 == sscanf(glsl_str, "%d.%n%d%n", v + 0, &from, v + 1, &to))
+		{
+			int num = to - from;
+			if (num == 1)
+				v[1] *= 10;
+			else
+				while (num > 2)
+				{
+					v[1] /= 10;
+					num--;
+				}
+			glsl_ver = v[0] * 100 + v[1];
+		}
+	}
+
+	if (glsl_ver < 330)
+	{
+		printf("GLSL %d is too weak - terminating!", glsl_ver);
+		return -1;
+	}
+
+	if (!BindGL())
+	{
+		printf("Can't bind to necessary GL functions, terminating!\n");
+		return -1;
+	}
+
+	int vpw, vph;
+	SDL_GL_GetDrawableSize(window, &vpw, &vph);
+
+	if (speed == 0)
+	{
+		speed = 1;
+		SDL_GL_SetSwapInterval(0); // turbo
+	}
+
+	double cx = 0.5 * (box[0] + box[2]);
+	double cy = 0.5 * (box[1] + box[3]);
+	double lx = 0.0;
+	double ly = 0.0;
+	double scale = 2.0 * fmin((double)vpw / (box[2] - box[0]), (double)vph / (box[3] - box[1]));
+	int zoom = -3 + (int)round(log(scale) / log(1.01));
+
+	int drag_x, drag_y, drag_zoom;
+	double drag_cx, drag_cy;
+	double drag_lx, drag_ly;
+	int drag = 0;
+
+	glPrimitiveRestartIndex(~(GLuint)0);
+	glEnable(GL_PRIMITIVE_RESTART);
+
+	glEnable(GL_BLEND);
+
+	printf("going interactive.\n");
+
+	bool show_f = true; // fill
+	bool show_b = true; // boundary
+	bool show_v = true; // voronoi
+	bool show_c = true; // constraints
+	bool show_x = true; // cross-compare with cdt
+	bool show_d = true; // delaunay
+
+	printf("\n");
+	printf(
+		"Change layers visibility while graphics window is in focus:\n"
+		"[F]ill, [B]oundary, "
+	#ifdef VORONOI
+		"[V]oronoi, "
+	#endif
+	#ifdef WITH_CDT
+		"[C]onstraints, [D]elaunay, [X]compare\n"
+	#else
+		"[C]onstraints, [D]elaunay\n"
+	#endif
+	);
+
+	printf("\n");
+	printf(
+		"Mouse controls:\n"
+		"[LMB]pan, [RMB/wheel]zoom\n");
+
+	printf("\n");
+
+	float lohi[2];
+
+	glGetFloatv(GL_ALIASED_LINE_WIDTH_RANGE, lohi);
+	float thin = 1.0f, thick = 3.0f;
+	if (thick > lohi[1])
+	thick = lohi[1];
+
+	glGetFloatv(GL_ALIASED_POINT_SIZE_RANGE, lohi);
+	float dot = 1.0f, blob = 3.0f;
+	if (blob > lohi[1])
+	blob = lohi[1];
+
+	for (;; )
+	{
+		//{
+			IDelaBella* idb = IDelaBella::Create();
+
+			MyIndex verts = idb->Triangulate(points, &cloud.data()->x, &cloud.data()->y, sizeof(MyPoint), (MyIndex)frame);
+			MyIndex tris_delabella = verts > 0 ? verts / 3 : 0;
+			MyIndex contour = idb->GetNumBoundaryVerts();
+			MyIndex non_contour = idb->GetNumInternalVerts();
+			MyIndex vert_num = contour + non_contour;
+
+			#ifdef VORONOI
+			MyIndex voronoi_vertices = idb->GenVoronoiDiagramVerts(0, 0, 0);
+			MyPoint* voronoi_vtx_buf = (MyPoint*)malloc((size_t)voronoi_vertices * sizeof(MyPoint));
+			assert(voronoi_vtx_buf);
+			idb->GenVoronoiDiagramVerts(&voronoi_vtx_buf->x, &voronoi_vtx_buf->y, sizeof(MyPoint));
+
+			#ifdef VORONOI_POLYS
+			// testing... will remove
+			MyIndex voronoi_closed_indices;
+			MyIndex voronoi_indices = idb->GenVoronoiDiagramPolys(0, 0, 0);
+			MyIndex* voronoi_idx_buf = (MyIndex*)malloc(voronoi_indices * sizeof(MyIndex));
+			assert(voronoi_idx_buf);
+			idb->GenVoronoiDiagramPolys(voronoi_idx_buf, sizeof(MyIndex), &voronoi_closed_indices);
+			#else
+			MyIndex voronoi_closed_indices = 0;
+			MyIndex voronoi_indices = idb->GenVoronoiDiagramEdges(0, 0);
+			MyIndex* voronoi_idx_buf = (MyIndex*)malloc((size_t)voronoi_indices * sizeof(MyIndex));
+			assert(voronoi_idx_buf);
+			idb->GenVoronoiDiagramEdges(voronoi_idx_buf, sizeof(MyIndex));
+			#endif
+			#endif
+
+			show_f = false;
+			show_c = false;
+			if (frame > points)
+			if (force.size() > 0)
+			{
+				show_f = true;
+				show_c = true;
+
+				#ifdef BENCH
+				idb_bench->constrain_edges = uSec();
+				#endif
+
+				idb->ConstrainEdges((MyIndex)force.size(), &force.data()->a, &force.data()->b, (int)sizeof(MyEdge));
+				//idb->CheckTopology();
+
+				#ifdef BENCH
+				idb_bench->constrain_edges = uSec() - idb_bench->constrain_edges;
+				#endif
+
+				uint64_t ff0 = uSec();
+				MyIndex num_interior = idb->FloodFill(false, 0);
+				//idb->CheckTopology();
+				uint64_t ff1 = uSec();
+
+				#ifdef BENCH
+				idb_bench->flood_fill = ff1-ff0;
+				#endif
+			}
+
+			#ifdef BENCH
+			idb_bench->erase_super = 0;
+			#endif
+
+			//const DelaBella_Triangle** dela_polys = (const DelaBella_Triangle**)malloc(sizeof(const DelaBella_Triangle*) * (size_t)tris_delabella);
+
+			#ifdef BENCH
+			idb_bench->polygons = uSec();
+			#endif    
+    
+			//MyIndex polys_delabella = idb->Polygonize(dela_polys);
+			//idb->CheckTopology();
+    
+			#ifdef BENCH
+			idb_bench->polygons = uSec() - idb_bench->polygons;
+			#endif
+
+			//return 0;
+
+			// if positive, all ok 
+			if (verts<=0)
+			{
+				// no points given or all points are colinear
+				// make emergency call ...
+				idb->Destroy();
+
+				frame+=speed;
+				if (frame >= frames)
+					frame = 0;
+				continue;
+			}
+		//}
+		//{
+
+			GfxStuffer gfx;
+
+			//glsl_ver = 330;
+			//printf("preparing graphics for GLSL %d...\n", glsl_ver);
+
+			gfx.Upload(glsl_ver >= 410 ? GL_DOUBLE : GL_FLOAT,
+				idb,
+				(MyIndex)cloud.size(),
+				cloud.data(),
+				(MyIndex)force.size(),
+				force.data()
+			#ifdef VORONOI
+				, voronoi_vertices,
+				voronoi_vtx_buf,
+				voronoi_indices,
+				voronoi_idx_buf
+			#endif
+			#ifdef WITH_CDT
+				, cdt,
+				dups
+			#endif
+			);
+
+			#ifdef VORONOI
+			free(voronoi_idx_buf);
+			free(voronoi_vtx_buf);
+			#endif
+		//}
+
+		idb->Destroy();
+		idb = 0;
+
+		bool x = false;
+		SDL_Event event;
+		while (SDL_PollEvent(&event))
+		{
+			switch (event.type)
+			{
+			case SDL_MOUSEWHEEL:
+			{
+				if (drag == 0)
+				{
+					scale = pow(1.01, zoom);
+					int vpw, vph;
+					SDL_GL_GetDrawableSize(window, &vpw, &vph);
+
+					SDL_GetMouseState(&drag_x, &drag_y);
+
+					drag_cx = cx + 2.0 * (drag_x - vpw * 0.5) / scale;
+					drag_cy = cy + 2.0 * (vph*0.5 - drag_y) / scale;
+
+					zoom += event.wheel.y * 10;
+					scale = pow(1.01, zoom);
+
+					cx = (drag_cx - 2.0 * (drag_x - vpw * 0.5) / scale);
+					cy = (drag_cy - 2.0 * (vph*0.5 - drag_y) / scale);
+				}
+
+				break;
+			}
+
+			case SDL_MOUSEMOTION:
+			{
+				if (drag == 1)
+				{
+					int dx = event.motion.x - drag_x;
+					int dy = event.motion.y - drag_y;
+
+					double scale = pow(1.01, zoom);
+
+					if (gfx.type == GL_DOUBLE)
+					{
+						predicates::detail::Expansion<GLdouble, 1> adx, ady;
+						adx.push_back((GLdouble)(-2.0 * dx / scale));
+						ady.push_back((GLdouble)(2.0 * dy / scale));
+
+						auto edx =
+							predicates::detail::ExpansionBase<GLdouble>::Plus((GLdouble)drag_cx, (GLdouble)drag_lx) + adx;
+
+						auto edy =
+							predicates::detail::ExpansionBase<GLdouble>::Plus((GLdouble)drag_cy, (GLdouble)drag_ly) + ady;
+
+						cx = edx.m_size > 0 ? (double)edx[edx.m_size - 1] : 0.0;
+						lx = edx.m_size > 1 ? (double)edx[edx.m_size - 2] : 0.0;
+
+						cy = edy.m_size > 0 ? (double)edy[edy.m_size - 1] : 0.0;
+						ly = edy.m_size > 1 ? (double)edy[edy.m_size - 2] : 0.0;
+					}
+					else
+					{
+						predicates::detail::Expansion<GLfloat, 1> adx, ady;
+						adx.push_back((GLfloat)(-2.0 * dx / scale));
+						ady.push_back((GLfloat)(2.0 * dy / scale));
+
+						auto edx =
+							predicates::detail::ExpansionBase<GLfloat>::Plus((GLfloat)drag_cx, (GLfloat)drag_lx) + adx;
+
+						auto edy =
+							predicates::detail::ExpansionBase<GLfloat>::Plus((GLfloat)drag_cy, (GLfloat)drag_ly) + ady;
+
+						cx = edx.m_size > 0 ? (double)edx[edx.m_size - 1] : 0.0;
+						lx = edx.m_size > 1 ? (double)edx[edx.m_size - 2] : 0.0;
+
+						cy = edy.m_size > 0 ? (double)edy[edy.m_size - 1] : 0.0;
+						ly = edy.m_size > 1 ? (double)edy[edy.m_size - 2] : 0.0;
+					}
+				}
+
+				if (drag == 2)
+				{
+					int dx = event.motion.x - drag_x;
+					int dy = event.motion.y - drag_y;
+
+					zoom = drag_zoom - dy;
+
+					scale = pow(1.01, zoom);
+					int vpw, vph;
+					SDL_GL_GetDrawableSize(window, &vpw, &vph);
+
+					cx = (drag_cx - 2.0 * (drag_x - vpw * 0.5) / scale);
+					cy = (drag_cy - 2.0 * (vph*0.5 - drag_y) / scale);
+				}
+				break;
+			}
+
+			case SDL_MOUSEBUTTONDOWN:
+			{
+				if (!drag)
+				{
+					if (event.button.button == SDL_BUTTON_LEFT)
+					{
+						drag = 1;
+						drag_x = event.button.x;
+						drag_y = event.button.y;
+						drag_cx = cx;
+						drag_cy = cy;
+						drag_lx = lx;
+						drag_ly = ly;
+						drag_zoom = zoom;
+						SDL_CaptureMouse(SDL_TRUE);
+					}
+					if (event.button.button == SDL_BUTTON_RIGHT)
+					{
+						scale = pow(1.01, zoom);
+						int vpw, vph;
+						SDL_GL_GetDrawableSize(window, &vpw, &vph);
+						double dx = cx + 2.0 * (event.button.x - vpw * 0.5) / scale;
+						double dy = cy + 2.0 * (vph*0.5 - event.button.y) / scale;
+
+						drag = 2;
+						drag_x = event.button.x;
+						drag_y = event.button.y;
+						drag_cx = dx;
+						drag_cy = dy;
+						drag_zoom = zoom;
+						SDL_CaptureMouse(SDL_TRUE);
+					}
+				}
+				break;
+			}
+
+			case SDL_MOUSEBUTTONUP:
+			{
+				if ((event.button.button == SDL_BUTTON_LEFT && drag == 1) ||
+					(event.button.button == SDL_BUTTON_RIGHT && drag == 2))
+				{
+					drag = 0;
+					SDL_CaptureMouse(SDL_FALSE);
+				}
+				break;
+			}
+
+			case SDL_WINDOWEVENT:
+			{
+				switch (event.window.event) {
+
+				case SDL_WINDOWEVENT_CLOSE:   // exit game
+					x = true;
+					break;
+
+				default:
+					break;
+				}
+				break;
+			}
+
+			case SDL_KEYDOWN:
+				if (event.key.keysym.sym == SDLK_f)
+					show_f = !show_f;
+				if (event.key.keysym.sym == SDLK_b)
+					show_b = !show_b;
+				if (event.key.keysym.sym == SDLK_v)
+					show_v = !show_v;
+				if (event.key.keysym.sym == SDLK_c)
+					show_c = !show_c;
+				if (event.key.keysym.sym == SDLK_x)
+					show_x = !show_x;
+				if (event.key.keysym.sym == SDLK_d)
+					show_d = !show_d;
+				break;
+			}
+
+			if (x)
+				break;
+		}
+
+		if (x)
+			break;
+
+		int vpw, vph;
+		SDL_GL_GetDrawableSize(window, &vpw, &vph);
+
+		double scale = pow(1.01, zoom);
+
+		glClearColor(0, 0, 0, 0);
+		glClear(GL_COLOR_BUFFER_BIT);
+
+		gfx.LoadProj(vpw, vph, cx, cy, scale, lx, ly);
+		glUniform1i(gfx.tex, 1); // nothing is bound there
+
+		glEnable(GL_CULL_FACE);
+		glCullFace(GL_BACK);
+		glFrontFace(GL_CW);
+
+		gfx.vao_main.Bind();
+
+	#ifdef CULLING
+		MyIndex cull = gfx.TrisByScale(tris_delabella, scale);
+		MyIndex cons_cull = gfx.ConsByScale((MyIndex)force.size(), scale);
+	#ifdef VORONOI
+		MyIndex voro_cull = 2 * gfx.VoroByScale(voronoi_indices / 2, scale);
+	#endif
+	#else
+		MyIndex cull = tris_delabella;
+		MyIndex cons_cull = (MyIndex)force.size();
+	#ifdef VORONOI
+		MyIndex voro_cull = voronoi_indices;
+	#endif
+	#endif
+
+		// grey fill
+		// TODO: switch to trifan using contour indices
+		if (show_f)
+		{
+			glUniform1i(gfx.tex, 0);
+			gfx.SetColor(0.2f, 0.2f, 0.2f, 1.0f);
+			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+			glDrawElements(GL_TRIANGLES, (GLsizei)cull/*tris_delabella*/ * 3, GL_UNSIGNED_INT, 0);
+			glUniform1i(gfx.tex, 1); // nothing is bound there
+		}
+
+		// paint constraints
+		MyIndex constrain_indices = 2 * cons_cull;
+		if (constrain_indices && show_c)
+		{
+			gfx.vao_constraint.Bind();
+
+			glLineWidth(thick);
+			gfx.SetColor(.9f, .9f, .9f, 1.0f);
+			glDrawElements(GL_LINES, (GLsizei)constrain_indices, GL_UNSIGNED_INT, (GLuint*)0);
+			glLineWidth(thin);
+
+			// oops
+			gfx.vao_main.Bind();
+			//gfx.ibo_delabella.Bind();
+		}
+
+		if (show_d)
+		{
+			gfx.SetColor(1.0f, 0.0f, 0.0f, 1.0f);
+			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+			glDrawElements(GL_TRIANGLES, (GLsizei)cull/*tris_delabella*/ * 3, GL_UNSIGNED_INT, 0);
+			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+		}
+
+		if (show_b)
+		{
+			gfx.SetColor(0.0f, 0.0f, 1.0f, 1.0f);
+			glLineWidth(thick);
+			glDrawElements(GL_LINE_LOOP, (GLsizei)contour, GL_UNSIGNED_INT, (GLuint*)0 + (intptr_t)tris_delabella * 3);
+			glLineWidth(thin);
+		}
+
+		// compare with CDT
+	#ifdef WITH_CDT
+		if (show_x)
+		{
+			gfx.vao_cdt.Bind();
+
+			MyIndex tris_cdt = (MyIndex)cdt.triangles.size();
+
+			//glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
+			gfx.SetColor(0.0f, 0.0f, 1.0f, 1.0f);
+			glLineWidth(thin);
+			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+			glDrawElements(GL_TRIANGLES, /*0,points-1,*/ (GLsizei)tris_cdt * 3, GL_UNSIGNED_INT, 0);
+
+			//glDisable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		}
+	#endif
+
+		// voronoi!
+	#ifdef VORONOI
+		if (show_v)
+		{
+			gfx.vao_voronoi.Bind();
+
+			// voro-verts in back
+			gfx.SetColor(1.0f, 1.0f, 0.0f, 1.0f);
+			glPointSize(blob);
+			glDrawArrays(GL_POINTS, 0, (GLsizei)(voronoi_vertices - contour));
+			glPointSize(dot);
+			gfx.ibo_voronoi.Bind();
+
+			gfx.SetColor(0.0f, 0.75f, 0.0f, 1.0f);
+
+	#ifdef VORONOI_POLYS
+			// draw structured polys, note: open polys are silently closed (at infinity)
+			// glDrawElements(GL_LINE_LOOP, voronoi_indices, GL_UNSIGNED_INT, (GLuint*)0);
+			// if you wanna be a ganan: after first M closed polys switch from line_loops to line_strips
+			// and draw remaining N open polygons
+			glDrawElements(GL_LINE_LOOP, (GLsizei)voronoi_closed_indices, GL_UNSIGNED_INT, (GLuint*)0);
+			glDrawElements(GL_LINE_STRIP, (GLsizei)(voronoi_indices - voronoi_closed_indices), GL_UNSIGNED_INT, (GLuint*)0 + (intptr_t)voronoi_closed_indices);
+	#else
+			// draw edge soup
+			glDrawElements(GL_LINES, (GLsizei)voro_cull/*voronoi_indices*/, GL_UNSIGNED_INT, (GLuint*)0);
+	#endif
+		}
+	#endif
+
+		// put verts over everything else
+		gfx.vao_main.Bind();
+		gfx.SetColor(1.0f, 1.0f, 0.0f, 1.0f);
+		glPointSize(blob);
+		glDrawArrays(GL_POINTS, 0, (GLsizei)points);
+		glPointSize(dot);
+
+		if (save_bmp)
+		{
+			char path[1000];
+			sprintf(path, "./shot/%05d.bmp", frame);
+			Shot::Screenshot(0, 0, vpw, vph, path);
+		}
+
+		SDL_GL_SwapWindow(window);
+		SDL_Delay(15);
+
+		frame+=speed;
+		if (frame >= frames)
+		{
+			save_bmp = false;
+			frame = 0;
+		}
+
+		gfx.Destroy();
+	}
+
+	SDL_GL_DeleteContext(context);
+	SDL_DestroyWindow(window);
+	SDL_Quit();
+
+	printf("exiting.\n");
+	return 0;
+}
+#endif
+#endif
+
 #ifdef BENCH
 int bench_main(int argc, char* argv[])
 {
@@ -1381,8 +2025,8 @@ int bench_main(int argc, char* argv[])
 #else
 int main(int argc, char* argv[])
 {
-    const char* dist = "bar";
-    const char* bias = "+";
+    const char* dist = "uni";
+    const char* bias = "";
 #endif
 
 	#ifdef _WIN32
@@ -1759,6 +2403,14 @@ int main(int argc, char* argv[])
 
         fclose(f);
     }
+
+	#ifndef BENCH
+	#ifdef ANIMATION
+	int ret = Animate(cloud, force);
+	cloud = std::vector<MyPoint>();
+	force = std::vector<MyEdge>();
+	#endif
+	#endif
 
     MyIndex points = (MyIndex)cloud.size();
 
@@ -3069,3 +3721,4 @@ int main(int argc, char* argv[])
     return 0;
 }
 #endif
+
