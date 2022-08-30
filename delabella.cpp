@@ -2157,6 +2157,12 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		if (!first_dela_face)
 			return 0;
 
+		uint64_t time0 = uSec();
+
+		if (errlog_proc)
+			errlog_proc(errlog_file, "[...] flood filling ");
+
+
 		const I marker = -1;
 		const I seeded = -2;
 		uint8_t fill = invert ? 0b01000000 : 0;
@@ -2254,6 +2260,10 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			}
 		}
 
+		int acc = 0;
+		int pro = 0;
+		int tot = (int)out_verts / 3;
+
 		while (seed)
 		{
 			Face *stack = seed;
@@ -2268,6 +2278,21 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				f->flags = (f->flags & 0b00111111) | fill;
 				f->index = marker;
 				f = (Face *)f->next;
+				acc++;
+
+				if (acc >= pro)
+				{
+					uint64_t p = (int)((uint64_t)100 * acc / tot);
+					pro = (int)((p + 1) * tot / 100);
+					if (pro >= tot)
+						pro = (int)tot - 1;
+					if (acc == tot - 1)
+					{
+						p = 100;
+					}
+					if (errlog_proc)
+						errlog_proc(errlog_file, "\r[%2d%s] flood filling ", p, p >= 100 ? "" : "%");
+				}
 			}
 
 			// 2. until stack is not empty
@@ -2313,6 +2338,21 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 							n->flags = (n->flags & 0b00111111) | fill;
 							n->index = marker;
+
+							acc++;
+							if (acc >= pro)
+							{
+								uint64_t p = (int)((uint64_t)100 * acc / tot);
+								pro = (int)((p + 1) * tot / 100);
+								if (pro >= tot)
+									pro = (int)tot - 1;
+								if (acc == tot - 1)
+								{
+									p = 100;
+								}
+								if (errlog_proc)
+									errlog_proc(errlog_file, "\r[%2d%s] flood filling ", p, p >= 100 ? "" : "%");
+							}
 						}
 						else if (n->index != seeded)
 						{
@@ -2395,6 +2435,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 		if (exterior)
 			*exterior = first_exterior_face;
+
+		if (errlog_proc)
+			errlog_proc(errlog_file, "\r[100] flood filling (%lld ms)\n", (uSec() - time0) / 1000);
 
 		return interior;
 	}
@@ -2695,10 +2738,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 	{
 		uint64_t sort_stamp = uSec();
 
-		if (errlog_proc)
-			errlog_proc(errlog_file, "[...] sorting vertices");
-
-
 		// const size_t max_triangulate_indices = (size_t)points * 6 - 15;
 		// const size_t max_voronoi_edge_indices = (size_t)points * 6 - 12;
 		const size_t max_voronoi_poly_indices = (size_t)points * 7 - 9; // winner of shame!
@@ -2722,6 +2761,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		if (!ReallocVerts(points))
 			return 0;
 
+		if (errlog_proc)
+			errlog_proc(errlog_file, "[...] sorting vertices ");
+
 		for (I i = 0; i < points; i++)
 		{
 			Vert* v = vert_alloc + i;
@@ -2734,6 +2776,11 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		{
 			const T xx, xy;
 			const T yx, yy;
+
+			I pro, acc, tot;
+			int (* const errlog_proc)(void *file, const char *fmt, ...);
+			void * const errlog_file;
+
 			T bbox[4];
 
 			T X(const Vert& v) const
@@ -2764,195 +2811,380 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				}
 			}
 
-			void Split(Vert* v, I n)
+			bool Split(Vert* v, I n)
 			{
-				if (n < 2)
+				const int limit = 256;
+
+				struct Stk
 				{
-					Progress(n);
-					return;
-				}
-
-				bbox[0] = bbox[1] = X(v[0]);
-				bbox[2] = bbox[3] = Y(v[0]);
-				for (I i = 1; i < n; i++)
-				{
-					T x = X(v[i]);
-					T y = Y(v[i]);
-					bbox[0] = std::min(bbox[0], x);
-					bbox[1] = std::max(bbox[1], x);
-					bbox[2] = std::min(bbox[2], y);
-					bbox[3] = std::max(bbox[3], y);
-				}
-
-				if (bbox[1] - bbox[0] >= bbox[3] - bbox[2] && bbox[0] < bbox[1])
-				{
-					T half = (bbox[1] + bbox[0]) / 2;
-					if (half == bbox[0])
-						half = bbox[1];
-
-					Vert* u = v;
-					T temp = X(v[0]);
-					for (int i = 0; i < n; i++)
-					{
-						T vx = X(v[i]);
-						if (vx >= half)
-						{
-							u = v + i;
-							temp = vx;
-						}
-					}
-
-					half = temp;
-
 					struct
 					{
-						T X(const Vert& v) const
+						Vert* v;
+						I n;
+					} sub[limit];
+					Stk* pop;
+					Stk* push;
+				};
+
+				int depth = 1;
+				Stk base = { {{v,n}}, 0,0 };
+				Stk* stack = &base;
+
+				while (1)
+				{
+					depth--;
+					if (depth < 0)
+					{
+						stack = stack->pop;
+						if (!stack)
+							break;
+						depth = limit - 1;
+					}
+					v = stack->sub[depth].v;
+					n = stack->sub[depth].n;
+
+					if (n < 2)
+					{
+						Progress(n);
+						//return;
+						continue;
+					}
+
+					bbox[0] = bbox[1] = X(v[0]);
+					bbox[2] = bbox[3] = Y(v[0]);
+					for (I i = 1; i < n; i++)
+					{
+						T x = X(v[i]);
+						T y = Y(v[i]);
+						bbox[0] = std::min(bbox[0], x);
+						bbox[1] = std::max(bbox[1], x);
+						bbox[2] = std::min(bbox[2], y);
+						bbox[3] = std::max(bbox[3], y);
+					}
+
+					if (bbox[1] - bbox[0] >= bbox[3] - bbox[2] && bbox[0] < bbox[1])
+					{
+						T half = (bbox[1] + bbox[0]) / 2;
+						if (half == bbox[0])
+							half = bbox[1];
+
+						Vert* u = v;
+						T temp = X(v[0]);
+						for (int i = 0; i < n; i++)
 						{
-							return v.x * xx + v.y * xy;
+							T vx = X(v[i]);
+							if (vx >= half)
+							{
+								u = v + i;
+								temp = vx;
+							}
 						}
-						bool operator () (const Vert& a, const Vert& b) const
+
+						half = temp;
+
+						struct
 						{
-							const T ax = X(a);
-							const T bx = X(b);
-							if (ax == bx)
+							T X(const Vert& v) const
+							{
+								return v.x * xx + v.y * xy;
+							}
+							bool operator () (const Vert& a, const Vert& b) const
+							{
+								const T ax = X(a);
+								const T bx = X(b);
+								if (ax == bx)
+								{
+									if (a.x == b.x)
+										return a.y < b.y;
+									return a.x < b.x;
+								}
+								return ax < bx;
+							}
+							bool operator () (const Vert& v) const
+							{
+								const T vx = X(v);
+								if (vx == t)
+								{
+									if (v.x == u.x)
+										return v.y < u.y;
+									return v.x < u.x;
+								}
+								return vx < t;
+
+								// return X(v) < t;
+							}
+							const Vert& u;
+							const T t;
+							const T xx, xy;
+						} p = { *u, half,xx,xy };
+
+						if (bbox[2] == bbox[3] || n == 2)
+						{
+							if (n>2)
+								std::sort(v, v + n, p);
+							Progress(n);
+
+							#ifdef DELABELLA_AUTOTEST
+							/*
+							for (int i = 0; i < n; i++)
+							{
+								bool dup_allowed = true;
+								for (int j = i+1; j < n; j++)
+								{
+									// all dups can occur only right after i
+									bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
+									assert(dup_allowed || diff);
+									if (dup_allowed && diff)
+										dup_allowed = false;
+								}
+							}
+							*/
+							#endif
+							//return;
+							continue;
+						}
+
+						u = std::partition(v, v + n, p);
+
+						#ifdef DELABELLA_AUTOTEST
+						assert(u != v && u != v + n);
+						/*
+						for (int i = 0; i < (int)(u - v); i++)
+						{
+							for (int j = (int)(u - v); j < n; j++)
+							{
+								// all dups of i must be in the same partition!
+								bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
+								assert(diff);
+							}
+						}
+						for (int i = (int)(u - v); i < n; i++)
+						{
+							for (int j = 0; j < (int)(u - v); j++)
+							{
+								// all dups of i must be in the same partition!
+								bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
+								assert(diff);
+							}
+						}
+						*/
+						#endif
+
+						if (depth == limit)
+						{
+							depth = 0;
+							if (!stack->push)
+							{
+								// oops
+								stack->push = (Stk*)malloc(sizeof(Stk));
+								if (!stack->push)
+									break;
+								stack->push->push = 0;
+								stack->push->pop = stack;
+							}
+							stack = stack->push;
+						}
+					
+						//Split(v, (I)(u - v));
+						stack->sub[depth].v = v;
+						stack->sub[depth].n = (I)(u - v);
+						depth++;
+
+						if (depth == limit)
+						{
+							depth = 0;
+							if (!stack->push)
+							{
+								// oops
+								stack->push = (Stk*)malloc(sizeof(Stk));
+								if (!stack->push)
+									break;
+								stack->push->push = 0;
+								stack->push->pop = stack;
+							}
+							stack = stack->push;
+						}
+
+						//Split(u, n - (I)(u - v));
+						stack->sub[depth].v = u;
+						stack->sub[depth].n = n - (I)(u - v);
+						depth++;
+
+						continue;
+					}
+					else
+					if (bbox[2] < bbox[3])
+					{
+						T half = (bbox[3] + bbox[2]) / 2;
+						if (half == bbox[2])
+							half = bbox[3];
+
+						Vert* u = v;
+						T temp = Y(v[0]);
+						for (int i = 0; i < n; i++)
+						{
+							T vy = Y(v[i]);
+							if (vy >= half)
+							{
+								u = v + i;
+								temp = vy;
+							}
+						}
+
+						half = temp;
+
+						struct
+						{
+							T Y(const Vert& v) const
+							{
+								return v.x * yx + v.y * yy;
+							}
+							bool operator () (const Vert& a, const Vert& b) const
+							{
+								const T ay = Y(a);
+								const T by = Y(b);
+								if (ay == by)
+								{
+									if (a.y == b.y)
+										return a.x < b.x;
+									return a.y < b.y;
+								}
+								return ay < by;
+							}
+							bool operator () (const Vert& v) const
+							{
+								const T vy = Y(v);
+								if (vy == t)
+								{
+									if (v.y == u.y)
+										return v.x < u.x;
+									return v.y < u.y;
+								}
+								return vy < t;
+
+								//return Y(v) < t;
+							}
+							const Vert& u;
+							const T t;
+							const T yx, yy;
+						} p = { *u,half,yx,yy };
+
+						if (bbox[0] == bbox[1] || n == 2)
+						{
+							if (n > 2)
+								std::sort(v, v + n, p);
+							Progress(n);
+
+							#ifdef DELABELLA_AUTOTEST
+							/*
+							for (int i = 0; i < n; i++)
+							{
+								bool dup_allowed = true;
+								for (int j = i+1; j < n; j++)
+								{
+									// all dups can occur only right after i
+									bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
+									assert(dup_allowed || diff);
+									if (dup_allowed && diff)
+										dup_allowed = false;
+								}
+							}
+							*/
+							#endif
+
+							//return;
+							continue;
+						}
+
+						u = std::partition(v, v + n, p);
+
+						#ifdef DELABELLA_AUTOTEST
+						assert(u != v && u != v + n);
+						/*
+						for (int i = 0; i < (int)(u - v); i++)
+						{
+							for (int j = (int)(u - v); j < n; j++)
+							{
+								// all dups of i must be in the same partition!
+								bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
+								if (!diff)
+								{
+									int a = 0;
+								}
+								assert(diff);
+							}
+						}
+						for (int i = (int)(u - v); i < n; i++)
+						{
+							for (int j = 0; j < (int)(u - v); j++)
+							{
+								// all dups of i must be in the same partition!
+								bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
+								assert(diff);
+							}
+						}
+						*/
+						#endif
+
+						if (depth == limit)
+						{
+							depth = 0;
+							if (!stack->push)
+							{
+								// oops
+								stack->push = (Stk*)malloc(sizeof(Stk));
+								if (!stack->push)
+									break;
+								stack->push->push = 0;
+								stack->push->pop = stack;
+							}
+							stack = stack->push;
+						}
+
+						//Split(v, (I)(u - v));
+						stack->sub[depth].v = v;
+						stack->sub[depth].n = (I)(u - v);
+						depth++;
+
+						if (depth == limit)
+						{
+							depth = 0;
+							if (!stack->push)
+							{
+								// oops
+								stack->push = (Stk*)malloc(sizeof(Stk));
+								if (!stack->push)
+									break;
+								stack->push->push = 0;
+								stack->push->pop = stack;
+							}
+							stack = stack->push;
+						}
+
+						//Split(u, n - (I)(u - v));
+						stack->sub[depth].v = u;
+						stack->sub[depth].n = n - (I)(u - v);
+						depth++;
+
+						continue;
+					}
+					else
+					{
+						// all verts are dups
+						// dont touch
+
+						// ehm, actually they can appear as dups (inexact rot) 
+						// but there may be a non dup hidden in the middle
+						struct
+						{
+							bool operator () (const Vert& a, const Vert& b) const
 							{
 								if (a.x == b.x)
 									return a.y < b.y;
 								return a.x < b.x;
 							}
-							return ax < bx;
-						}
-						bool operator () (const Vert& v) const
-						{
-							const T vx = X(v);
-							if (vx == t)
-							{
-								if (v.x == u.x)
-									return v.y < u.y;
-								return v.x < u.x;
-							}
-							return vx < t;
+						} p;
 
-							// return X(v) < t;
-						}
-						const Vert& u;
-						const T t;
-						const T xx, xy;
-					} p = { *u, half,xx,xy };
-
-					if (bbox[2] == bbox[3] || n == 2)
-					{
-						if (n>2)
-							std::sort(v, v + n, p);
-						Progress(n);
-
-						#ifdef DELABELLA_AUTOTEST
-						/*
-						for (int i = 0; i < n; i++)
-						{
-							bool dup_allowed = true;
-							for (int j = i+1; j < n; j++)
-							{
-								// all dups can occur only right after i
-								bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
-								assert(dup_allowed || diff);
-								if (dup_allowed && diff)
-									dup_allowed = false;
-							}
-						}
-						*/
-						#endif
-						return;
-					}
-
-					u = std::partition(v, v + n, p);
-
-					#ifdef DELABELLA_AUTOTEST
-					assert(u != v && u != v + n);
-					/*
-					for (int i = 0; i < (int)(u - v); i++)
-					{
-						for (int j = (int)(u - v); j < n; j++)
-						{
-							// all dups of i must be in the same partition!
-							bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
-							assert(diff);
-						}
-					}
-					for (int i = (int)(u - v); i < n; i++)
-					{
-						for (int j = 0; j < (int)(u - v); j++)
-						{
-							// all dups of i must be in the same partition!
-							bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
-							assert(diff);
-						}
-					}
-					*/
-					#endif
-					
-					Split(v, (I)(u - v));
-					Split(u, n - (I)(u-v));
-				}
-				else
-				if (bbox[2] < bbox[3])
-				{
-					T half = (bbox[3] + bbox[2]) / 2;
-					if (half == bbox[2])
-						half = bbox[3];
-
-					Vert* u = v;
-					T temp = Y(v[0]);
-					for (int i = 0; i < n; i++)
-					{
-						T vy = Y(v[i]);
-						if (vy >= half)
-						{
-							u = v + i;
-							temp = vy;
-						}
-					}
-
-					half = temp;
-
-					struct
-					{
-						T Y(const Vert& v) const
-						{
-							return v.x * yx + v.y * yy;
-						}
-						bool operator () (const Vert& a, const Vert& b) const
-						{
-							const T ay = Y(a);
-							const T by = Y(b);
-							if (ay == by)
-							{
-								if (a.y == b.y)
-									return a.x < b.x;
-								return a.y < b.y;
-							}
-							return ay < by;
-						}
-						bool operator () (const Vert& v) const
-						{
-							const T vy = Y(v);
-							if (vy == t)
-							{
-								if (v.y == u.y)
-									return v.x < u.x;
-								return v.y < u.y;
-							}
-							return vy < t;
-
-							//return Y(v) < t;
-						}
-						const Vert& u;
-						const T t;
-						const T yx, yy;
-					} p = { *u,half,yx,yy };
-
-					if (bbox[0] == bbox[1] || n == 2)
-					{
 						if (n > 2)
 							std::sort(v, v + n, p);
 						Progress(n);
@@ -2973,97 +3205,32 @@ struct CDelaBella2 : IDelaBella2<T, I>
 						}
 						*/
 						#endif
-
-						return;
 					}
+				} // virtual stack while
 
-					u = std::partition(v, v + n, p);
+				bool ret = stack == 0;
 
-					#ifdef DELABELLA_AUTOTEST
-					assert(u != v && u != v + n);
-					/*
-					for (int i = 0; i < (int)(u - v); i++)
-					{
-						for (int j = (int)(u - v); j < n; j++)
-						{
-							// all dups of i must be in the same partition!
-							bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
-							if (!diff)
-							{
-								int a = 0;
-							}
-							assert(diff);
-						}
-					}
-					for (int i = (int)(u - v); i < n; i++)
-					{
-						for (int j = 0; j < (int)(u - v); j++)
-						{
-							// all dups of i must be in the same partition!
-							bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
-							assert(diff);
-						}
-					}
-					*/
-					#endif
-
-					Split(v, (I)(u - v));
-					Split(u, n - (I)(u - v));
-				}
-				else
+				stack = base.push;
+				while (stack)
 				{
-					// all verts are dups
-					// dont touch
-
-					// ehm, actually they can appear as dups (inexact rot) 
-					// but there may be a non dup hidden in the middle
-					struct
-					{
-						bool operator () (const Vert& a, const Vert& b) const
-						{
-							if (a.x == b.x)
-								return a.y < b.y;
-							return a.x < b.x;
-						}
-					} p;
-
-					if (n > 2)
-						std::sort(v, v + n, p);
-					Progress(n);
-
-					#ifdef DELABELLA_AUTOTEST
-					/*
-					for (int i = 0; i < n; i++)
-					{
-						bool dup_allowed = true;
-						for (int j = i+1; j < n; j++)
-						{
-							// all dups can occur only right after i
-							bool diff = v[i].x != v[j].x || v[i].y != v[j].y;
-							assert(dup_allowed || diff);
-							if (dup_allowed && diff)
-								dup_allowed = false;
-						}
-					}
-					*/
-					#endif
+					Stk* s = stack->push;
+					free(stack);
+					stack = s;
 				}
-			}
 
-			I pro,acc,tot;
-			int(*errlog_proc)(void *file, const char *fmt, ...);
-			void *errlog_file;
+				return ret;
+			}
 		};
 
-		KD kd = { (T)2, (T)1, (T)-1, (T)2 };
-		kd.pro = 0;
-		kd.acc = 0;
-		kd.tot = points;
-		kd.errlog_proc = errlog_proc;
-		kd.errlog_file = errlog_file;
+		KD kd = { (T)2, (T)1, (T)-1, (T)2, 0,0,points, errlog_proc, errlog_file };
 
 		// KD kd = { (T)1.1, (T)0.1, (T)-0.1, (T)1.1 }; // robustenss test
-		kd.Split(vert_alloc, points);
+		if (!kd.Split(vert_alloc, points))
+		{
+			if (errlog_proc)
+				errlog_proc(errlog_file, "\n[ERR] Not enough memory, shop for some more RAM. See you!\n");
+			return 0;
+		}
 
 		#if 0
 		exit(0);
