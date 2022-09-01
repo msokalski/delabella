@@ -13,6 +13,9 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="Source Files\triangle">
+      <UniqueIdentifier>{7bdd4075-628b-47ac-9361-bfa9077988a4}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\delabella.h">
@@ -28,6 +31,9 @@
     </ClCompile>
     <ClCompile Include="..\delabella-sdl2.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\triangle\triangle.c">
+      <Filter>Source Files\triangle</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>
