@@ -79,9 +79,10 @@ using namespace GEOM_FADE2D;
 
 // competitors
 #ifdef WITH_TRIANGLE
-extern "C" {
+// we compile triangle.c as .cpp
+//extern "C" {
 #include "triangle/triangle.h"
-}
+//}
 #endif
 
 #ifdef WITH_CDT
@@ -2085,7 +2086,7 @@ int main(int argc, char* argv[])
         }
         printf("generating random " IDXF " points\n", n);
         std::random_device rd{};
-		uint64_t seed = 0x00000000E6F82B72ULL;// rd();
+		uint64_t seed = rd();
         std::mt19937_64 gen{ seed };
         printf("SEED = 0x%016llX\n", (long long unsigned int)seed);
 
@@ -2648,13 +2649,20 @@ int main(int argc, char* argv[])
 
 	{
 #ifdef WITH_TRIANGLE
-
+        printf("running triangle...\n");
 		struct triangulateio in = { 0 }, mid = { 0 };
 
 		/* Define input points. */
 
+        #ifdef WITH_CDT
+        // triangle ur a parasite!
+        in.numberofpoints = nodups.size();
+        in.pointlist = &nodups.data()->x;
+        #else
 		in.numberofpoints = points;
 		in.pointlist = &cloud.data()->x;
+        #endif
+
 
 		/* Triangulate the points.  Switches are chosen to read and write a  */
 		/*   PSLG (p), preserve the convex hull (c), number everything from  */
@@ -2662,20 +2670,44 @@ int main(int argc, char* argv[])
 		/*   produce an edge list (e), a Voronoi diagram (v), and a triangle */
 		/*   neighbor list (n).                                              */
 
-		char triopts1[] = "Q" ""/*div&con*/; // "F"/*sweep*/; "i"/*incremental*/;
+		char triopts1[] = "Qz" ""/*div&con*/; // "F"/*sweep*/; "i"/*incremental*/;
+        char triopts2[] = "Qpz";
 
-		uint64_t t0 = uSec();
-		triangulate(triopts1, &in, &mid, 0/*&vorout*/);
-		uint64_t t1 = uSec();
+        char* triopts = triopts1;
+        if (force.size())
+        {
+            triopts = triopts2;
+
+            #ifdef WITH_CDT
+            // triangle ur a parasite!
+            typedef std::vector< std::pair<CDT::VertInd,CDT::VertInd> > HACK; 
+            HACK* hack = (HACK*)&edges;
+            in.segmentlist = (int*)&hack->data()->first;
+            in.numberofsegments = hack->size();
+            #else
+            in.segmentlist = &force.data()->a;
+            in.numberofsegments = force.size();
+            #endif            
+        } 
+
+		uint64_t bt[5];
+
+        uint64_t t0 = uSec();
+		triangulate(triopts, &in, &mid, 0/*&vorout*/, bt, uSec);
+        uint64_t t1 = uSec();
 
 		printf("TRIANGE made %d triangles (in %d ms)\n", mid.numberoftriangles, (int)((t1-t0)/1000));
 
         #ifdef BENCH
-        tri_bench->triangulation = t1 - t0;
-        if (mid.numberoftriangles != (MyIndex)cdt.triangles.size())
-            tri_bench->removing_dups = 1000000000;
-        else
-			tri_bench->removing_dups = 0;
+        tri_bench->removing_dups = bt[0];
+        tri_bench->triangulation = bt[1];
+        tri_bench->constrain_edges = bt[2];
+        tri_bench->flood_fill = bt[3];
+        tri_bench->erase_super = bt[4];
+
+        // we trust you
+        //if (mid.numberoftriangles != (MyIndex)cdt.triangles.size())
+        //    tri_bench->removing_dups = 1000000000;
         #endif
 
 		/*
@@ -2728,10 +2760,15 @@ int main(int argc, char* argv[])
 
         #ifdef BENCH
         del_bench->triangulation = t1 - t0;
+
+        /*
+        // yea delaunator, we know it you're glueish 
         if (tris_delaunator != (MyIndex)cdt.triangles.size())
             del_bench->removing_dups = 1000000000;
         else
             del_bench->removing_dups = 0;
+        */
+
         #endif
         
         printf("delaunator triangles: " IDXF "\n", tris_delaunator);
@@ -3542,7 +3579,7 @@ int main(int argc, char* argv[])
 			int len = sprintf(buf, "%llu", (long long unsigned int)v);
 			if (len <= 0)
 				return 0;
-			int sep = (len - 1) / 3;
+			int sep = 0;//(len - 1) / 3;
 
 			int len2 = len + sep;
 			int pad = n > len2 ? n - len2 : 0;
@@ -3557,12 +3594,14 @@ int main(int argc, char* argv[])
 
 			for (int i = len - 1, j = 0; i >= 0; i--, j++)
 			{
+                /*
 				if (j == 3)
 				{
 					buf[ofs] = ',';
 					ofs--;
 					j = 0;
 				}
+                */
 
 				buf[ofs] = buf[i];
 				ofs--;
@@ -3621,9 +3660,9 @@ int main(int argc, char* argv[])
 		fprintf(bench_file, "RD: %s %s %s %s %s\n",
 			f[0](11, accum[0].removing_dups),
 			f[1](11, accum[1].removing_dups),
-			accum[2].removing_dups ? "    INVALID" : f[2](11, accum[2].removing_dups),
-			accum[3].removing_dups ? "    INVALID" : f[3](11, accum[3].removing_dups), 
-			accum[4].removing_dups ? "    INVALID" : f[4](11, accum[4].removing_dups));
+			f[2](11, accum[2].removing_dups),
+			f[3](11, accum[3].removing_dups), 
+			f[4](11, accum[4].removing_dups));
 		fprintf(bench_file, "TR: %s %s %s %s %s\n",
 			f[0](11, accum[0].triangulation),
 			f[1](11, accum[1].triangulation),
@@ -3740,9 +3779,9 @@ int main(int argc, char* argv[])
 					fprintf(bench_file, "RD: %s %s %s %s %s\n",
 						f[0](11, accum[0].removing_dups),
 						f[1](11, accum[1].removing_dups),
-						accum[2].removing_dups ? "    INVALID" : f[2](11, accum[2].removing_dups),
-						accum[3].removing_dups ? "    INVALID" : f[3](11, accum[3].removing_dups), 
-						accum[4].removing_dups ? "    INVALID" : f[4](11, accum[4].removing_dups));
+						f[2](11, accum[2].removing_dups),
+						f[3](11, accum[3].removing_dups), 
+						f[4](11, accum[4].removing_dups));
 					fprintf(bench_file, "TR: %s %s %s %s %s\n",
 						f[0](11, accum[0].triangulation),
 						f[1](11, accum[1].triangulation),

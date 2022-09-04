@@ -8,6 +8,11 @@ LNK="-lSDL2 -lGL"
 SRC="delabella.cpp delabella-sdl2.cpp"
 OUT="delabella-sdl2"
 
+if [ -d "triangle" ]; then
+    OPT="$OPT -DWITH_TRIANGLE"
+    SRC="$SRC triangle/triangle.c"
+fi
+
 if [ -d "fade" ]; then
     OPT="$OPT -DWITH_FADE"
     LNK="-Lfade/lib_ubuntu20.04_x86_64 -lfade2d -Wl,-rpath=fade/lib_ubuntu20.04_x86_64 $LNK"

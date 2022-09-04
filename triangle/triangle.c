@@ -1,4 +1,8 @@
 #define _CRT_SECURE_NO_WARNINGS
+#define ANSI_DECLARATORS
+#define TRILIBRARY
+
+#include <stdint.h>
 
 
 /*****************************************************************************/
@@ -15674,7 +15678,8 @@ struct behavior *b;
 
 #ifdef ANSI_DECLARATORS
 void triangulate(char *triswitches, struct triangulateio *in,
-                 struct triangulateio *out, struct triangulateio *vorout)
+                 struct triangulateio *out, struct triangulateio *vorout,
+                 uint64_t bench_time[5], uint64_t (*bench_cb)())
 #else /* not ANSI_DECLARATORS */
 void triangulate(triswitches, in, out, vorout)
 char *triswitches;
@@ -15710,6 +15715,8 @@ char **argv;
   struct timezone tz;
 #endif /* not NO_TIMER */
 
+  bench_time[0] = bench_cb();
+
 #ifndef NO_TIMER
   gettimeofday(&tv0, &tz);
 #endif /* not NO_TIMER */
@@ -15729,6 +15736,8 @@ char **argv;
 #else /* not TRILIBRARY */
   readnodes(&m, &b, b.innodefilename, b.inpolyfilename, &polyfile);
 #endif /* not TRILIBRARY */
+
+  bench_time[1] = bench_cb();
 
 #ifndef NO_TIMER
   if (!b.quiet) {
@@ -15756,6 +15765,8 @@ char **argv;
     m.hullsize = delaunay(&m, &b);              /* Triangulate the vertices. */
   }
 #endif /* not CDT_ONLY */
+
+  bench_time[2] = bench_cb();
 
 #ifndef NO_TIMER
   if (!b.quiet) {
@@ -15789,6 +15800,8 @@ char **argv;
     }
   }
 
+  bench_time[3] = bench_cb();
+
 #ifndef NO_TIMER
   if (!b.quiet) {
     gettimeofday(&tv3, &tz);
@@ -15821,6 +15834,8 @@ char **argv;
     m.holes = 0;
     m.regions = 0;
   }
+
+  bench_time[4] = bench_cb();
 
 #ifndef NO_TIMER
   if (!b.quiet) {
@@ -16007,6 +16022,16 @@ char **argv;
 #endif /* not REDUCED */
 
   triangledeinit(&m, &b);
+
+  uint64_t bench_end = bench_cb();
+
+  bench_time[0] = bench_time[1]-bench_time[0];
+  bench_time[1] = bench_time[2]-bench_time[1];
+  bench_time[2] = bench_time[3]-bench_time[2];
+  bench_time[3] = bench_time[4]-bench_time[3];
+  bench_time[4] = bench_end-bench_time[4];
+
+
 #ifndef TRILIBRARY
   return 0;
 #endif /* not TRILIBRARY */
