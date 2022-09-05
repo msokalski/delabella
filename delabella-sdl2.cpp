@@ -2463,7 +2463,7 @@ int main(int argc, char* argv[])
         #endif
 
         printf("cdt triangulation... ");
-        CDT::Triangulation<MyCoord> cdt;
+        CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::KdTreeBFS);
         cdt.insertVertices(nodups);
 
         uint64_t t2 = uSec();
@@ -2531,7 +2531,8 @@ int main(int argc, char* argv[])
 
     #ifdef WITH_FADE
     if (!(points > 1000000) &&
-		!(strcmp(dist,"gam")==0 && bias[0]!=0 && points>=250000))
+		!(strcmp(dist,"gam")==0 && bias[0]!=0 && points>=250000) &&
+		!(strcmp(dist,"bar")==0 && bias[0]!=0 && points >= 500000))
     {
         printf("running fade ...");
         uint64_t t0 = uSec(), t1, t2;
@@ -2656,10 +2657,10 @@ int main(int argc, char* argv[])
 
         #ifdef WITH_CDT
         // triangle ur a parasite!
-        in.numberofpoints = nodups.size();
+        in.numberofpoints = (int)nodups.size();
         in.pointlist = &nodups.data()->x;
         #else
-		in.numberofpoints = points;
+		in.numberofpoints = (int)points;
 		in.pointlist = &cloud.data()->x;
         #endif
 
@@ -2683,10 +2684,10 @@ int main(int argc, char* argv[])
             typedef std::vector< std::pair<CDT::VertInd,CDT::VertInd> > HACK; 
             HACK* hack = (HACK*)&edges;
             in.segmentlist = (int*)&hack->data()->first;
-            in.numberofsegments = hack->size();
+            in.numberofsegments = (int)hack->size();
             #else
             in.segmentlist = &force.data()->a;
-            in.numberofsegments = force.size();
+            in.numberofsegments = (int)force.size();
             #endif            
         } 
 
@@ -3717,8 +3718,8 @@ int main(int argc, char* argv[])
 	char num[16];
 
 	// fast skip
-	int d = 0;
-	int b = 0;
+	int d = 4;
+	int b = 2;
 	int i = 0;
 
 	do

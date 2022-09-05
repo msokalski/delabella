@@ -1,6 +1,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #define ANSI_DECLARATORS
 #define TRILIBRARY
+#define NO_TIMER
 
 #include <stdint.h>
 
@@ -7719,7 +7720,7 @@ struct otri *searchtri;
   samplesperblock = (m->samples * TRIPERBLOCK - 1) / m->triangles.maxitems + 1;
   /* We'll draw ceiling(samples * itemsfirstblock / maxitems) random samples */
   /*   from the first block of triangles.                                    */
-  samplesleft = (m->samples * m->triangles.itemsfirstblock - 1) /
+  samplesleft = ((int64_t)m->samples * m->triangles.itemsfirstblock - 1) /
                 m->triangles.maxitems + 1;
   totalsamplesleft = m->samples;
   population = m->triangles.itemsfirstblock;
