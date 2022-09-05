@@ -5894,6 +5894,59 @@ REAL permanent;
   return finnow[finlength - 1];
 }
 
+
+#ifdef ANSI_DECLARATORS
+REAL incircle_xxx(const REAL* pa, const REAL* pb, const REAL* pc, const REAL* pd)
+#else /* not ANSI_DECLARATORS */
+REAL incircle(pa, pb, pc, pd)
+vertex pa;
+vertex pb;
+vertex pc;
+vertex pd;
+#endif /* not ANSI_DECLARATORS */
+
+{
+  REAL adx, bdx, cdx, ady, bdy, cdy;
+  REAL bdxcdy, cdxbdy, cdxady, adxcdy, adxbdy, bdxady;
+  REAL alift, blift, clift;
+  REAL det;
+  REAL permanent, errbound;
+
+  adx = pa[0] - pd[0];
+  bdx = pb[0] - pd[0];
+  cdx = pc[0] - pd[0];
+  ady = pa[1] - pd[1];
+  bdy = pb[1] - pd[1];
+  cdy = pc[1] - pd[1];
+
+  bdxcdy = bdx * cdy;
+  cdxbdy = cdx * bdy;
+  alift = adx * adx + ady * ady;
+
+  cdxady = cdx * ady;
+  adxcdy = adx * cdy;
+  blift = bdx * bdx + bdy * bdy;
+
+  adxbdy = adx * bdy;
+  bdxady = bdx * ady;
+  clift = cdx * cdx + cdy * cdy;
+
+  det = alift * (bdxcdy - cdxbdy)
+      + blift * (cdxady - adxcdy)
+      + clift * (adxbdy - bdxady);
+
+  permanent = (Absolute(bdxcdy) + Absolute(cdxbdy)) * alift
+            + (Absolute(cdxady) + Absolute(adxcdy)) * blift
+            + (Absolute(adxbdy) + Absolute(bdxady)) * clift;
+  errbound = iccerrboundA * permanent;
+  if ((det > errbound) || (-det > errbound)) {
+    return det;
+  }
+
+  return incircleadapt((vertex)pa, (vertex)pb, (vertex)pc, (vertex)pd, permanent);
+}
+
+
 #ifdef ANSI_DECLARATORS
 REAL incircle(struct mesh *m, struct behavior *b,
               vertex pa, vertex pb, vertex pc, vertex pd)

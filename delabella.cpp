@@ -17,6 +17,22 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #undef FP_FAST_FMAL
 #define FP_FAST_FMAL
 
+// #define PROGRESS
+
+#include "triangle/triangle.h"
+
+void exactinit();
+
+int initthing()
+{
+	void exactinit();
+	return 1;
+}
+
+static int iiii = initthing();
+
+REAL incircle_xxx(const REAL* pa, const REAL* pb, const REAL* pc, const REAL* pd);
+
 #include <random>
 #include <cassert>
 #include <cstdio>
@@ -266,6 +282,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 		bool dotNP(const Vert &p) /*const*/
 		{
+			return incircle_xxx(&this->v[2]->x,&this->v[1]->x,&this->v[0]->x,&p.x) <= 0.0;
 			{ // somewhat faster, poor compiler inlining?
 
 				const T adx = this->v[2]->x - p.x;
@@ -543,6 +560,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		// skip until points are coplanar
 		while (i < points && f.dot0(vert_alloc[i]))
 		{
+			#ifdef PROGRESS
 			if (i >= pro)
 			{
 				uint64_t p = (int)((uint64_t)100 * i / points);
@@ -556,6 +574,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				if (errlog_proc)
 					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation ", p, p >= 100 ? "" : "%");
 			}
+			#endif
 
 			Vert *v = vert_alloc + i;
 
@@ -1000,6 +1019,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		int pro = 0;
 		for (; i < points; i++)
 		{
+			#ifdef PROGRESS
 			if (i >= pro)
 			{
 				uint64_t p = (int)((uint64_t)100 * i / points);
@@ -1011,6 +1031,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				if (errlog_proc)
 					errlog_proc(errlog_file, "\r[%2d%s] convex hull triangulation ", p, p >= 100 ? "" : "%");
 			}
+			#endif
 
 			Vert *q = vert_alloc + i;
 			Vert *p = vert_alloc + i - 1;
@@ -1600,6 +1621,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		int pro = 0;
 		for (I con = 0; con < edges; con++)
 		{
+			#ifdef PROGRESS
 			if (con >= pro)
 			{
 				uint64_t p = (int)((uint64_t)100 * con / edges);
@@ -1611,6 +1633,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				if (errlog_proc)
 					errlog_proc(errlog_file, "\r[%2d%s] constraining ", p, p >= 100 ? "" : "%");
 			}
+			#endif
 
 			I a = *(const I *)((const char *)pa + (intptr_t)con * advance_bytes);
 			I b = *(const I *)((const char *)pb + (intptr_t)con * advance_bytes);
@@ -2285,8 +2308,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				f->flags = (f->flags & 0b00111111) | fill;
 				f->index = marker;
 				f = (Face *)f->next;
-				acc++;
 
+				#ifdef PROGRESS
+				acc++;
 				if (acc >= pro)
 				{
 					uint64_t p = (int)((uint64_t)100 * acc / tot);
@@ -2300,6 +2324,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					if (errlog_proc)
 						errlog_proc(errlog_file, "\r[%2d%s] flood filling ", p, p >= 100 ? "" : "%");
 				}
+				#endif
 			}
 
 			// 2. until stack is not empty
@@ -2346,6 +2371,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							n->flags = (n->flags & 0b00111111) | fill;
 							n->index = marker;
 
+							#ifdef PROGRESS
 							acc++;
 							if (acc >= pro)
 							{
@@ -2360,6 +2386,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 								if (errlog_proc)
 									errlog_proc(errlog_file, "\r[%2d%s] flood filling ", p, p >= 100 ? "" : "%");
 							}
+							#endif
 						}
 						else if (n->index != seeded)
 						{
@@ -2478,6 +2505,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		I i = 0;
 		while (f)
 		{
+			#ifdef PROGRESS
 			if (i >= pro)
 			{
 				uint64_t p = (int)((uint64_t)100 * i / faces);
@@ -2490,6 +2518,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					errlog_proc(errlog_file, "\r[%2d%s] polygonizing ", p, p >= 100 ? "" : "%");
 			}
 			i++;
+			#endif
 
 			bool new_poly = true;
 			Face *next = (Face *)f->next;
@@ -2800,6 +2829,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				return v.x * yx + v.y * yy;
 			}
 
+			#ifdef PROGRESS
 			void Progress(I n)
 			{
 				acc += n;
@@ -2817,6 +2847,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 						errlog_proc(errlog_file, "\r[%2d%s] sorting vertices ", p, p >= 100 ? "" : "%");
 				}
 			}
+			#endif
 
 			bool Split(Vert* v, I n)
 			{
@@ -2852,7 +2883,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 					if (n < 2)
 					{
+						#ifdef PROGRESS
 						Progress(n);
+						#endif
 						//return;
 						continue;
 					}
@@ -2929,7 +2962,10 @@ struct CDelaBella2 : IDelaBella2<T, I>
 						{
 							if (n>2)
 								std::sort(v, v + n, p);
+
+							#ifdef PROGRESS
 							Progress(n);
+							#endif
 
 							#ifdef DELABELLA_AUTOTEST
 							/*
@@ -3080,7 +3116,10 @@ struct CDelaBella2 : IDelaBella2<T, I>
 						{
 							if (n > 2)
 								std::sort(v, v + n, p);
+
+							#ifdef PROGRESS
 							Progress(n);
+							#endif
 
 							#ifdef DELABELLA_AUTOTEST
 							/*
@@ -3194,7 +3233,10 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 						if (n > 2)
 							std::sort(v, v + n, p);
+
+						#ifdef PROGRESS
 						Progress(n);
+						#endif
 
 						#ifdef DELABELLA_AUTOTEST
 						/*
@@ -3827,19 +3869,19 @@ template <typename T, typename I>
 const T CDelaBella2<T, I>::Vert::resulterrbound = (T(3) + T(8) * std::exp2(-(T)std::numeric_limits<T>::digits)) * std::exp2(-(T)std::numeric_limits<T>::digits);
 
 // this should cover all malcontents
-template IDelaBella2<float, int8_t> *IDelaBella2<float, int8_t>::Create();
+//template IDelaBella2<float, int8_t> *IDelaBella2<float, int8_t>::Create();
 template IDelaBella2<double, int8_t> *IDelaBella2<double, int8_t>::Create();
-template IDelaBella2<long double, int8_t> *IDelaBella2<long double, int8_t>::Create();
+//template IDelaBella2<long double, int8_t> *IDelaBella2<long double, int8_t>::Create();
 
-template IDelaBella2<float, int16_t> *IDelaBella2<float, int16_t>::Create();
+//template IDelaBella2<float, int16_t> *IDelaBella2<float, int16_t>::Create();
 template IDelaBella2<double, int16_t> *IDelaBella2<double, int16_t>::Create();
-template IDelaBella2<long double, int16_t> *IDelaBella2<long double, int16_t>::Create();
+//template IDelaBella2<long double, int16_t> *IDelaBella2<long double, int16_t>::Create();
 
-template IDelaBella2<float, int32_t> *IDelaBella2<float, int32_t>::Create();
+//template IDelaBella2<float, int32_t> *IDelaBella2<float, int32_t>::Create();
 template IDelaBella2<double, int32_t> *IDelaBella2<double, int32_t>::Create();
-template IDelaBella2<long double, int32_t> *IDelaBella2<long double, int32_t>::Create();
+//template IDelaBella2<long double, int32_t> *IDelaBella2<long double, int32_t>::Create();
 
-template IDelaBella2<float, int64_t> *IDelaBella2<float, int64_t>::Create();
+//template IDelaBella2<float, int64_t> *IDelaBella2<float, int64_t>::Create();
 template IDelaBella2<double, int64_t> *IDelaBella2<double, int64_t>::Create();
-template IDelaBella2<long double, int64_t> *IDelaBella2<long double, int64_t>::Create();
+//template IDelaBella2<long double, int64_t> *IDelaBella2<long double, int64_t>::Create();
 

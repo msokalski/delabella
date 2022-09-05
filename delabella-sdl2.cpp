@@ -3718,8 +3718,8 @@ int main(int argc, char* argv[])
 	char num[16];
 
 	// fast skip
-	int d = 4;
-	int b = 2;
+	int d = 0;
+	int b = 0;
 	int i = 0;
 
 	do
