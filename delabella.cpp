@@ -994,6 +994,12 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		/////////////////////////////////////////////////////////////////////////
 		// ACTUAL ALGORITHM
 
+		/*
+		// perf meters
+		int seeds = 0;
+		int grows = 0;
+		*/
+
 		int pro = 0;
 		for (; i < points; i++)
 		{
@@ -1015,7 +1021,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 			// 1. FIND FIRST VISIBLE FACE
 			//    simply iterate around last vertex using last added triange adjecency info
-			while (f->dotNP(*q))
+			while (/*++seeds &&*/ f->dotNP(*q))
 			{
 				f = f->Next(p);
 				if (f == hull)
@@ -1025,7 +1031,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					//  let's run through all faces (approximately last to first),
 					//  yes this is emergency fallback and should not ever happen.
 					f = face_alloc + (intptr_t)2 * i - 4 - 1;
-					while (f->dotNP(*q))
+					while (/*++seeds &&*/ f->dotNP(*q))
 					{
 #ifdef DELABELLA_AUTOTEST
 
@@ -1088,7 +1094,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					if (n && !n->next) // ensure neighbor is not processed yet & isn't on stack
 					{
 						// if neighbor is not visible we have slihouette edge
-						if (n->dotNP(*q))
+						if (/*++grows &&*/ n->dotNP(*q))
 						{
 							// build face
 							add++;
@@ -1172,6 +1178,8 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				pr = nx;
 			} while (pr != entry);
 		}
+
+		// printf("seeds: %d, grows: %d\n", seeds, grows);
 
 #ifdef DELABELLA_AUTOTEST
 		assert(2 * i - 4 == hull_faces);

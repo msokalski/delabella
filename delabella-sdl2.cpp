@@ -6,11 +6,13 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #define _CRT_SECURE_NO_WARNINGS
 
 //#define ANIMATION
+
 //#define BENCH
+//#define COMPARE // WITH_CDT must be also set
 
 //#define CULLING
 
-//#define VORONOI
+#define VORONOI
 //#define VORONOI_POLYS
 // otherwise EDGES
 
@@ -25,6 +27,10 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 // override build define
 #undef WITH_FADE 
 //#define WITH_FADE
+
+// override build define
+#undef WITH_TRIANGLE
+//#define WITH_TRIANGLE
 
 #include <math.h>
 #include <stdlib.h>
@@ -69,6 +75,14 @@ using namespace GEOM_FADE2D;
 // competitors
 #ifdef WITH_DELAUNATOR
 #include "delaunator-cpp/include/delaunator-header-only.hpp"
+#endif
+
+// competitors
+#ifdef WITH_TRIANGLE
+// we compile triangle.c as .cpp
+//extern "C" {
+#include "triangle/triangle.h"
+//}
 #endif
 
 #ifdef WITH_CDT
@@ -1428,7 +1442,7 @@ int Animate(const std::vector<MyPoint>& cloud, const std::vector<MyEdge>& force)
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
 	// create viewer wnd
-	int width = 800, height = 200;
+	int width = 800, height = 800;
 	const char* title = "delablella-sdl2";
 	SDL_Window * window = SDL_CreateWindow(title, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, width, height, SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 	if (!window)
@@ -2017,7 +2031,7 @@ int bench_main(int argc, char* argv[])
     Bench* idb_bench = (Bench*)argv[2];
     Bench* cdt_bench = (Bench*)argv[3];
     Bench* fad_bench = (Bench*)argv[4];
-    Bench* fmt_bench = (Bench*)argv[5];
+    Bench* tri_bench = (Bench*)argv[5];
     Bench* del_bench = (Bench*)argv[6];
     char* dist = argv[7];
     char* bias = argv[8];
@@ -2025,7 +2039,7 @@ int bench_main(int argc, char* argv[])
 #else
 int main(int argc, char* argv[])
 {
-    const char* dist = "uni";
+    const char* dist = "std";
     const char* bias = "";
 #endif
 
@@ -2072,7 +2086,7 @@ int main(int argc, char* argv[])
         }
         printf("generating random " IDXF " points\n", n);
         std::random_device rd{};
-		uint64_t seed = 0x00000000E6F82B72ULL;// rd();
+		uint64_t seed = 0x00000000E6F82B72ULL; // rd();
         std::mt19937_64 gen{ seed };
         printf("SEED = 0x%016llX\n", (long long unsigned int)seed);
 
@@ -2449,7 +2463,7 @@ int main(int argc, char* argv[])
         #endif
 
         printf("cdt triangulation... ");
-        CDT::Triangulation<MyCoord> cdt;
+        CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::KdTreeBFS);
         cdt.insertVertices(nodups);
 
         uint64_t t2 = uSec();
@@ -2517,7 +2531,8 @@ int main(int argc, char* argv[])
 
     #ifdef WITH_FADE
     if (!(points > 1000000) &&
-		!(strcmp(dist,"gam")==0 && bias[0]!=0 && points>=250000))
+		!(strcmp(dist,"gam")==0 && bias[0]!=0 && points>=250000) &&
+		!(strcmp(dist,"bar")==0 && bias[0]!=0 && points >= 500000))
     {
         printf("running fade ...");
         uint64_t t0 = uSec(), t1, t2;
@@ -2574,6 +2589,8 @@ int main(int argc, char* argv[])
         fad_bench->flood_fill = t3 - t2;
         #endif
     }
+
+	/*
 	if (0) // very unstable run time!
     {
         printf("running fade_mt ...");
@@ -2628,8 +2645,97 @@ int main(int argc, char* argv[])
         fmt_bench->flood_fill = t3 - t2;
         #endif
     }
+	*/
+	#endif
 
-    #endif
+	{
+#ifdef WITH_TRIANGLE
+        printf("running triangle...\n");
+		struct triangulateio in = { 0 }, mid = { 0 };
+
+		/* Define input points. */
+
+        #ifdef WITH_CDT
+        // triangle ur a parasite!
+        in.numberofpoints = (int)nodups.size();
+        in.pointlist = &nodups.data()->x;
+        #else
+		in.numberofpoints = (int)points;
+		in.pointlist = &cloud.data()->x;
+        #endif
+
+
+		/* Triangulate the points.  Switches are chosen to read and write a  */
+		/*   PSLG (p), preserve the convex hull (c), number everything from  */
+		/*   zero (z), assign a regional attribute to each element (A), and  */
+		/*   produce an edge list (e), a Voronoi diagram (v), and a triangle */
+		/*   neighbor list (n).                                              */
+
+		char triopts1[] = "Qz" ""/*div&con*/; // "F"/*sweep*/; "i"/*incremental*/;
+        char triopts2[] = "Qpz";
+
+        char* triopts = triopts1;
+        if (force.size())
+        {
+            triopts = triopts2;
+
+            #ifdef WITH_CDT
+            // triangle ur a parasite!
+            typedef std::vector< std::pair<CDT::VertInd,CDT::VertInd> > HACK; 
+            HACK* hack = (HACK*)&edges;
+            in.segmentlist = (int*)&hack->data()->first;
+            in.numberofsegments = (int)hack->size();
+            #else
+            in.segmentlist = &force.data()->a;
+            in.numberofsegments = (int)force.size();
+            #endif            
+        } 
+
+		uint64_t bt[5];
+
+        uint64_t t0 = uSec();
+		triangulate(triopts, &in, &mid, 0/*&vorout*/, bt, uSec);
+        uint64_t t1 = uSec();
+
+		printf("TRIANGE made %d triangles (in %d ms)\n", mid.numberoftriangles, (int)((t1-t0)/1000));
+
+        #ifdef BENCH
+        tri_bench->removing_dups = bt[0];
+        tri_bench->triangulation = bt[1];
+        tri_bench->constrain_edges = bt[2];
+        tri_bench->flood_fill = bt[3];
+        tri_bench->erase_super = bt[4];
+
+		#ifdef WITH_CDT
+		if (force.size())
+			tri_bench->removing_dups += cdt_bench->removing_dups;
+		#endif
+
+        // we trust you
+        //if (mid.numberoftriangles != (MyIndex)cdt.triangles.size())
+        //    tri_bench->removing_dups = 1000000000;
+        #endif
+
+		/*
+		free(in.pointlist);
+		free(in.pointattributelist);
+		free(in.pointmarkerlist);
+		free(in.regionlist);
+		*/
+
+		free(mid.pointlist);
+		free(mid.pointattributelist);
+		free(mid.pointmarkerlist);
+		free(mid.trianglelist);
+		free(mid.triangleattributelist);
+		free(mid.trianglearealist);
+		free(mid.neighborlist);
+		free(mid.segmentlist);
+		free(mid.segmentmarkerlist);
+		free(mid.edgelist);
+		free(mid.edgemarkerlist);
+		#endif
+	}
 
     #ifdef WITH_DELAUNATOR
 	if (!(strcmp(dist,"cir")==0 && points >= 1000000) &&
@@ -2660,10 +2766,15 @@ int main(int argc, char* argv[])
 
         #ifdef BENCH
         del_bench->triangulation = t1 - t0;
+
+        /*
+        // yea delaunator, we know it you're glueish 
         if (tris_delaunator != (MyIndex)cdt.triangles.size())
             del_bench->removing_dups = 1000000000;
         else
             del_bench->removing_dups = 0;
+        */
+
         #endif
         
         printf("delaunator triangles: " IDXF "\n", tris_delaunator);
@@ -2783,6 +2894,7 @@ int main(int argc, char* argv[])
     // if (0)
     {
         #ifdef WITH_CDT
+		#ifdef COMPARE
 
         MyIndex tris_cdt = (MyIndex)cdt.triangles.size();
 
@@ -2927,6 +3039,7 @@ int main(int argc, char* argv[])
 			assert(compare_ok);
         }
         #endif
+		#endif
     }
 
     free(dela_polys);
@@ -3472,7 +3585,7 @@ int main(int argc, char* argv[])
 			int len = sprintf(buf, "%llu", (long long unsigned int)v);
 			if (len <= 0)
 				return 0;
-			int sep = (len - 1) / 3;
+			int sep = 0;//(len - 1) / 3;
 
 			int len2 = len + sep;
 			int pad = n > len2 ? n - len2 : 0;
@@ -3487,12 +3600,14 @@ int main(int argc, char* argv[])
 
 			for (int i = len - 1, j = 0; i >= 0; i--, j++)
 			{
+                /*
 				if (j == 3)
 				{
 					buf[ofs] = ',';
 					ofs--;
 					j = 0;
 				}
+                */
 
 				buf[ofs] = buf[i];
 				ofs--;
@@ -3528,7 +3643,7 @@ int main(int argc, char* argv[])
 		};
 
 
-		fprintf(bench_file, "        DLB[us]     CDT[us]     FAD[us]" /*"   FADMT[us]"*/ "     DEL[us]\n");
+		fprintf(bench_file, "        DLB[us]     CDT[us]     FAD[us]     TRI[us]     DEL[us]\n");
 
 		Bench accum[players];
 		memset(accum, 0, sizeof(accum));
@@ -3548,41 +3663,41 @@ int main(int argc, char* argv[])
 
 		// write bench results...
 		fprintf(bench_file, "N=\"%s\"\n", argv[1]);
-		fprintf(bench_file, "RD: %s %s %s" /*" %s"*/ " %s\n",
+		fprintf(bench_file, "RD: %s %s %s %s %s\n",
 			f[0](11, accum[0].removing_dups),
 			f[1](11, accum[1].removing_dups),
-			accum[2].removing_dups ? "    INVALID" : f[2](11, accum[2].removing_dups),
-			//  accum[3].removing_dups ? "    INVALID" : f[3](11, accum[3].removing_dups), 
-			accum[4].removing_dups ? "    INVALID" : f[4](11, accum[4].removing_dups));
-		fprintf(bench_file, "TR: %s %s %s" /*" %s"*/ " %s\n",
+			f[2](11, accum[2].removing_dups),
+			f[3](11, accum[3].removing_dups), 
+			f[4](11, accum[4].removing_dups));
+		fprintf(bench_file, "TR: %s %s %s %s %s\n",
 			f[0](11, accum[0].triangulation),
 			f[1](11, accum[1].triangulation),
 			f[2](11, accum[2].triangulation),
-			//  f[3](11, accum[3].triangulation), 
+			f[3](11, accum[3].triangulation), 
 			f[4](11, accum[4].triangulation));
-		fprintf(bench_file, "CE: %s %s %s" /*" %s"*/ " %s\n",
+		fprintf(bench_file, "CE: %s %s %s %s %s\n",
 			f[0](11, accum[0].constrain_edges),
 			f[1](11, accum[1].constrain_edges),
 			f[2](11, accum[2].constrain_edges),
-			//  f[3](11, accum[3].constrain_edges), 
+			f[3](11, accum[3].constrain_edges), 
 			f[4](11, accum[4].constrain_edges));
-		fprintf(bench_file, "ES: %s %s %s" /*" %s"*/ " %s\n",
+		fprintf(bench_file, "ES: %s %s %s %s %s\n",
 			f[0](11, accum[0].erase_super),
 			f[1](11, accum[1].erase_super),
 			f[2](11, accum[2].erase_super),
-			//  f[3](11, accum[3].erase_super),
+			f[3](11, accum[3].erase_super),
 			f[4](11, accum[4].erase_super));
-		fprintf(bench_file, "FF: %s %s %s" /*" %s"*/ " %s\n",
+		fprintf(bench_file, "FF: %s %s %s %s %s\n",
 			f[0](11, accum[0].flood_fill),
 			f[1](11, accum[1].flood_fill),
 			f[2](11, accum[2].flood_fill),
-			//  f[3](11, accum[3].flood_fill), 
+			f[3](11, accum[3].flood_fill), 
 			f[4](11, accum[4].flood_fill));
-		fprintf(bench_file, "PL: %s %s %s" /*" %s"*/ " %s\n",
+		fprintf(bench_file, "PL: %s %s %s %s %s\n",
 			f[0](11, accum[0].polygons),
 			f[1](11, accum[1].polygons),
 			f[2](11, accum[2].polygons),
-			//  f[3](11, accum[3].polygons),
+			f[3](11, accum[3].polygons),
 			f[4](11, accum[4].polygons));
 		fprintf(bench_file, "\n");
 
@@ -3590,7 +3705,7 @@ int main(int argc, char* argv[])
 		return 0;
 	}
 
-	const char* test_dist[] = { "uni","std","gam","sym","cir","hex",0 };
+	const char* test_dist[] = { "uni","std","gam","sym","cir","hex","bar",0 };
 	const char* test_bias[] = { "","+","-",0 };
 
 	int test_size[] =
@@ -3621,7 +3736,7 @@ int main(int argc, char* argv[])
 				sprintf(test_path, "bench_%s%s.txt", test_dist[d], test_bias[b]);
 				FILE* bench_file = fopen(test_path, "w");
 
-				fprintf(bench_file, "        DLB[us]     CDT[us]     FAD[us]" /*"   FADMT[us]"*/ "     DEL[us]\n");
+				fprintf(bench_file, "        DLB[us]     CDT[us]     FAD[us]     TRI[us]     DEL[us]\n");
 
 				char* args[] =
 				{
@@ -3667,41 +3782,41 @@ int main(int argc, char* argv[])
 
 					// write bench results...
 					fprintf(bench_file, "N=%s\n", f[0](0, test_size[i]));
-					fprintf(bench_file, "RD: %s %s %s" /*" %s"*/ " %s\n",
+					fprintf(bench_file, "RD: %s %s %s %s %s\n",
 						f[0](11, accum[0].removing_dups),
 						f[1](11, accum[1].removing_dups),
-						accum[2].removing_dups ? "    INVALID" : f[2](11, accum[2].removing_dups),
-						//  accum[3].removing_dups ? "    INVALID" : f[3](11, accum[3].removing_dups), 
-						accum[4].removing_dups ? "    INVALID" : f[4](11, accum[4].removing_dups));
-					fprintf(bench_file, "TR: %s %s %s" /*" %s"*/ " %s\n",
+						f[2](11, accum[2].removing_dups),
+						f[3](11, accum[3].removing_dups), 
+						f[4](11, accum[4].removing_dups));
+					fprintf(bench_file, "TR: %s %s %s %s %s\n",
 						f[0](11, accum[0].triangulation),
 						f[1](11, accum[1].triangulation),
 						f[2](11, accum[2].triangulation),
-						//  f[3](11, accum[3].triangulation), 
+						f[3](11, accum[3].triangulation), 
 						f[4](11, accum[4].triangulation));
-					fprintf(bench_file, "CE: %s %s %s" /*" %s"*/ " %s\n",
+					fprintf(bench_file, "CE: %s %s %s %s %s\n",
 						f[0](11, accum[0].constrain_edges),
 						f[1](11, accum[1].constrain_edges),
 						f[2](11, accum[2].constrain_edges),
-						//  f[3](11, accum[3].constrain_edges), 
+						f[3](11, accum[3].constrain_edges), 
 						f[4](11, accum[4].constrain_edges));
-					fprintf(bench_file, "ES: %s %s %s" /*" %s"*/ " %s\n",
+					fprintf(bench_file, "ES: %s %s %s %s %s\n",
 						f[0](11, accum[0].erase_super),
 						f[1](11, accum[1].erase_super),
 						f[2](11, accum[2].erase_super),
-						//  f[3](11, accum[3].erase_super),
+						f[3](11, accum[3].erase_super),
 						f[4](11, accum[4].erase_super));
-					fprintf(bench_file, "FF: %s %s %s" /*" %s"*/ " %s\n",
+					fprintf(bench_file, "FF: %s %s %s %s %s\n",
 						f[0](11, accum[0].flood_fill),
 						f[1](11, accum[1].flood_fill),
 						f[2](11, accum[2].flood_fill),
-						//  f[3](11, accum[3].flood_fill), 
+						f[3](11, accum[3].flood_fill), 
 						f[4](11, accum[4].flood_fill));
-					fprintf(bench_file, "PL: %s %s %s" /*" %s"*/ " %s\n",
+					fprintf(bench_file, "PL: %s %s %s %s %s\n",
 						f[0](11, accum[0].polygons),
 						f[1](11, accum[1].polygons),
 						f[2](11, accum[2].polygons),
-						//  f[3](11, accum[3].polygons),
+						f[3](11, accum[3].polygons),
 						f[4](11, accum[4].polygons));
 					fprintf(bench_file, "\n");
 
