@@ -4,10 +4,13 @@
 - **DLB** "Delabella" (this library)  
   https://github.com/msokalski/delabella
 
-- **CDT** "CDT"  
+- **CDT** "CDT" (with `XDT_USE_BOOST` and `KdTreeBFS`)  
   https://github.com/artem-ogre/CDT
 
-- **FAD** "Fade 2D"  
+- **TRI** "Triangle" (patched for x64)  
+  https://www.cs.cmu.edu/~quake/triangle.html
+
+- **FAD** "Fade 2D" (single threaded)  
   https://www.geom.at/products/fade2d
 
 - **DEL** "Delaunator"  
