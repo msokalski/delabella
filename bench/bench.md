@@ -4,7 +4,7 @@
 - **DLB** "Delabella" (this library)  
   https://github.com/msokalski/delabella
 
-- **CDT** "CDT" (with `XDT_USE_BOOST` and `KdTreeBFS`)  
+- **CDT** "CDT" (with `CDT_USE_BOOST` and `KdTreeBFS`)  
   https://github.com/artem-ogre/CDT
 
 - **TRI** "Triangle" (patched for x64)  
