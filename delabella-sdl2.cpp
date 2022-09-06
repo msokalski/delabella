@@ -7,30 +7,30 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 //#define ANIMATION
 
-#define BENCH
+//#define BENCH
 //#define COMPARE // WITH_CDT must be also set
 
 //#define CULLING
 
-//#define VORONOI
+#define VORONOI
 //#define VORONOI_POLYS
 // otherwise EDGES
 
 // override build define
 #undef WITH_DELAUNATOR 
-#define WITH_DELAUNATOR
+//#define WITH_DELAUNATOR
 
 // override build define
 #undef WITH_CDT
-#define WITH_CDT
+//#define WITH_CDT
 
 // override build define
 #undef WITH_FADE 
-#define WITH_FADE
+//#define WITH_FADE
 
 // override build define
 #undef WITH_TRIANGLE
-#define WITH_TRIANGLE
+//#define WITH_TRIANGLE
 
 #include <math.h>
 #include <stdlib.h>
@@ -2039,8 +2039,8 @@ int bench_main(int argc, char* argv[])
 #else
 int main(int argc, char* argv[])
 {
-    const char* dist = "gam";
-    const char* bias = "+";
+    const char* dist = "std";
+    const char* bias = "";
 #endif
 
 	#ifdef _WIN32
