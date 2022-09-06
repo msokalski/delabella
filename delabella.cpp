@@ -268,12 +268,15 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		{
 			{ // somewhat faster, poor compiler inlining?
 
-				const T adx = this->v[2]->x - p.x;
-				const T ady = this->v[2]->y - p.y;
-				const T bdx = this->v[1]->x - p.x;
-				const T bdy = this->v[1]->y - p.y;
-				const T cdx = this->v[0]->x - p.x;
-				const T cdy = this->v[0]->y - p.y;
+				const T dx = this->v[2]->x;
+				const T dy = this->v[2]->y;
+
+				const T adx = p.x - dx;
+				const T ady = p.y - dy;
+				const T bdx = this->v[0]->x - dx;
+				const T bdy = this->v[0]->y - dy;
+				const T cdx = this->v[1]->x - dx;
+				const T cdy = this->v[1]->y - dy;
 
 				const T adxcdy = adx * cdy;
 				const T adxbdy = adx * bdy;
@@ -303,10 +306,10 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			}
 
 			return predicates::adaptive::incircle(
-					   this->v[2]->x, this->v[2]->y,
-					   this->v[1]->x, this->v[1]->y,
+					   p.x, p.y,
 					   this->v[0]->x, this->v[0]->y,
-					   p.x, p.y) <= 0;
+					   this->v[1]->x, this->v[1]->y,
+					   this->v[2]->x, this->v[2]->y) <= 0;
 		}
 	};
 

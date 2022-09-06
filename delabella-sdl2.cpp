@@ -2086,7 +2086,7 @@ int main(int argc, char* argv[])
         }
         printf("generating random " IDXF " points\n", n);
         std::random_device rd{};
-		uint64_t seed = rd();
+		uint64_t seed = 0x00000000E6F82B72ULL; // rd();
         std::mt19937_64 gen{ seed };
         printf("SEED = 0x%016llX\n", (long long unsigned int)seed);
 
@@ -2705,6 +2705,11 @@ int main(int argc, char* argv[])
         tri_bench->constrain_edges = bt[2];
         tri_bench->flood_fill = bt[3];
         tri_bench->erase_super = bt[4];
+
+		#ifdef WITH_CDT
+		if (force.size())
+			tri_bench->removing_dups += cdt_bench->removing_dups;
+		#endif
 
         // we trust you
         //if (mid.numberoftriangles != (MyIndex)cdt.triangles.size())
@@ -3718,8 +3723,8 @@ int main(int argc, char* argv[])
 	char num[16];
 
 	// fast skip
-	int d = 4;
-	int b = 2;
+	int d = 0;
+	int b = 0;
 	int i = 0;
 
 	do
