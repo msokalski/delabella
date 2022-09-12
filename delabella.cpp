@@ -96,6 +96,10 @@ struct CDelaBella2 : IDelaBella2<T, I>
 	{
 		static const T resulterrbound;
 
+		// so we can unlink and relink more freely!
+		// shouldn't we add it right into IDelaBella2<T, I>::Vertex ?
+		typename IDelaBella2<T, I>::Vertex* prev;
+
 		static bool overlap(const Vert *v1, const Vert *v2)
 		{
 			return v1->x == v2->x && v1->y == v2->y;
@@ -168,6 +172,10 @@ struct CDelaBella2 : IDelaBella2<T, I>
 	struct Face : IDelaBella2<T, I>::Simplex
 	{
 		static const T iccerrboundA;
+
+		// so we can unlink and relink more freely!
+		// shouldn't we add it right into IDelaBella2<T, I>::Simplex ?
+		typename IDelaBella2<T, I>::Simplex* prev;
 
 		void RotateEdgeFlagsCCW() // <<
 		{
@@ -266,6 +274,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 		bool dotNP(const Vert &p) /*const*/
 		{
+			/*
 			{ // somewhat faster, poor compiler inlining?
 
 				const T dx = this->v[2]->x;
@@ -304,6 +313,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				if (std::abs(det) >= std::abs(errbound))
 					return det <= 0;
 			}
+			*/
 
 			return predicates::adaptive::incircle(
 					   p.x, p.y,
@@ -315,7 +325,8 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 	Vert *vert_alloc;
 	Face *face_alloc;
-	I *vert_map;
+	//I *vert_map;
+	Vert** vert_map;
 	I max_verts;
 	I max_faces;
 
@@ -377,12 +388,12 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 		// rmove dups
 		{
-			vert_map[vert_alloc[0].i] = 0;
+			vert_map[vert_alloc[0].i] = vert_alloc+0;
 
 			I w = 0, r = 1; // skip initial no-dups block
 			while (r < points && !Vert::overlap(vert_alloc + r, vert_alloc + w))
 			{
-				vert_map[vert_alloc[r].i] = r;
+				vert_map[vert_alloc[r].i] = vert_alloc+r;
 				w++;
 				r++;
 			}
@@ -392,20 +403,20 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 			while (r < points)
 			{
-				vert_map[vert_alloc[r].i] = d; // add first dup in run
+				vert_map[vert_alloc[r].i] = vert_alloc+d; // add first dup in run
 				r++;
 
 				// skip dups
 				while (r < points && Vert::overlap(vert_alloc + r, vert_alloc + r - 1))
 				{
-					vert_map[vert_alloc[r].i] = d; // add next dup in run
+					vert_map[vert_alloc[r].i] = vert_alloc+d; // add next dup in run
 					r++;
 				}
 
 				// copy next no-dups block (in percent chunks?)
 				while (r < points && !Vert::overlap(vert_alloc + r, vert_alloc + r - 1))
 				{
-					vert_map[vert_alloc[r].i] = w;
+					vert_map[vert_alloc[r].i] = vert_alloc+w;
 					vert_alloc[w++] = vert_alloc[r++];
 				}
 
@@ -424,8 +435,8 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					vert_alloc[0] = tmp;
 					for (int i = 0; i < points; i++)
 					{
-						if (vert_map[i] == tail)
-							vert_map[i] = 0;
+						if (vert_map[i] == vert_alloc+tail)
+							vert_map[i] = vert_alloc+0;
 						else
 							vert_map[i]++;
 					}
@@ -1328,7 +1339,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			vert_alloc = (Vert *)malloc(sizeof(Vert) * points);
 
 			if (vert_alloc)
-				vert_map = (I *)malloc(sizeof(I) * (size_t)points);
+				vert_map = (Vert**)malloc(sizeof(Vert*) * (size_t)points);
 
 			if (vert_alloc && vert_map)
 				max_verts = points;
@@ -2744,6 +2755,711 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		return num;
 	}
 
+	virtual I Triangulate2(I points, const T *x, const T *y, size_t advance_bytes, I stop)
+	{
+		uint64_t sort_stamp = uSec();
+
+		// const size_t max_triangulate_indices = (size_t)points * 6 - 15;
+		// const size_t max_voronoi_edge_indices = (size_t)points * 6 - 12;
+		const size_t max_voronoi_poly_indices = (size_t)points * 7 - 9; // winner of shame!
+
+		if (max_voronoi_poly_indices > (size_t)std::numeric_limits<I>::max())
+		{
+			if (errlog_proc)
+				errlog_proc(errlog_file, "[ERR] index type too small for provided number of points!\n");
+			return 0;
+		}
+
+		if (!x)
+			return 0;
+
+		if (!y)
+			y = x + 1;
+
+		if (advance_bytes < sizeof(T) * 2)
+			advance_bytes = sizeof(T) * 2;
+
+		if (!ReallocVerts(points))
+			return 0;
+
+		if (errlog_proc)
+			errlog_proc(errlog_file, "[...] sorting vertices ");
+
+		for (I i = 0; i < points; i++)
+		{
+			Vert* v = vert_alloc + i;
+			v->i = i;
+			v->x = *(const T*)((const char*)x + i * advance_bytes);
+			v->y = *(const T*)((const char*)y + i * advance_bytes);
+		}
+
+		// ReallocFaces
+		I hull_faces = 2 * points;
+
+		if (max_faces < hull_faces)
+		{
+			if (max_faces)
+				free(face_alloc);
+			max_faces = 0;
+
+			face_alloc = (Face *)malloc(sizeof(Face) * hull_faces);
+
+			if (face_alloc)
+				max_faces = hull_faces;
+			else
+			{
+				if (errlog_proc)
+					errlog_proc(errlog_file, "[ERR] Not enough memory, shop for some more RAM. See you!\n");
+				return 0;
+			}
+		}
+
+		// init face partition (full)
+		for (I i=1; i<hull_faces; i++)
+			face_alloc[i-1].next = face_alloc + i;
+		face_alloc[hull_faces-1].next = 0;
+
+		struct R
+		{
+			Vert** const vert_map;
+
+			static Face* Alloc(Face** from)
+			{
+				Face *f = *from;
+				*from = (Face *)f->next;
+				f->next = 0;
+				return f;
+			}
+
+			Vert* UniqueList(Vert* v, I n)
+			{
+				vert_map[v[0].i] = v;
+				v->prev = 0;
+				Vert* u = v;
+				for (I i=1; i<n; i++)
+				{
+					if (u->x != v[i].x || u->y != v[i].y)
+					{
+						v->prev = u;
+						u->next = v;
+						u = v;
+					}
+					else
+					{
+						// mark as dup
+						v->prev = (Vert*)0 - 1;
+					}
+					vert_map[v[i].i] = u;
+				}
+				u->next = 0;
+				return u; // return tail
+			}
+
+			// here f is head of available pool for allocations
+			// we return remaining pool of available faces
+			// new extremes are placed back to s1
+			static Face* MergeH(Vert* s1[2], Vert* const s2[2], Face* f)
+			{
+				if (s1[0]->sew == s2[0]->sew) // both fs are 0s
+				{
+					// merging 2 not triangulated things
+
+					if (s1[0]->next == s2[0]->next) // both next are 0s
+					{
+						// merging 2 points!
+						s1[0]->next = s2[0];
+						s2[0]->prev = s1[0];
+						s1[1] = s2[0];
+						return f;
+					}
+
+					if (s1[0]->next == 0)
+					{
+						// left is point, right is strip
+						T ccw = predicates::adaptive::orient2d(
+							s1[0]->x, s1[0]->y, 
+							s2[0]->x, s2[0]->y, 
+							s2[1]->x, s2[1]->y);
+
+						if (ccw < 0)
+						{
+							// run top to bottom
+							Vert* v = s2[0];
+							Face* p = 0;
+							Face* q = 0;
+							while (v->next)
+							{
+								Face* t = Alloc(&f);
+								v->sew = t;
+								t->v[0] = s1[0];
+								t->v[1] = v;
+								t->v[2] = (Vert*)v->next;
+
+								t->f[0] = 0;
+								t->f[2] = p;
+	
+								if (p)
+									p->f[1] = t;
+								else
+									q = t;
+
+								p = t;
+
+								// no swap
+								/*
+								Vert* n = (Vert*)v->prev;
+								v->prev = (Vert*)v->next;
+								v->next = n;
+								*/
+								
+								v = (Vert*)v->next;
+							}
+							p->f[1] = 0;
+							s1[0]->sew = q;
+
+							v->next = s1[0];
+							s1[0]->prev = v;
+							s1[0]->next = s2[0];
+							s2[0]->prev = s1[0];
+
+							// left
+							s1[0] = s1[0];
+
+							// bottom
+							s1[1] = s1[0]->y <= v->y ? s1[0] : v;
+						}
+						else
+						if (ccw > 0)
+						{
+							// run top to bottom
+							Vert* v = s2[1];
+							Face* p = 0;
+							Face* q = 0;
+							while (v->prev)
+							{
+								Face* t = Alloc(&f);
+								v->sew = t;
+								t->v[0] = s1[0];
+								t->v[1] = v;
+								t->v[2] = (Vert*)v->prev;
+
+								t->f[0] = 0;
+								t->f[2] = p;
+
+								if (p)
+									p->f[1] = t;
+								else
+									q = t;
+
+								p = t;
+
+								// swap
+								Vert* n = (Vert*)v->prev;
+								v->prev = (Vert*)v->next;
+								v->next = n;
+								
+								v = n;
+							}
+							p->f[1] = 0;
+							s1[0]->sew = q;
+
+							v->next = s1[0];
+							s1[0]->prev = v;
+							s1[0]->next = s2[1];
+							s2[1]->prev = s1[0];
+
+							// left
+							s1[0] = s1[0];
+
+							// bottom
+							s1[1] = s1[0]->y <= v->y ? s1[0] : v;
+						}
+						else
+						{
+							if (s2[0]->x < s2[1]->x)
+							{
+								// prepend right stip with left point
+								s1[0]->next = s2[0];
+								s2[0]->prev = s1[0];
+
+								s1[0] = s1[0];
+								s1[1] = s2[1];
+							}
+							else
+							{
+								// append left point to right strip
+								s1[0]->prev = s2[1];
+								s2[1]->next = s1[0];
+
+								s1[1] = s1[0];
+								s1[0] = s2[0];
+							}
+						}
+						return f;
+					}
+					else
+					if (s2[0]->next == 0)
+					{
+						// left is strip, right is point
+						T ccw = predicates::adaptive::orient2d(
+							s1[0]->x, s1[0]->y, 
+							s1[1]->x, s1[1]->y, 
+							s2[0]->x, s2[0]->y);
+
+						if (ccw < 0)
+						{
+							// run top to bottom
+							Vert* v = s1[1];
+							Face* p = 0;
+							Face* q = 0;
+							while (v->prev)
+							{
+								Face* t = Alloc(&f);
+								v->sew = t;
+								t->v[0] = s2[0];
+								t->v[1] = (Vert*)v->prev;
+								t->v[2] = v;
+
+								t->f[0] = 0;
+								t->f[1] = p;
+
+								if (p)
+									p->f[2] = t;
+								else
+									q = t;
+
+								p = t;
+
+								// dont swap next/prev
+								/*
+								Vert* n = (Vert*)v->prev;
+								v->prev = (Vert*)v->next;
+								v->next = n;
+								*/
+								
+								v = (Vert*)v->prev;
+							}
+							p->f[2] = 0;
+							s2[0]->sew = q;
+
+							v->next = s2[0];
+							s2[0]->prev = s1[0];
+							s2[0]->next = v;
+							v->prev = s2[0];
+
+							// left
+							if (s1[0]->x <= s1[1]->x)
+							{
+								s1[0] = s1[0];
+							}
+							else
+							{
+								s1[0] = s1[1];
+							}
+
+							// bottom
+							if (s1[0]->y <= s1[1]->y)
+							{
+								s1[1] = s1[0]->y <= s2[0]->y ? s1[0] : s2[0];
+							}
+							else
+							{
+								s1[1] = s1[1]->y <= s2[0]->y ? s1[1] : s2[0];
+							}
+						}
+						else
+						if (ccw > 0)
+						{
+							// run top to bottom
+							Vert* v = s1[0];
+							Face* p = 0;
+							Face* q = 0;
+							while (v->next)
+							{
+								Face* t = Alloc(&f);
+								v->sew = t;
+								t->v[0] = s2[0];
+								t->v[1] = v->next;
+								t->v[2] = v;
+
+								t->f[0] = 0;
+								t->f[1] = p;
+
+								if (p)
+									p->f[2] = t;
+								else
+									q = t;
+
+								p = t;
+
+								Vert* n = (Vert*)v->next;
+								v->next = (Vert*)v->prev;
+								v->prev = n;
+								
+								v = n;
+							}
+							p->f[2] = 0;
+							s2[0]->sew = q;
+
+							v->prev = s2[0];
+							s2[0]->prev = s1[0];
+							s2[0]->next = v;
+							s1[0]->next = s2[0];
+
+							// left
+							if (s1[0]->x <= s1[1]->x)
+							{
+								s1[0] = s1[0];
+							}
+							else
+							{
+								s1[0] = s1[1];
+							}
+
+							// bottom
+							if (s1[0]->y <= s1[1]->y)
+							{
+								s1[1] = s1[0]->y <= s2[0]->y ? s1[0] : s2[0];
+							}
+							else
+							{
+								s1[1] = s1[1]->y <= s2[0]->y ? s1[1] : s2[0];
+							}
+							
+						}
+						else
+						{
+							if (s1[0]->x < s1[1]->x)
+							{
+								// append right point to left strip
+								s1[1]->next = s2[0];
+								s2[0]->prev = s1[1];
+
+								s1[1] = s2[0];
+							}
+							else
+							{
+								// prepend left strip with right point
+								s1[0]->prev = s2[0];
+								s2[0]->next = s1[0];
+
+								s1[0] = s2[0];
+							}
+						}
+						return f;
+					}
+					else
+					{
+						// both parts are strips
+						return f;
+					}
+				}
+
+				// both parts are triangulated!
+
+				// lookup co-tangent verts basel = {u1,v1}
+
+				//  v2   v0  u2  u0
+				//   \  /     \  /
+				//    v1 ----- u1
+
+				Vert* v1 = s1[1];
+				Vert* v0 = (Vert*)v1->prev;
+				Vert* v2 = (Vert*)v1->next;
+				Vert* u1 = s2[1];
+				Vert* u0 = (Vert*)u1->prev;
+				Vert* u2 = (Vert*)u1->next;
+
+				T v01 = predicates::adaptive::orient2d(u1->x,u1->y, v0->x,v0->y, v1->x,v1->y); // ccw
+				T v12 = predicates::adaptive::orient2d(u1->x,u1->y, v1->x,v1->y, v2->x,v2->y); // cw or 0
+				T u21 = predicates::adaptive::orient2d(v1->x,v1->y, u2->x,u2->y, u1->x,u1->y); // cw or 0
+				T u10 = predicates::adaptive::orient2d(v1->x,v1->y, u1->x,u1->y, u0->x,u0->y); // ccw
+
+				while (1)
+				{
+					if (v01<=0)
+					{
+						v2 = v1;
+						v1 = v0;
+						v0 = (Vert*)v0->prev;
+						v12 = v01;
+						v01 = predicates::adaptive::orient2d(u1->x,u1->y, v0->x,v0->y, v1->x,v1->y);
+						u21 = predicates::adaptive::orient2d(v1->x,v1->y, u2->x,u2->y, u1->x,u1->y);
+						u10 = predicates::adaptive::orient2d(v1->x,v1->y, u1->x,u1->y, u0->x,u0->y);
+					}
+					else
+					if (v12>0)
+					{
+						v0 = v1;
+						v1 = v2;
+						v2 = (Vert*)v2->next;
+						v01 = v12;
+						v01 = predicates::adaptive::orient2d(u1->x,u1->y, v1->x,v1->y, v2->x,v2->y);
+						u21 = predicates::adaptive::orient2d(v1->x,v1->y, u2->x,u2->y, u1->x,u1->y);
+						u10 = predicates::adaptive::orient2d(v1->x,v1->y, u1->x,u1->y, u0->x,u0->y);
+					}
+					else
+					if (u21<=0 && u10>0)
+						break;
+					
+					if (u21>0)
+					{
+						u2 = u1;
+						u1 = u0;
+						u0 = (Vert*)u0->prev;
+						u21 = u10;
+						u10 = predicates::adaptive::orient2d(v1->x,v1->y, u1->x,u1->y, u0->x,u0->y);
+						v01 = predicates::adaptive::orient2d(u1->x,u1->y, v0->x,v0->y, v1->x,v1->y);
+						v12 = predicates::adaptive::orient2d(u1->x,u1->y, v1->x,v1->y, v2->x,v2->y);
+					}
+					else
+					if (u10<=0)
+					{
+						u0 = u1;
+						u1 = u2;
+						u2 = (Vert*)u2->next;
+						u10 = u21;
+						u21 = predicates::adaptive::orient2d(v1->x,v1->y, u2->x,u2->y, u1->x,u1->y);
+						v01 = predicates::adaptive::orient2d(u1->x,u1->y, v0->x,v0->y, v1->x,v1->y);
+						v12 = predicates::adaptive::orient2d(u1->x,u1->y, v1->x,v1->y, v2->x,v2->y);
+					}
+					else
+					if (v01>0 && v12<=0)
+						break;
+				}
+
+				//  v2  vl<-v0  u2->vr  u0
+				//   \   |  /    \  |   /
+				//    \  |L/      \R|  /
+				//     \ |/        \| /
+				//      v1 -------- u1
+
+				u1->next = v1;
+				v1->prev = u1;
+
+				// iterate triangles at left ccw, 
+				// until vl is above basel and u1,v1,vl contains v0 
+				// then delete L, v0=vl, L=L->prev
+				// deleting L should route:
+				// - v1->prev = vl, vl->next = v1
+				// - vl->prev = v0, v0->next = vl
+
+				// iterate and delete triangles at right cw, 
+				// until vr is above basel and u1,v1,vr contains u2
+				// then delete R, u2=ur, R=R->next
+				// deleting R should route:
+				// - u1->next = vr, vr->prev = u1
+				// - vr->next = u1, u1->prev = vr
+
+
+				// iterate merging above basel
+				// ...
+
+				return 0;
+			}
+
+			// here f is head of available pool for allocations
+			// we return remaining pool of available faces
+			// new extremes are placed back to s1
+			static Face* MergeV(Vert* s1[2], Vert* const s2[2], Face* f)
+			{
+				return 0;
+			}
+
+			// here f is beginning of face block which is 2*n big
+			// we return remaining pool of available faces from this block
+			Face* Recurse(Vert* v, Face* f, I n, Vert* s[2])
+			{
+				// we should also return/accumulate number of dups!
+				// we will report it somewhat later
+
+				if (n<=2)
+				{
+					s[0] = v;
+					s[1] = UniqueList(v,n);
+					return f;
+				}
+
+				// bbox
+				T lo_x = v[0].x, hi_x = v[0].x;
+				T lo_y = v[0].y, hi_y = v[0].y;
+
+				for (I i=1; i<n; i++)
+				{
+					lo_x = std::min(v[i].x,lo_x);
+					lo_y = std::min(v[i].y,lo_y);
+					hi_x = std::min(v[i].x,hi_x);
+					hi_y = std::max(v[i].y,hi_y);
+				}
+
+				Vert* u;
+
+				if (hi_x - lo_x >= hi_y - lo_y)
+				{
+					if (lo_y == hi_y)
+					{
+						if (lo_x == hi_x)
+						{
+							// ALL ARE DUPS
+							s[0] = v;
+							s[1] = v;
+							v->next = 0;
+							v->prev = 0;
+							for (I i=0; i<n; i++)
+								vert_map[v[i].i] = v;
+							return f;
+						}
+
+						struct
+						{
+							bool operator () (const Vert& a, const Vert& b) const
+							{
+								return a.x < b.x;
+							}
+						} sort;
+
+						std::sort(v,v+n,sort);
+
+						s[0] = v;
+						s[1] = UniqueList(v,n);
+						return f;
+					}
+
+					struct
+					{
+						const T half;
+						bool operator () (const Vert& v) const
+						{
+							return v.x < half;
+						}
+
+					} half = { (lo_x + hi_x) / 2 };
+
+					u = std::partition(v,v+n,half);
+
+					assert(u != v && u - v < n);
+
+					I n1 = (I)(u - v);
+					I n2 = n - n1;
+					Vert* s2[2]={0,0};
+
+					// prepare 2 face alloc pools
+					Face* f1 = f;
+					Face* f2 = f + 2 * n1;
+
+					// this is the place we should decide if we want to run f1
+					// on another thread and join it after f2 ends
+					// or run one after another on current thread.
+
+					f1 = Recurse(v, f1, n1, s); // left
+					f2 = Recurse(u, f2, n2, s2); // right
+
+					// because there's still something to be merged, we're going to add faces,
+					// we can assume recursions did not alloc all available faces in their sub-blocks
+					// so last face in first pool before recursion is still the last one
+					// so we can merge pools easily...
+
+					f[2 * n1 - 1].next = f2;
+					f = f1;
+
+					f = MergeH(s, s2, f);
+				}
+				else
+				{
+					if (lo_x == hi_x)
+					{
+						struct
+						{
+							bool operator () (const Vert& a, const Vert& b) const
+							{
+								return a.y < b.y;
+							}
+						} sort;
+
+						std::sort(v,v+n,sort);
+						s[0] = v;
+						s[1] = UniqueList(v,n);
+						return f;
+					}
+
+					struct
+					{
+						const T half;
+						bool operator () (const Vert& v) const
+						{
+							return v.y < half;
+						}
+
+					} half = { (lo_y + hi_y) / 2 };
+
+					u = std::partition(v,v+n,half);
+
+					assert(u != v && u - v < n);
+
+					I n1 = (I)(u - v);
+					I n2 = n - n1;
+					Vert* s2[2]={0,0};
+
+					// prepare 2 face alloc pools
+					Face* f1 = f;
+					Face* f2 = f + 2 * n1;
+
+					// this is the place we should decide if we want to run f1
+					// on another thread and join it after f2 ends
+					// or run one after another on current thread.
+
+					f1 = Recurse(v, f1, n1, s); // lower
+					f2 = Recurse(u, f2, n2, s2); // upper
+
+					// because there's still something to be merged
+					// we can assume recursions did not alloc all available faces
+					// so last in first pool before recursion is still the last one
+					// so we can merge pools easily...
+
+					f[2 * n1 - 1].next = f2;
+					f = f1;
+
+					f = MergeV(s, s2, f);
+				}
+
+				return f;
+			}
+		} dnc_delaunay = {vert_map};
+
+		Vert* s[2]={0,0};
+		Face* f = dnc_delaunay.Recurse(vert_alloc, face_alloc, points, s);
+
+		if (!s[0]->sew)
+		{
+			// oops, no faces -- all verts colinear?
+			// null out all sews !
+			// we can also free face_alloc ... 
+			// or defer its allocation till first face is actually added in Merge()
+			// but it's not so thread-safe / performant !!!
+		}
+		else
+		{
+			// HERE
+			// 0. visit all faces in face_alloc, skip unallocated ones (Face::v[0] == null)
+			//    link them to dela face list 
+			//    (don't advance if face already has next !=0 or it is current list tail)
+			// 1. run boundary verts list (from s[0].v), set their sew to ((Face*)0 - 1)
+			//    note: dups are also marked as such !!!
+			// 2. run all verts in vert_alloc, if sew is not ((Face*)0 - 1)
+			//    add it to internal verts list
+			// 3. run list of all faces, set sew for all its verts 
+			//    (about 1 overwrite per vertex is fine)
+			// 4. build hull faces - use returned pool! and add them to separate hull list
+			//    (simple triangle fan from first boundary vertex, 
+			//    we don't care it is not delaunay)
+			//    don't froget to set neighbors, also from dela->hull!
+			//    note: having it as last step, enforces Vert:sew to point always 
+			//    to delaunay faces (never hull)
+		}
+
+		return 0;
+	}	
+
 	virtual I Triangulate(I points, const T *x, const T *y, size_t advance_bytes, I stop)
 	{
 		uint64_t sort_stamp = uSec();
@@ -3360,7 +4076,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 	{
 		if (i < 0 || i >= inp_verts)
 			return 0;
-		return vert_alloc + vert_map[i];
+		return /*vert_alloc + */vert_map[i];
 	}
 
 	virtual void SetErrLog(int (*proc)(void *stream, const char *fmt, ...), void *stream)

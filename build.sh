@@ -24,7 +24,7 @@ if [ -d "delaunator-cpp" ]; then
 fi
 
 if [ -d "CDT" ]; then
-    OPT="$OPT -DWITH_CDT"
+    OPT="$OPT -DWITH_CDT -DCDT_USE_BOOST"
 fi
 
 if [[ $OSTYPE == 'darwin'* ]]; then

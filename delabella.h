@@ -37,7 +37,7 @@ struct IDelaBella2
 			return !(flags & 0b10000000);
 		}
 
-		bool IsInterior(int at) const
+		bool IsInterior(int) const
 		{
 			return flags & 0b01000000;
 		}

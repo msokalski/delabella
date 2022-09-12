@@ -2085,8 +2085,8 @@ int main(int argc, char* argv[])
             return -1;
         }
         printf("generating random " IDXF " points\n", n);
-        std::random_device rd{};
-		uint64_t seed = 0x00000000E6F82B72ULL; // rd();
+        static std::random_device rd{};
+		uint64_t seed = rd();
         std::mt19937_64 gen{ seed };
         printf("SEED = 0x%016llX\n", (long long unsigned int)seed);
 
@@ -2463,6 +2463,7 @@ int main(int argc, char* argv[])
         #endif
 
         printf("cdt triangulation... ");
+        //CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::Randomized);
         CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::KdTreeBFS);
         cdt.insertVertices(nodups);
 
@@ -3723,7 +3724,7 @@ int main(int argc, char* argv[])
 	char num[16];
 
 	// fast skip
-	int d = 0;
+	int d = 5;
 	int b = 0;
 	int i = 0;
 
@@ -3825,6 +3826,7 @@ int main(int argc, char* argv[])
 				}
 
 				fclose(bench_file);
+                return 0;
 
 				i = 0;
 			}
