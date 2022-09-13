@@ -2086,7 +2086,7 @@ int main(int argc, char* argv[])
         }
         printf("generating random " IDXF " points\n", n);
         static std::random_device rd{};
-		uint64_t seed = rd();
+		uint64_t seed = 0x00000000E6F82B72ULL; //rd();
         std::mt19937_64 gen{ seed };
         printf("SEED = 0x%016llX\n", (long long unsigned int)seed);
 
@@ -2455,6 +2455,18 @@ int main(int argc, char* argv[])
 
         CDT::DuplicatesInfo dups = CDT::RemoveDuplicatesAndRemapEdges(nodups,edges);
 
+        // input dump
+        if (0)
+        {
+            FILE* dump = fopen("dump.txt","w");
+            fprintf(dump,"%d %d\n", (int)nodups.size(), (int)edges.size());
+            for (size_t i=0; i<nodups.size(); i++)
+                fprintf(dump,"%.17g %.17g\n", nodups[i].x, nodups[i].y);
+            for (size_t i=0; i<edges.size(); i++)
+                fprintf(dump,"%d %d\n", (int)edges[i].v1(), (int)edges[i].v2());
+            fclose(dump);
+        }
+
         uint64_t t1 = uSec();
         printf("%d ms\n", (int)((t1 - t0) / 1000));
         
@@ -2464,7 +2476,8 @@ int main(int argc, char* argv[])
 
         printf("cdt triangulation... ");
         //CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::Randomized);
-        CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::KdTreeBFS);
+        //CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::KdTreeBFS);
+        CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::Auto);
         cdt.insertVertices(nodups);
 
         uint64_t t2 = uSec();
@@ -3724,9 +3737,9 @@ int main(int argc, char* argv[])
 	char num[16];
 
 	// fast skip
-	int d = 5;
-	int b = 0;
-	int i = 0;
+	int d = 2;
+	int b = 1;
+	int i = 12; // 1M
 
 	do
 	{
@@ -3823,6 +3836,10 @@ int main(int argc, char* argv[])
 
 					// live view
 					fflush(bench_file);
+
+                    fclose(bench_file);
+                    return 0;
+
 				}
 
 				fclose(bench_file);

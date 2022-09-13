@@ -2860,7 +2860,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			// new extremes are placed back to s1
 			static Face* MergeH(Vert* s1[2], Vert* const s2[2], Face* f)
 			{
-				if (s1[0]->sew == s2[0]->sew) // both fs are 0s
+				if (s1[0]->sew == 0 && s2[0]->sew == 0)
 				{
 					// merging 2 not triangulated things
 
@@ -2963,6 +2963,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							p->f[1] = 0;
 							s1[0]->sew = q;
 
+							// swap
 							v->next = s1[0];
 							s1[0]->prev = v;
 							s1[0]->next = s2[1];
@@ -3030,7 +3031,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 								p = t;
 
-								// dont swap next/prev
+								// no swap
 								/*
 								Vert* n = (Vert*)v->prev;
 								v->prev = (Vert*)v->next;
@@ -3092,6 +3093,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 								p = t;
 
+								// swap
 								Vert* n = (Vert*)v->next;
 								v->next = (Vert*)v->prev;
 								v->prev = n;
@@ -3151,81 +3153,143 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					else
 					{
 						// both parts are strips
+						// ...
+
 						return f;
 					}
+				}
+
+				if (s1[0]->sew == 0)
+				{
+					if (s1[0]->next == 0)
+					{
+						// left is a point right is triangulated
+						// ...
+					}
+					else
+					{
+						// left is a strip right is triangulated
+						// ...
+					}
+					
+					return f;
+				}
+
+				if (s2[0]->sew == 0)
+				{
+					if (s2[0]->next == 0)
+					{
+						// left is triangulated right is a point
+						// ...
+					}
+					else
+					{
+						// left is triangulated right is a strip
+						// ...
+					}
+					
+					return f;
 				}
 
 				// both parts are triangulated!
 
 				// lookup co-tangent verts basel = {u1,v1}
 
-				//  v2   v0  u2  u0
+				//  v2   v0  u2  u0 
 				//   \  /     \  /
 				//    v1 ----- u1
 
 				Vert* v1 = s1[1];
-				Vert* v0 = (Vert*)v1->prev;
-				Vert* v2 = (Vert*)v1->next;
 				Vert* u1 = s2[1];
-				Vert* u0 = (Vert*)u1->prev;
-				Vert* u2 = (Vert*)u1->next;
 
-				T v01 = predicates::adaptive::orient2d(u1->x,u1->y, v0->x,v0->y, v1->x,v1->y); // ccw
-				T v12 = predicates::adaptive::orient2d(u1->x,u1->y, v1->x,v1->y, v2->x,v2->y); // cw or 0
-				T u21 = predicates::adaptive::orient2d(v1->x,v1->y, u2->x,u2->y, u1->x,u1->y); // cw or 0
-				T u10 = predicates::adaptive::orient2d(v1->x,v1->y, u1->x,u1->y, u0->x,u0->y); // ccw
-
-				while (1)
+				if (v1->y < u1->y)
 				{
-					if (v01<=0)
+					Vert* v0 = (Vert*)v1->prev;
+					Vert* u0 = (Vert*)u1->prev;
+					int run = 3;
+					while (1)
 					{
-						v2 = v1;
+						// if u1-v1-v0 is ccw or 0 go v->prev 
+						if (predicates::adaptive::orient2d(u1->x,u1->y, v1->x,v1->y, v0->x,v0->y) >= 0)
+						{
+							v1 = v0;
+							v0 = (Vert*)v0->prev;
+							run |= 1;
+						}
+						else
+						{
+							run &= ~1;
+							if (!run)
+								break;
+						}
+
+						// if u1-v1-u0 is ccw go u->prev
+						if (predicates::adaptive::orient2d(u1->x,u1->y, v1->x,v1->y, u0->x,u0->y) > 0)
+						{
+							u1 = u0;
+							u0 = (Vert*)u0->prev;
+							run |= 2;
+						}
+						else
+						{
+							run &= ~2;
+							if (!run)
+								break;
+						}
+					}
+				}
+				else
+				if (v1->y > u1->y)
+				{
+					Vert* v2 = (Vert*)v1->next;
+					Vert* u2 = (Vert*)u1->next;
+					int run = 3;
+					while (1)
+					{
+						// if u1-v1-v2 is ccw go v->next 
+						if (predicates::adaptive::orient2d(u1->x,u1->y, v1->x,v1->y, v2->x,v2->y) > 0)
+						{
+							v1 = v2;
+							v2 = (Vert*)v2->next;
+							run |= 1;
+						}
+						else
+						{
+							run &= ~1;
+							if (!run)
+								break;
+						}
+
+						// if u1-v1-u2 is ccw or 0 go u->next
+						if (predicates::adaptive::orient2d(u1->x,u1->y, v1->x,v1->y, u2->x,u2->y) >= 0)
+						{
+							u1 = u2;
+							u2 = (Vert*)u2->next;
+							run |= 2;
+						}
+						else
+						{
+							run &= ~2;
+							if (!run)
+								break;
+						}
+					}
+				}
+				else
+				{
+					Vert* v0 = (Vert*)v1->prev;
+					while (v0->y == v1->y)
+					{
 						v1 = v0;
 						v0 = (Vert*)v0->prev;
-						v12 = v01;
-						v01 = predicates::adaptive::orient2d(u1->x,u1->y, v0->x,v0->y, v1->x,v1->y);
-						u21 = predicates::adaptive::orient2d(v1->x,v1->y, u2->x,u2->y, u1->x,u1->y);
-						u10 = predicates::adaptive::orient2d(v1->x,v1->y, u1->x,u1->y, u0->x,u0->y);
 					}
-					else
-					if (v12>0)
+
+					Vert* u2 = (Vert*)u1->next;
+					while (u2->y == u1->y)
 					{
-						v0 = v1;
-						v1 = v2;
-						v2 = (Vert*)v2->next;
-						v01 = v12;
-						v01 = predicates::adaptive::orient2d(u1->x,u1->y, v1->x,v1->y, v2->x,v2->y);
-						u21 = predicates::adaptive::orient2d(v1->x,v1->y, u2->x,u2->y, u1->x,u1->y);
-						u10 = predicates::adaptive::orient2d(v1->x,v1->y, u1->x,u1->y, u0->x,u0->y);
-					}
-					else
-					if (u21<=0 && u10>0)
-						break;
-					
-					if (u21>0)
-					{
-						u2 = u1;
-						u1 = u0;
-						u0 = (Vert*)u0->prev;
-						u21 = u10;
-						u10 = predicates::adaptive::orient2d(v1->x,v1->y, u1->x,u1->y, u0->x,u0->y);
-						v01 = predicates::adaptive::orient2d(u1->x,u1->y, v0->x,v0->y, v1->x,v1->y);
-						v12 = predicates::adaptive::orient2d(u1->x,u1->y, v1->x,v1->y, v2->x,v2->y);
-					}
-					else
-					if (u10<=0)
-					{
-						u0 = u1;
 						u1 = u2;
 						u2 = (Vert*)u2->next;
-						u10 = u21;
-						u21 = predicates::adaptive::orient2d(v1->x,v1->y, u2->x,u2->y, u1->x,u1->y);
-						v01 = predicates::adaptive::orient2d(u1->x,u1->y, v0->x,v0->y, v1->x,v1->y);
-						v12 = predicates::adaptive::orient2d(u1->x,u1->y, v1->x,v1->y, v2->x,v2->y);
-					}
-					else
-					if (v01>0 && v12<=0)
-						break;
+					} 
 				}
 
 				//  v2  vl<-v0  u2->vr  u0
@@ -3267,11 +3331,11 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			}
 
 			// here f is beginning of face block which is 2*n big
-			// we return remaining pool of available faces from this block
+			// we return remaining pool of available faces (list) from this block
 			Face* Recurse(Vert* v, Face* f, I n, Vert* s[2])
 			{
 				// we should also return/accumulate number of dups!
-				// we will report it somewhat later
+				// for reporting it somewhat later
 
 				if (n<=2)
 				{
