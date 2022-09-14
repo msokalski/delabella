@@ -2084,9 +2084,9 @@ int main(int argc, char* argv[])
             printf("can't open %s file, terminating!\n", argv[1]);
             return -1;
         }
-        printf("generating random " IDXF " points\n", n);
+        printf("generating random " IDXF " points (%s%s)\n", n, dist, bias);
         static std::random_device rd{};
-		uint64_t seed = 0x00000000E6F82B72ULL; //rd();
+		uint64_t seed = rd();
         std::mt19937_64 gen{ seed };
         printf("SEED = 0x%016llX\n", (long long unsigned int)seed);
 
@@ -2319,7 +2319,7 @@ int main(int argc, char* argv[])
                 xxx.push_back(cloud[(size_t)sub[i]]);
 
             IDelaBella* helper = IDelaBella::Create();
-            helper->Triangulate(m, &xxx.data()->x, &xxx.data()->y, sizeof(MyPoint));
+            helper->Triangulate2(m, &xxx.data()->x, &xxx.data()->y, sizeof(MyPoint));
 
             // to avoid forth-and-back edges repeatitions,
             // traverse all faces but use edges with 
@@ -2413,6 +2413,7 @@ int main(int argc, char* argv[])
                 MyEdge e = { a, b };
                 force.push_back(e);
             }
+
         }
 
         fclose(f);
@@ -2455,18 +2456,6 @@ int main(int argc, char* argv[])
 
         CDT::DuplicatesInfo dups = CDT::RemoveDuplicatesAndRemapEdges(nodups,edges);
 
-        // input dump
-        if (0)
-        {
-            FILE* dump = fopen("dump.txt","w");
-            fprintf(dump,"%d %d\n", (int)nodups.size(), (int)edges.size());
-            for (size_t i=0; i<nodups.size(); i++)
-                fprintf(dump,"%.17g %.17g\n", nodups[i].x, nodups[i].y);
-            for (size_t i=0; i<edges.size(); i++)
-                fprintf(dump,"%d %d\n", (int)edges[i].v1(), (int)edges[i].v2());
-            fclose(dump);
-        }
-
         uint64_t t1 = uSec();
         printf("%d ms\n", (int)((t1 - t0) / 1000));
         
@@ -2476,8 +2465,8 @@ int main(int argc, char* argv[])
 
         printf("cdt triangulation... ");
         //CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::Randomized);
-        //CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::KdTreeBFS);
-        CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::Auto);
+        CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::KdTreeBFS);
+        //CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::Auto);
         cdt.insertVertices(nodups);
 
         uint64_t t2 = uSec();
@@ -3737,9 +3726,9 @@ int main(int argc, char* argv[])
 	char num[16];
 
 	// fast skip
-	int d = 2;
-	int b = 1;
-	int i = 12; // 1M
+	int d = 0;
+	int b = 0;
+	int i = 0;
 
 	do
 	{
@@ -3836,15 +3825,9 @@ int main(int argc, char* argv[])
 
 					// live view
 					fflush(bench_file);
-
-                    fclose(bench_file);
-                    return 0;
-
 				}
 
 				fclose(bench_file);
-                return 0;
-
 				i = 0;
 			}
 			b = 0;

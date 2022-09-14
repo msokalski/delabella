@@ -110,6 +110,9 @@ struct IDelaBella2
 	// if advance_bytes is less than 2*sizeof coordinate type, it is treated as 2*sizeof coordinate type  
 	virtual I Triangulate(I points, const T* x, const T* y = 0, size_t advance_bytes = 0, I stop = -1) = 0;
 
+	// WIP! divide and conquer ...
+	virtual I Triangulate2(I points, const T* x, const T* y = 0, size_t advance_bytes = 0, I stop = -1) = 0;
+
 	// num of points passed to last call to Triangulate()
 	virtual I GetNumInputPoints() const = 0;
 

@@ -2838,6 +2838,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				Vert* u = v;
 				for (I i=1; i<n; i++)
 				{
+					v++;
 					if (u->x != v[i].x || u->y != v[i].y)
 					{
 						v->prev = u;
@@ -3155,6 +3156,75 @@ struct CDelaBella2 : IDelaBella2<T, I>
 						// both parts are strips
 						// ...
 
+						T ccw01_0 = predicates::adaptive::orient2d(s1[0]->x,s1[0]->y, s1[1]->x,s1[1]->y, s2[0]->x,s2[0]->y);
+						T ccw01_1 = predicates::adaptive::orient2d(s1[0]->x,s1[0]->y, s1[1]->x,s1[1]->y, s2[1]->x,s2[1]->y);
+
+						if (ccw01_0 == 0 && ccw01_1 == 0)
+						{
+							// colinear merge
+
+							// opt note:
+							// if we'd know number of verts in each part,
+							// in case of opposite directions we could swap shorter part! 
+
+							if (s1[0]->x < s1[1]->x)
+							{
+								if (s2[0]->x > s2[1]->x)
+								{
+									// swap s2
+									Vert* v = s2[0];
+									s2[0] = s2[1];
+									s2[1] = v;
+
+									while (v)
+									{
+										Vert* n = (Vert*)v->next;
+										v->next = (Vert*)v->prev;
+										v->prev = n;
+										v = n;
+									}
+								}
+
+								s1[1]->next = s2[0];
+								s2[0]->prev = s1[1];
+								s1[1] = s2[1];
+							}	
+							else
+							{
+								if (s2[0]->x < s2[1]->x)
+								{
+									// swap s2
+									Vert* v = s2[0];
+									s2[0] = s2[1];
+									s2[1] = v;
+
+									while (v)
+									{
+										Vert* n = (Vert*)v->next;
+										v->next = (Vert*)v->prev;
+										v->prev = n;
+										v = n;
+									}
+								}
+
+								s2[1]->next = s1[0];
+								s1[0]->prev = s2[1];
+								s1[0] = s2[0];
+							}
+							return f;
+						}
+
+						// determine bounding topo: triangle or quad?
+						// ...
+
+						// if triangle:
+						// choose choose part that forms triangle edge
+						// iterate by its verts in one direction only
+						// iterate other part forth then back
+
+						// if quad:
+						// iterate both parts in one direction
+
 						return f;
 					}
 				}
@@ -3352,7 +3422,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				{
 					lo_x = std::min(v[i].x,lo_x);
 					lo_y = std::min(v[i].y,lo_y);
-					hi_x = std::min(v[i].x,hi_x);
+					hi_x = std::max(v[i].x,hi_x);
 					hi_y = std::max(v[i].y,hi_y);
 				}
 
@@ -3441,6 +3511,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 						} sort;
 
 						std::sort(v,v+n,sort);
+
 						s[0] = v;
 						s[1] = UniqueList(v,n);
 						return f;
