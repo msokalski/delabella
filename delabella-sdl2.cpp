@@ -26,7 +26,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 // override build define
 #undef WITH_FADE 
-#define WITH_FADE
+//#define WITH_FADE
 
 // override build define
 #undef WITH_TRIANGLE
@@ -2039,7 +2039,7 @@ int bench_main(int argc, char* argv[])
 #else
 int main(int argc, char* argv[])
 {
-    const char* dist = "gam";
+    const char* dist = "xxx";
     const char* bias = "+";
 #endif
 
@@ -2109,6 +2109,24 @@ int main(int argc, char* argv[])
 			bias_xy[1] = -50;
 		}
 
+        if (strcmp(dist, "xxx") == 0)
+        {
+            for (MyIndex i = 0; i < n; i++)
+            {
+                MyCoord r = d_uni(gen);
+                MyPoint p = {0,0};
+
+                if (i<n/2)
+                    p.y = r;
+                else
+                    p.x = r;
+
+                // please, leave some headroom for arithmetics!
+                assert(std::abs(p.x) <= max_coord && std::abs(p.y) <= max_coord);
+                cloud.push_back(p);
+            }
+        }
+        else
         if (strcmp(dist, "uni") == 0)
         {
             for (MyIndex i = 0; i < n; i++)
@@ -2295,7 +2313,7 @@ int main(int argc, char* argv[])
             }
         }
              
-        if (1) // generate 1/10 constrain edges
+        if (0) // generate 1/10 constrain edges
         {
             MyIndex m = n / 10;
 
@@ -3708,7 +3726,7 @@ int main(int argc, char* argv[])
 		return 0;
 	}
 
-	const char* test_dist[] = { "uni","std","gam","sym","cir","hex","bar",0 };
+	const char* test_dist[] = { /*"xxx",*/ "uni","std","gam","sym","cir","hex","bar",0 };
 	const char* test_bias[] = { "","+","-",0 };
 
 	int test_size[] =

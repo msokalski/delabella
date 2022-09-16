@@ -98,7 +98,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 		// so we can unlink and relink more freely!
 		// shouldn't we add it right into IDelaBella2<T, I>::Vertex ?
-		typename IDelaBella2<T, I>::Vertex* prev;
+		// typename IDelaBella2<T, I>::Vertex* prev;
 
 		static bool overlap(const Vert *v1, const Vert *v2)
 		{
@@ -175,7 +175,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 		// so we can unlink and relink more freely!
 		// shouldn't we add it right into IDelaBella2<T, I>::Simplex ?
-		typename IDelaBella2<T, I>::Simplex* prev;
+		// typename IDelaBella2<T, I>::Simplex* prev;
 
 		void RotateEdgeFlagsCCW() // <<
 		{
@@ -2755,6 +2755,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		return num;
 	}
 
+	#if 0
 	virtual I Triangulate2(I points, const T *x, const T *y, size_t advance_bytes, I stop)
 	{
 		uint64_t sort_stamp = uSec();
@@ -2859,7 +2860,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			// here f is head of available pool for allocations
 			// we return remaining pool of available faces
 			// new extremes are placed back to s1
-			static Face* MergeH(Vert* s1[2], Vert* const s2[2], Face* f)
+			static Face* MergeH(Vert* s1[2], Vert* s2[2], Face* f)
 			{
 				if (s1[0]->sew == 0 && s2[0]->sew == 0)
 				{
@@ -2906,7 +2907,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 								p = t;
 
-								// no swap
+								// no reverse
 								/*
 								Vert* n = (Vert*)v->prev;
 								v->prev = (Vert*)v->next;
@@ -2954,7 +2955,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 								p = t;
 
-								// swap
+								// reverse
 								Vert* n = (Vert*)v->prev;
 								v->prev = (Vert*)v->next;
 								v->next = n;
@@ -2964,7 +2965,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							p->f[1] = 0;
 							s1[0]->sew = q;
 
-							// swap
 							v->next = s1[0];
 							s1[0]->prev = v;
 							s1[0]->next = s2[1];
@@ -3032,7 +3032,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 								p = t;
 
-								// no swap
+								// no reverse
 								/*
 								Vert* n = (Vert*)v->prev;
 								v->prev = (Vert*)v->next;
@@ -3094,7 +3094,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 								p = t;
 
-								// swap
+								// reverse
 								Vert* n = (Vert*)v->next;
 								v->next = (Vert*)v->prev;
 								v->prev = n;
@@ -3154,24 +3154,29 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					else
 					{
 						// both parts are strips
-						// ...
+						/*
+										s1[1]->-s2[0]
+										  |     /|
+										  |    / |
+							 s10_s11_s20 /|\  /  |
+							              |  /  \|/ s20_s21_s10
+										  | /    |
+										  |/     |
+										s1[0]-<-s2[1]
+						*/
 
-						T ccw01_0 = predicates::adaptive::orient2d(s1[0]->x,s1[0]->y, s1[1]->x,s1[1]->y, s2[0]->x,s2[0]->y);
-						T ccw01_1 = predicates::adaptive::orient2d(s1[0]->x,s1[0]->y, s1[1]->x,s1[1]->y, s2[1]->x,s2[1]->y);
+						T s10_s11_s20 = predicates::adaptive::orient2d(s1[0]->x,s1[0]->y, s1[1]->x,s1[1]->y, s2[0]->x,s2[0]->y);
+						T s20_s21_s10 = predicates::adaptive::orient2d(s2[0]->x,s2[0]->y, s2[1]->x,s2[1]->y, s1[0]->x,s1[0]->y);
 
-						if (ccw01_0 == 0 && ccw01_1 == 0)
+						if (s10_s11_s20 == 0 && s20_s21_s10 == 0)
 						{
 							// colinear merge
-
-							// opt note:
-							// if we'd know number of verts in each part,
-							// in case of opposite directions we could swap shorter part! 
 
 							if (s1[0]->x < s1[1]->x)
 							{
 								if (s2[0]->x > s2[1]->x)
 								{
-									// swap s2
+									// reverse s2
 									Vert* v = s2[0];
 									s2[0] = s2[1];
 									s2[1] = v;
@@ -3193,7 +3198,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							{
 								if (s2[0]->x < s2[1]->x)
 								{
-									// swap s2
+									// reverse s2
 									Vert* v = s2[0];
 									s2[0] = s2[1];
 									s2[1] = v;
@@ -3214,16 +3219,148 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							return f;
 						}
 
-						// determine bounding topo: triangle or quad?
-						// ...
 
-						// if triangle:
-						// choose choose part that forms triangle edge
-						// iterate by its verts in one direction only
-						// iterate other part forth then back
+						/*
+										s1[1]->-s2[0]
+										  |\     |
+										  | \    |
+							 s10_s11_s21 /|\ \   |
+							              |   \ \|/ s20_s21_s11
+										  |    \ |
+										  |     \|
+										s1[0]-<-s2[1]
+						*/
 
-						// if quad:
-						// iterate both parts in one direction
+						T s10_s11_s21 = predicates::adaptive::orient2d(s1[0]->x,s1[0]->y, s1[1]->x,s1[1]->y, s2[0]->x,s2[0]->y);
+						T s20_s21_s11 = predicates::adaptive::orient2d(s2[0]->x,s2[0]->y, s2[1]->x,s2[1]->y, s1[0]->x,s1[0]->y);
+
+						// reverse s1, note 0,0 case is already handled!
+						if (s10_s11_s20 >= 0 && s10_s11_s21 >= 0)
+						{
+							Vert* v = s1[0];
+							s1[0] = s1[1];
+							s1[1] = v;
+							while (v)
+							{
+								Vert* n = (Vert*)v->next;
+								v->next = (Vert*)v->prev;
+								v->prev = n;
+								v = n;
+							}
+						}
+
+						// reverse s2, note 0,0 case is already handled!
+						if (s20_s21_s10 >= 0 && s20_s21_s11 >= 0)
+						{
+							Vert* v = s2[0];
+							s2[0] = s2[1];
+							s2[1] = v;
+							while (v)
+							{
+								Vert* n = (Vert*)v->next;
+								v->next = (Vert*)v->prev;
+								v->prev = n;
+								v = n;
+							}
+						}
+
+						if (s10_s11_s20 < 0 && s10_s11_s21 > 0)
+						{
+							// s1 points toward s2
+
+							//             ,  - s2[0]
+							//    ,  -  '         |
+							// s1[0]--->s1[1]     |
+							//    '  -  ,         |
+							//             '  - s2[1]
+
+							// start from s1[0]->s2[0]
+							// advance s1->next, s2->prev
+							// if s1 is null
+							// advance s1-prev, s2->prev
+							// end with s2[1]->s1[0]
+
+							// triangulate:
+							// ...
+						}
+						else
+						if (s10_s11_s20 > 0 && s10_s11_s21 < 0)
+						{
+							// s1 points away from s2
+
+							//             ,  - s2[0]
+							//    ,  -  '         |
+							// s1[1]<---s1[0]     |
+							//    '  -  ,         |
+							//             '  - s2[1]
+
+							// start from s1[1]->s2[0]
+							// advance s1->prev, s2->prev
+							// if s1 is null
+							// advance s1->next, s2->prev
+							// end with s2[1]->s1[1]
+
+							// triangulate:
+							// ...
+						}
+						else
+						if (s20_s21_s10 < 0 && s20_s21_s11 > 0)
+						{
+							// s2 points away from s1
+
+							// s1[1] -  ,                 
+							//   |         '  -  ,                 
+							//   |     s2[0]--->s2[1]
+							//   |         ,  -  '                 
+							// s1[0] -  '                 
+
+							// start from s2[1]->s1[0]
+							// advance s1->next, s2->prev
+							// if s2 is null
+							// advance s1->next, s2->next
+							// end with s1[1]->s2[0]
+
+							// triangulate:
+							// ...
+						}
+						else
+						if (s20_s21_s10 > 0 && s20_s21_s11 < 0)
+						{
+							// s2 points toward s1
+
+							// s1[1] -  ,
+							//   |         '  -  ,            
+							//   |     s2[1]<---s2[0]
+							//   |         ,  -  '
+							// s1[0] -  '
+
+							// start from s2[0]->s1[0]
+							// advance s1->next, s2->next
+							// if s2 is null
+							// advance s1->next, s2->prev
+							// end with s1[1]->s2[0]
+
+							// triangulate:
+							// ...
+						}
+						else
+						{
+							// regular case:
+
+							// s1[1] -  -  -  - s2[0]
+							//   |                |
+							//   |                |
+							//   |                |
+							// s1[0] -  -  -  - s2[1]
+
+							// start from s2[1]->s1[0]
+							// advance s1->next, s2->prev
+							// end with s1[1]->s2[0]
+
+							// triangulate:
+							// ...
+						}
+
 
 						return f;
 					}
@@ -3233,12 +3370,20 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				{
 					if (s1[0]->next == 0)
 					{
-						// left is a point right is triangulated
+						// left is a point, right is triangulated
 						// ...
 					}
 					else
 					{
-						// left is a strip right is triangulated
+						// left is a strip, right is triangulated
+
+						// handle strip is pointing toward hull
+						// ...
+
+						// handle strip is pointing away from hull
+						// ...
+
+						// handle neutral or exactly tangent strip direction
 						// ...
 					}
 					
@@ -3249,12 +3394,20 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				{
 					if (s2[0]->next == 0)
 					{
-						// left is triangulated right is a point
+						// left is triangulated, right is a point
 						// ...
 					}
 					else
 					{
-						// left is triangulated right is a strip
+						// left is triangulated, right is a strip
+
+						// handle strip is pointing toward hull
+						// ...
+
+						// handle strip is pointing away from hull
+						// ...
+
+						// handle neutral or exactly tangent strip direction
 						// ...
 					}
 					
@@ -3395,7 +3548,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			// here f is head of available pool for allocations
 			// we return remaining pool of available faces
 			// new extremes are placed back to s1
-			static Face* MergeV(Vert* s1[2], Vert* const s2[2], Face* f)
+			static Face* MergeV(Vert* s1[2], Vert* s2[2], Face* f)
 			{
 				return 0;
 			}
