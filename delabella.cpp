@@ -3282,6 +3282,168 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 							// triangulate:
 							// ...
+
+							Vert* v1 = s1[0];
+							Vert* v2 = s2[1];
+							Face* p = 0;
+
+							// bottom part
+							while (v1->next)
+							{
+								// choose winner
+								// s1 if: v2,v1,v1->next doesn't contain v2->prev  
+								// s2 if: (otherwise) v2,v1,v2->prev doesn't contain v1->next
+								T inc = predicates::adaptive::incircle(
+									v2->prev->x,v2->prev->y,
+									v2->x,v2->y, 
+									v1->x,v1->y, 
+									v1->next->x, v1->next->y);
+
+								Face* t = Alloc(&f);
+
+								if (inc <= 0)
+								{
+									t->v[0] = v1;
+									t->v[1] = v1->next;
+									t->v[2] = v2;
+
+									t->f[1] = p;
+
+									if (p)
+										p->f[0] = t;
+									else
+									{
+										// sew first 2 verts
+										v1->sew = t;
+										v2->sew = t;
+									}
+
+									v1->next->sew = t;
+
+									v1 = v1->next;
+									p = t;
+								}
+								else	
+								{
+									f->v[0] = v2;
+									f->v[1] = v1;
+									f->v[2] = v2->prev;
+
+									t->f[2] = p;
+
+									if (p)
+										p->f[0] = t;
+									else
+									{
+										// sew first 2 verts
+										v1->sew = t;
+										v2->sew = t;
+									}
+
+									v2->prev->sew = t;
+
+									v2 = v2->prev;
+									p = t;
+								}
+							}
+
+							// build fan at v1
+							// untill v2 is below v1,v1->next
+							while (1)
+							{
+								T ccw = predicates::adaptive::orient2d(
+									v1->x, v1->y, v1->next->x, v1->next->y, v2->x,v2->y);
+
+								if (ccw < 0)
+									break;
+
+								Face* t = Alloc(&f);	
+
+								f->v[0] = v2;
+								f->v[1] = v1;
+								f->v[2] = v2->prev;
+
+								t->f[2] = p;
+								p->f[0] = t;
+								v2->prev->sew = t;
+
+								v2 = v2->prev;
+								p = t;								
+							}
+
+							if (!v2->prev)
+							{
+								// finish fan at v2
+								while (v1->prev)
+								{
+									// ...
+									v1 = v1->prev
+								}
+								break;
+							}
+							else 
+							while (1)
+							{
+								// choose winner
+								// s1 if: v2,v1,v1->next doesn't contain v2->prev  
+								// s2 if: (otherwise) v2,v1,v2->prev doesn't contain v1->next
+								T inc = predicates::adaptive::incircle(
+									v2->prev->x,v2->prev->y,
+									v2->x,v2->y, 
+									v1->x,v1->y, 
+									v1->prev->x, v1->prev->y);
+
+								Face* t = Alloc(&f);
+
+								if (inc <= 0)
+								{
+									t->v[0] = v1;
+									t->v[1] = v1->prev;
+									t->v[2] = v2;
+
+									t->f[1] = p;
+									p->f[0] = t;
+									v1->prev->sew = t;
+
+									v1 = v1->prev;
+									p = t;
+
+									if (!v1->prev)
+									{
+										// finish fan at v1
+										while (v2->prev)
+										{
+											// ...
+											v2 = v2->prev
+										}
+										break;
+									}
+								}
+								else	
+								{
+									f->v[0] = v2;
+									f->v[1] = v1;
+									f->v[2] = v2->prev;
+
+									t->f[2] = p;
+									p->f[0] = t;
+									v2->prev->sew = t;
+
+									v2 = v2->prev;
+									p = t;
+
+									if (!v2->prev)
+									{
+										// finish fan at v2
+										while (v1->prev)
+										{
+											// ...
+											v1 = v1->prev
+										}
+										break;
+									}
+								}
+							}
 						}
 						else
 						if (s10_s11_s20 > 0 && s10_s11_s21 < 0)
