@@ -2755,7 +2755,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		return num;
 	}
 
-	#if 0
 	virtual I Triangulate2(I points, const T *x, const T *y, size_t advance_bytes, I stop)
 	{
 		uint64_t sort_stamp = uSec();
@@ -3231,8 +3230,8 @@ struct CDelaBella2 : IDelaBella2<T, I>
 										s1[0]-<-s2[1]
 						*/
 
-						T s10_s11_s21 = predicates::adaptive::orient2d(s1[0]->x,s1[0]->y, s1[1]->x,s1[1]->y, s2[0]->x,s2[0]->y);
-						T s20_s21_s11 = predicates::adaptive::orient2d(s2[0]->x,s2[0]->y, s2[1]->x,s2[1]->y, s1[0]->x,s1[0]->y);
+						T s10_s11_s21 = predicates::adaptive::orient2d(s1[0]->x,s1[0]->y, s1[1]->x,s1[1]->y, s2[1]->x,s2[1]->y);
+						T s20_s21_s11 = predicates::adaptive::orient2d(s2[0]->x,s2[0]->y, s2[1]->x,s2[1]->y, s1[1]->x,s1[1]->y);
 
 						// reverse s1, note 0,0 case is already handled!
 						if (s10_s11_s20 >= 0 && s10_s11_s21 >= 0)
@@ -3320,7 +3319,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 									v1->next->sew = t;
 
-									v1 = v1->next;
+									v1 = (Vert*)v1->next;
 									p = t;
 								}
 								else	
@@ -3342,18 +3341,18 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 									v2->prev->sew = t;
 
-									v2 = v2->prev;
+									v2 = (Vert*)v2->prev;
 									p = t;
 								}
 							}
 
 							// middle part
 							// build fan at v1
-							// untill v2 is below v1,v1->next
+							// untill v2 is below v1,v1->prev
 							while (1)
 							{
 								T ccw = predicates::adaptive::orient2d(
-									v1->x, v1->y, v1->next->x, v1->next->y, v2->x,v2->y);
+									v1->x, v1->y, v1->prev->x, v1->prev->y, v2->x,v2->y);
 
 								if (ccw < 0)
 									break;
@@ -3368,7 +3367,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 								p->f[0] = t;
 								v2->prev->sew = t;
 
-								v2 = v2->prev;
+								v2 = (Vert*)v2->prev;
 								p = t;								
 							}
 
@@ -3381,15 +3380,15 @@ struct CDelaBella2 : IDelaBella2<T, I>
 									Face* t = Alloc(&f);
 
 									t->v[0] = v1;
-									t->v[1] = v1->next;
+									t->v[1] = v1->prev;
 									t->v[2] = v2;
 
 									t->f[1] = p;
 									p->f[0] = t;
 
-									v1->next->sew = t;
+									v1->prev->sew = t;
 
-									v1 = v1->next;
+									v1 = (Vert*)v1->prev;
 									p = t;									
 								}
 							}
@@ -3417,7 +3416,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 									p->f[0] = t;
 									v1->prev->sew = t;
 
-									v1 = v1->prev;
+									v1 = (Vert*)v1->prev;
 									p = t;
 
 									if (!v1->prev)
@@ -3426,25 +3425,17 @@ struct CDelaBella2 : IDelaBella2<T, I>
 										while (v2->prev)
 										{
 											Face* t = Alloc(&f);
-											
+
 											f->v[0] = v2;
 											f->v[1] = v1;
 											f->v[2] = v2->prev;
 
 											t->f[2] = p;
-
-											if (p)
-												p->f[0] = t;
-											else
-											{
-												// sew first 2 verts
-												v1->sew = t;
-												v2->sew = t;
-											}
+											p->f[0] = t;
 
 											v2->prev->sew = t;
 
-											v2 = v2->prev;
+											v2 = (Vert*)v2->prev;
 											p = t;
 										}
 										break;
@@ -3460,7 +3451,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 									p->f[0] = t;
 									v2->prev->sew = t;
 
-									v2 = v2->prev;
+									v2 = (Vert*)v2->prev;
 									p = t;
 
 									if (!v2->prev)
@@ -3471,15 +3462,15 @@ struct CDelaBella2 : IDelaBella2<T, I>
 											Face* t = Alloc(&f);
 
 											t->v[0] = v1;
-											t->v[1] = v1->next;
+											t->v[1] = v1->prev;
 											t->v[2] = v2;
 
 											t->f[1] = p;
 											p->f[0] = t;
 
-											v1->next->sew = t;
+											v1->prev->sew = t;
 
-											v1 = v1->next;
+											v1 = (Vert*)v1->prev;
 											p = t;									
 										}
 										break;

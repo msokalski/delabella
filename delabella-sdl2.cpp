@@ -7,7 +7,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 
 //#define ANIMATION
 
-#define BENCH
+//#define BENCH
 //#define COMPARE // WITH_CDT must be also set
 
 //#define CULLING
@@ -2111,20 +2111,19 @@ int main(int argc, char* argv[])
 
         if (strcmp(dist, "xxx") == 0)
         {
-            for (MyIndex i = 0; i < n; i++)
-            {
-                MyCoord r = d_uni(gen);
-                MyPoint p = {0,0};
+            n = 10;
 
-                if (i<n/2)
-                    p.y = r;
-                else
-                    p.x = r;
+            cloud.push_back(MyPoint(-9,0)); 
+            cloud.push_back(MyPoint(-8,0)); 
+            cloud.push_back(MyPoint(-7,0)); 
+            cloud.push_back(MyPoint(-6,0)); 
+            cloud.push_back(MyPoint(-5,0)); 
 
-                // please, leave some headroom for arithmetics!
-                assert(std::abs(p.x) <= max_coord && std::abs(p.y) <= max_coord);
-                cloud.push_back(p);
-            }
+            cloud.push_back(MyPoint(9,-2)); 
+            cloud.push_back(MyPoint(9,-1)); 
+            cloud.push_back(MyPoint(9,0)); 
+            cloud.push_back(MyPoint(9,1)); 
+            cloud.push_back(MyPoint(9,2)); 
         }
         else
         if (strcmp(dist, "uni") == 0)
@@ -2482,8 +2481,8 @@ int main(int argc, char* argv[])
         #endif
 
         printf("cdt triangulation... ");
-        //CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::Randomized);
-        CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::KdTreeBFS);
+        CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::Randomized);
+        //CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::KdTreeBFS);
         //CDT::Triangulation<MyCoord> cdt(CDT::VertexInsertionOrder::Auto);
         cdt.insertVertices(nodups);
 
@@ -2812,7 +2811,7 @@ int main(int argc, char* argv[])
 
     printf("running delabella...\n");
     uint64_t t6 = uSec();
-    MyIndex verts = idb->Triangulate(points, &cloud.data()->x, &cloud.data()->y, sizeof(MyPoint));
+    MyIndex verts = idb->Triangulate2(points, &cloud.data()->x, &cloud.data()->y, sizeof(MyPoint));
     //idb->CheckTopology();
     #ifdef BENCH
     idb_bench->removing_dups = sorting_bench;

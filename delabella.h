@@ -16,6 +16,7 @@ struct IDelaBella2
 	struct Vertex
 	{
 		Vertex* next; // next in internal / boundary set of vertices
+		Vertex* prev;
 		Simplex* sew; // one of triangles sharing this vertex
 		T x, y; // coordinates (input copy)
 		I i; // index of original point
@@ -28,6 +29,7 @@ struct IDelaBella2
 		Vertex* v[3];  // 3 vertices spanning this triangle
 		Simplex* f[3]; // 3 adjacent faces, f[i] is at the edge opposite to vertex v[i]
 		Simplex* next; // next triangle (of delaunay set or hull set)
+		Simplex* prev; 
 		I index;       // list index
 		
 		unsigned char flags; 
