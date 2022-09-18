@@ -3347,6 +3347,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 								}
 							}
 
+							// middle part
 							// build fan at v1
 							// untill v2 is below v1,v1->next
 							while (1)
@@ -3371,15 +3372,26 @@ struct CDelaBella2 : IDelaBella2<T, I>
 								p = t;								
 							}
 
+							// upper part
 							if (!v2->prev)
 							{
-								// finish fan at v2
+								// finish with fan at v2
 								while (v1->prev)
 								{
-									// ...
-									v1 = v1->prev
+									Face* t = Alloc(&f);
+
+									t->v[0] = v1;
+									t->v[1] = v1->next;
+									t->v[2] = v2;
+
+									t->f[1] = p;
+									p->f[0] = t;
+
+									v1->next->sew = t;
+
+									v1 = v1->next;
+									p = t;									
 								}
-								break;
 							}
 							else 
 							while (1)
@@ -3413,8 +3425,27 @@ struct CDelaBella2 : IDelaBella2<T, I>
 										// finish fan at v1
 										while (v2->prev)
 										{
-											// ...
-											v2 = v2->prev
+											Face* t = Alloc(&f);
+											
+											f->v[0] = v2;
+											f->v[1] = v1;
+											f->v[2] = v2->prev;
+
+											t->f[2] = p;
+
+											if (p)
+												p->f[0] = t;
+											else
+											{
+												// sew first 2 verts
+												v1->sew = t;
+												v2->sew = t;
+											}
+
+											v2->prev->sew = t;
+
+											v2 = v2->prev;
+											p = t;
 										}
 										break;
 									}
@@ -3437,8 +3468,19 @@ struct CDelaBella2 : IDelaBella2<T, I>
 										// finish fan at v2
 										while (v1->prev)
 										{
-											// ...
-											v1 = v1->prev
+											Face* t = Alloc(&f);
+
+											t->v[0] = v1;
+											t->v[1] = v1->next;
+											t->v[2] = v2;
+
+											t->f[1] = p;
+											p->f[0] = t;
+
+											v1->next->sew = t;
+
+											v1 = v1->next;
+											p = t;									
 										}
 										break;
 									}
