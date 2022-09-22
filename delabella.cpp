@@ -3407,10 +3407,10 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 									// sew t with bottom part
 									t->f[1] = v1->next->sew;
-									v1->next->sew->f[0] = t;
+									v1->next->sew->f[2] = t;
 
-									if (p)
-										p->f[0] = t;
+									if (q)
+										q->f[0] = t;
 									else
 									{
 										// sew first v2
@@ -3453,6 +3453,8 @@ struct CDelaBella2 : IDelaBella2<T, I>
 								t->v[0] = b;
 								t->v[1] = v1;
 								t->v[2] = b->prev;
+
+								b->prev->sew = t;
 
 								t->f[2] = p;
 								p->f[0] = t;
