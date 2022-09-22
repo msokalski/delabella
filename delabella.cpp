@@ -3377,153 +3377,93 @@ struct CDelaBella2 : IDelaBella2<T, I>
 								}
 							}
 
-							// middle part
-							// build fan at v1
-							// untill v2 is below v1,v1->prev
-							while (1)
-							{
-								T ccw = predicates::adaptive::orient2d(
-									v1->x, v1->y, v1->prev->x, v1->prev->y, v2->x,v2->y);
+							// bottom end
+							Vert* b = v2; 
 
-								if (ccw < 0)
-									break;
-
-								Face* t = Face::Alloc(&f);	
-
-								t->v[0] = v2;
-								t->v[1] = v1;
-								t->v[2] = v2->prev;
-
-								t->f[2] = p;
-								p->f[0] = t;
-								v2->prev->sew = t;
-
-								v2 = (Vert*)v2->prev;
-								p = t;								
-							}
-
-							// upper part
-							if (!v2->prev)
-							{
-								// finish with fan at v2
-								while (v1->prev)
-								{
-									Face* t = Face::Alloc(&f);
-
-									t->v[0] = v1;
-									t->v[1] = v1->prev;
-									t->v[2] = v2;
-
-									t->f[1] = p;
-									p->f[0] = t;
-
-									// sew with bottom faces
-									t->f[2] = v1->sew;
-									v1->sew->f[2] = t;
-
-									// v1 verts are already sewed
-									// v1->prev->sew = t;
-
-									v1 = (Vert*)v1->prev;
-									p = t;									
-								}
-							}
-							else 
-							while (1)
+							// top part
+							v1 = s1[0];
+							v2 = s2[0];
+							Face* q = 0;							
+							while (v1->next)
 							{
 								// choose winner
-								// s1 if: v2,v1,v1->next doesn't contain v2->prev  
-								// s2 if: (otherwise) v2,v1,v2->prev doesn't contain v1->next
+								// s1 if: v1,v2,v1->next doesn't contain v2->next  
+								// s2 if: (otherwise) v1,v2,v2->next doesn't contain v1->next
 								T inc = predicates::adaptive::incircle(
-									v2->prev->x,v2->prev->y,
-									v2->x,v2->y, 
+									v2->next->x,v2->next->y,
 									v1->x,v1->y, 
-									v1->prev->x, v1->prev->y);
+									v2->x,v2->y, 
+									v1->next->x, v1->next->y);
 
 								Face* t = Face::Alloc(&f);
 
 								if (inc <= 0)
 								{
 									t->v[0] = v1;
-									t->v[1] = v1->prev;
-									t->v[2] = v2;
+									t->v[1] = v2;
+									t->v[2] = v1->next;
 
-									t->f[1] = p;
-									p->f[0] = t;
+									t->f[2] = q;
 
-									// sew with bottom faces
-									t->f[2] = v1->sew;
-									v1->sew->f[2] = t;
+									// sew t with bottom part
+									t->f[1] = v1->next->sew;
+									v1->next->sew->f[0] = t;
 
-									// v1 verts are already sewed
-									// v1->prev->sew = t;
-
-									v1 = (Vert*)v1->prev;
-									p = t;
-
-									if (!v1->prev)
+									if (p)
+										p->f[0] = t;
+									else
 									{
-										// finish fan at v1
-										while (v2->prev)
-										{
-											Face* t = Face::Alloc(&f);
-
-											t->v[0] = v2;
-											t->v[1] = v1;
-											t->v[2] = v2->prev;
-
-											t->f[2] = p;
-											p->f[0] = t;
-
-											v2->prev->sew = t;
-
-											v2 = (Vert*)v2->prev;
-											p = t;
-										}
-										break;
+										// sew first v2
+										v2->sew = t;
 									}
+
+									v1 = (Vert*)v1->next;
+									q = t;
 								}
 								else	
 								{
 									t->v[0] = v2;
-									t->v[1] = v1;
-									t->v[2] = v2->prev;
+									t->v[1] = v2->next;
+									t->v[2] = v1;
 
-									t->f[2] = p;
-									p->f[0] = t;
-									v2->prev->sew = t;
+									t->f[1] = q;
 
-									v2 = (Vert*)v2->prev;
-									p = t;
-
-									if (!v2->prev)
+									if (q)
+										q->f[0] = t;
+									else
 									{
-										// finish fan at v2
-										while (v1->prev)
-										{
-											Face* t = Face::Alloc(&f);
-
-											t->v[0] = v1;
-											t->v[1] = v1->prev;
-											t->v[2] = v2;
-
-											t->f[1] = p;
-											p->f[0] = t;
-
-											// sew with bottom faces
-											t->f[2] = v1->sew;
-											v1->sew->f[2] = t;											
-
-											// v1 verts are already sewed
-											// v1->prev->sew = t;
-
-											v1 = (Vert*)v1->prev;
-											p = t;									
-										}
-										break;
+										// sew first v2
+										v2->sew = t;
 									}
+
+									v2->next->sew = t;
+
+									v2 = (Vert*)v2->next;
+									q = t;
 								}
 							}
+
+							// middle part
+							// fan with base at s1[1]
+							// from b to v2
+							while (b!=v2)
+							{
+								Face* t = Face::Alloc(&f);
+
+								t->v[0] = b;
+								t->v[1] = v1;
+								t->v[2] = b->prev;
+
+								t->f[2] = p;
+								p->f[0] = t;
+
+								p = t;
+								b=(Vert*)b->prev;
+							}
+
+							// sew p with q
+							p->f[0] = q;
+							q->f[0] = p;
 
 							// close contour
 							s1[0]->next = s2[0];
