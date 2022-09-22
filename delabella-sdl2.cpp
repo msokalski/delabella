@@ -8,11 +8,11 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 //#define ANIMATION
 
 //#define BENCH
-//#define COMPARE // WITH_CDT must be also set
+#define COMPARE // WITH_CDT must be also set
 
 //#define CULLING
 
-//#define VORONOI
+#define VORONOI
 //#define VORONOI_POLYS
 // otherwise EDGES
 
@@ -2111,19 +2111,14 @@ int main(int argc, char* argv[])
 
         if (strcmp(dist, "xxx") == 0)
         {
-            n = 10;
 
-            cloud.push_back(MyPoint(-9,0)); 
-            cloud.push_back(MyPoint(-8,0)); 
-            cloud.push_back(MyPoint(-7,0)); 
-            cloud.push_back(MyPoint(-6,0)); 
-            cloud.push_back(MyPoint(-5,0)); 
+            for (MyCoord x=-5; x<=4; x+=1)
+                cloud.push_back(MyPoint(x,0)); 
 
-            cloud.push_back(MyPoint(9,-2)); 
-            cloud.push_back(MyPoint(9,-1)); 
-            cloud.push_back(MyPoint(9,0)); 
-            cloud.push_back(MyPoint(9,1)); 
-            cloud.push_back(MyPoint(9,2)); 
+            for (MyCoord y=-5; y<=5; y+=0.3)
+                cloud.push_back(MyPoint(5,y)); 
+
+            n = cloud.size();
         }
         else
         if (strcmp(dist, "uni") == 0)

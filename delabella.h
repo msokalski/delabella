@@ -64,6 +64,11 @@ struct IDelaBella2
 				pivot = 0;
 
 			Simplex* next = current->f[pivot];
+
+			// temporarily!!!
+			if (!next)
+				return 0;
+
 			Vertex* v = current->v[around];
 
 			if (next->v[0] == v)
@@ -85,6 +90,11 @@ struct IDelaBella2
 				pivot = 2;
 
 			Simplex* prev = current->f[pivot];
+
+			// temporarily!!!
+			if (!prev)
+				return 0;
+
 			Vertex* v = current->v[around];
 
 			if (prev->v[0] == v)
