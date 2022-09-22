@@ -2121,10 +2121,10 @@ int main(int argc, char* argv[])
             */
 
             for (MyCoord x=-5; x<0; x+=1)
-                cloud.push_back(MyPoint(x,0)); 
+                cloud.push_back(MyPoint(-x,0)); 
 
             for (MyCoord y=-2; y<=2; y+=1)
-                cloud.push_back(MyPoint(5,y)); 
+                cloud.push_back(MyPoint(-5,y)); 
 
             n = cloud.size();
         }
