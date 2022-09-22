@@ -2112,19 +2112,18 @@ int main(int argc, char* argv[])
         if (strcmp(dist, "xxx") == 0)
         {
             /*
-            // requires manual half split at 4.5
-            for (MyCoord x=-5; x<=4; x+=1)
-                cloud.push_back(MyPoint(x,0)); 
-
-            for (MyCoord y=-5; y<=5; y+=0.3)
-                cloud.push_back(MyPoint(5,y)); 
-            */
-
             for (MyCoord x=-5; x<0; x+=1)
                 cloud.push_back(MyPoint(-x,0)); 
 
             for (MyCoord y=-2; y<=2; y+=1)
                 cloud.push_back(MyPoint(-5,y)); 
+            */
+
+            for (MyCoord x=-2; x<=2; x+=1)
+            {
+                cloud.push_back(MyPoint(2*(x-5),2*x)); 
+                cloud.push_back(MyPoint(2*(x+5),2.5*x+1)); 
+            }
 
             n = cloud.size();
         }

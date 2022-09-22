@@ -2835,6 +2835,24 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			}
 			*/
 
+			static Vert* Bottom(Vert* a, Vert* b, Vert* c, Vert* d)
+			{
+				Vert* p = a->y < b->y ? a : b;
+				Vert* q = c->y < d->y ? c : d;
+				return p->y < q->y ? p : q;
+			}
+
+			static Vert* Bottom(Vert* a, Vert* b, Vert* c)
+			{
+				Vert* r = a->y < b->y ? a : b;
+				return c->y < r->y ? c : r;
+			}
+
+			static Vert* Left(Vert* a, Vert* b)
+			{
+				return a->x < b->x ? a : b;
+			}
+
 			Vert* UniqueList(Vert* v, I n)
 			{
 				vert_map[v[0].i] = v;
@@ -2932,11 +2950,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							s1[0]->next = s2[0];
 							s2[0]->prev = s1[0];
 
-							// left
-							s1[0] = s1[0];
-
-							// bottom
-							s1[1] = s1[0]->y <= v->y ? s1[0] : v;
+							s1[1] = Bottom(s1[0],s2[0],s2[1]);
 						}
 						else
 						if (ccw > 0)
@@ -2978,11 +2992,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							s1[0]->next = s2[1];
 							s2[1]->prev = s1[0];
 
-							// left
-							s1[0] = s1[0];
-
-							// bottom
-							s1[1] = s1[0]->y <= v->y ? s1[0] : v;
+							s1[1] = Bottom(s1[0],s2[0],s2[1]);
 						}
 						else
 						{
@@ -3057,25 +3067,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							s2[0]->next = v;
 							v->prev = s2[0];
 
-							// left
-							if (s1[0]->x <= s1[1]->x)
-							{
-								s1[0] = s1[0];
-							}
-							else
-							{
-								s1[0] = s1[1];
-							}
-
-							// bottom
-							if (s1[0]->y <= s1[1]->y)
-							{
-								s1[1] = s1[0]->y <= s2[0]->y ? s1[0] : s2[0];
-							}
-							else
-							{
-								s1[1] = s1[1]->y <= s2[0]->y ? s1[1] : s2[0];
-							}
+							Vert* bottom = Bottom(s1[0],s1[1],s2[0]);
+							s1[0] = Left(s1[0],s1[1]);
+							s1[1] = bottom;
 						}
 						else
 						if (ccw > 0)
@@ -3117,26 +3111,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							s2[0]->next = v;
 							s1[0]->next = s2[0];
 
-							// left
-							if (s1[0]->x <= s1[1]->x)
-							{
-								s1[0] = s1[0];
-							}
-							else
-							{
-								s1[0] = s1[1];
-							}
-
-							// bottom
-							if (s1[0]->y <= s1[1]->y)
-							{
-								s1[1] = s1[0]->y <= s2[0]->y ? s1[0] : s2[0];
-							}
-							else
-							{
-								s1[1] = s1[1]->y <= s2[0]->y ? s1[1] : s2[0];
-							}
-							
+							Vert* bottom = Bottom(s1[0],s1[1],s2[0]);
+							s1[0] = Left(s1[0],s1[1]);
+							s1[1] = bottom;
 						}
 						else
 						{
@@ -3487,9 +3464,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							s2[1]->next = s1[0];
 							s1[0]->prev = s2[1]; 	
 
- 							// update bottom
-							if (s2[1]->y < s1[1]->y)
-								s1[1] = s2[1];
+							s1[1] = Bottom(s1[0],s2[0],s2[1]);
 						}
 						else
 						if (s10_s11_s20 > 0 && s10_s11_s21 < 0)
@@ -3664,11 +3639,8 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							s2[1]->next = s1[1];
 							s1[1]->prev = s2[1]; 	
 
- 							// update left
 							s1[0] = s1[1];
- 							// update bottom
-							if (s2[1]->y < s1[1]->y)
-								s1[1] = s2[1];
+							s1[1] = Bottom(s1[0],s2[0],s2[1]);
 						}
 						else
 						if (s20_s21_s10 < 0 && s20_s21_s11 > 0)
@@ -3850,15 +3822,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							s2[1]->prev = s1[1];
 							s1[1]->next = s2[1]; 	
 
- 							// choose bottom
-							b = s2[1]->y < s1[0]->y ? s2[1] : s1[0];
-						
- 							// update left
-							if (s1[1]->x < s1[0]->x)
-								s1[0] = s1[1];
-							
-							// update bottom
-							s1[1] = b;
+							Vert* bottom = Bottom(s1[0],s1[1],s2[1]);
+							s1[0] = Left(s1[0],s1[1]);
+							s1[1] = bottom;
 						}
 						else
 						if (s20_s21_s10 > 0 && s20_s21_s11 < 0)
@@ -3870,7 +3836,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							//   |     s2[1]<---s2[0]
 							//   |         ,  -  '
 							// s1[0] -  '
-						
+
 							// same as first case but s1/s2 and top/bottom are swapped
 
 							Vert* v1 = s2[0];
@@ -4033,15 +3999,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							s2[0]->prev = s1[1];
 							s1[1]->next = s2[0]; 	
 
- 							// choose bottom
-							b = s2[0]->y < s1[0]->y ? s2[0] : s1[0];
-						
- 							// update left
-							if (s1[1]->x < s1[0]->x)
-								s1[0] = s1[1];
-							
-							// update bottom
-							s1[1] = b;
+							Vert* bottom = Bottom(s1[0],s1[1],s2[0]);
+							s1[0] = Left(s1[0],s1[1]);
+							s1[1] = bottom;
 						}
 						else
 						{
@@ -4057,10 +4017,123 @@ struct CDelaBella2 : IDelaBella2<T, I>
 							// advance s1->next, s2->prev
 							// end with s1[1]->s2[0]
 
-							// triangulate:
-							// ...
-						}
+							Vert* v1 = s1[0];
+							Vert* v2 = s2[1];
+							Face* p = 0;
 
+							while (1)
+							{
+								// choose winner
+								// s1 if: v2,v1,v1->next doesn't contain v2->prev  
+								// s2 if: (otherwise) v2,v1,v2->prev doesn't contain v1->next
+								T inc = predicates::adaptive::incircle(
+									v2->prev->x,v2->prev->y,
+									v2->x,v2->y, 
+									v1->x,v1->y, 
+									v1->next->x, v1->next->y);
+
+								Face* t = Face::Alloc(&f);
+
+								if (inc <= 0)
+								{
+									t->v[0] = v1;
+									t->v[1] = v1->next;
+									t->v[2] = v2;
+
+									t->f[1] = p;
+
+									if (p)
+										p->f[0] = t;
+									else
+									{
+										// sew first 2 verts
+										v1->sew = t;
+										v2->sew = t;
+									}
+
+									v1->next->sew = t;
+
+									v1 = (Vert*)v1->next;
+									p = t;
+
+									if (!v1->next)
+									{
+										// fan end
+										while (v2->prev)
+										{
+											Face* t = Face::Alloc(&f);
+
+											t->v[0] = v2;
+											t->v[1] = v1;
+											t->v[2] = v2->prev;
+
+											t->f[2] = p;
+											p->f[0] = t;
+
+											v2->prev->sew = t;
+
+											v2 = (Vert*)v2->prev;
+											p = t;
+										}
+										break;
+									}									
+								}
+								else	
+								{
+									t->v[0] = v2;
+									t->v[1] = v1;
+									t->v[2] = v2->prev;
+
+									t->f[2] = p;
+
+									if (p)
+										p->f[0] = t;
+									else
+									{
+										// sew first 2 verts
+										v1->sew = t;
+										v2->sew = t;
+									}
+
+									v2->prev->sew = t;
+
+									v2 = (Vert*)v2->prev;
+									p = t;
+
+									if (!v2->prev)
+									{
+										// fan end
+										while (v1->next)
+										{
+											Face* t = Face::Alloc(&f);
+
+											t->v[0] = v1;
+											t->v[1] = v1->next;
+											t->v[2] = v2;
+
+											t->f[1] = p;
+											p->f[0] = t;
+
+											v1->next->sew = t;
+
+											v1 = (Vert*)v1->next;
+											p = t;
+										}
+										break;
+									}
+								}
+							}
+			
+							// close contour
+							s1[0]->prev = s2[1];
+							s2[1]->next = s1[0];
+							s2[0]->prev = s1[1];
+							s1[1]->next = s2[0];
+
+							Vert* bottom = Bottom(s1[0],s1[1],s2[0],s2[1]);
+							s1[0] = Left(s1[0],s1[1]);
+							s1[1] = bottom;			
+						}
 
 						return f;
 					}
