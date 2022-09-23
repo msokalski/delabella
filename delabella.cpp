@@ -2825,16 +2825,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		{
 			Vert** const vert_map;
 
-			/*
-			static Face* Alloc(Face** from)
-			{
-				Face *f = *from;
-				*from = (Face *)f->next;
-				f->next = 0;
-				return f;
-			}
-			*/
-
 			static Vert* Bottom(Vert* a, Vert* b, Vert* c, Vert* d)
 			{
 				Vert* p = a->y < b->y ? a : b;
@@ -4145,6 +4135,154 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					{
 						// left is a point, right is triangulated
 						// ...
+
+						//        +---+                          +---+               +---+              +---+     
+						//       / \ /|\                        / \ /|\             / \ /|\            / \ /|\    
+						//    V2+---+ | \                    V2+---+ | \         V2+---+ | \        V2+---+ | \   
+						//      |  / \|  \         ',           \  |\|  \           \  |\|  \          \  |\|  \   
+						// P+   | /  ,+---+    ------>    P+     \ | +---+    P+,,   \ | +---+   P+,,   \ | +---+  
+						//   ', |/,''/|  /         ,'       ',    \|/|  /       ','',,\|/|  /      ','',,\|/|  /     
+						//     '+---+ | /                     '+---C | /          '+---+ | /         '+---+V1 /   
+						//    V1 \ / \|/      if C != V2     V1 \ / \|/          V1 \ / \|/            \ / \|/        
+						//        +---+                          +---+               +---+              +---+    
+                        //                                                                                            
+						//      locate C                  replace V1 with C    replace other V      then advance:
+						//   link faces into              in all triangles      with P in the         V1' = C	      
+						//      temp list                 except the last,      last triangle,        V2' = V2
+						//                                break list appart    adjust neighbors
+						//	        |
+						//	     ,  |  ,  if C == V2 
+						//        ',|,'                   
+						//          '                                         
+						//       insert                                  
+						//    new triangle                                  
+						//      P,V2,V1                              
+						//                                                    
+						//    then advance                                     
+						//                                                       
+						//      V2+---+                         
+						//    V1 / \ /|\                        
+						//     ,+---+ | \                       
+						//   ,' |  / \|  \                 
+						// P+   | /  ,+---+               
+						//   ', |/,''/|  /                	     
+						//     '+---+ | /                    
+						//       \ / \|/             
+						//        +---+              
+						//                           
+						//    V1' = V2     	         			
+						//    V2  = V2->next         
+
+						Vert* p = s1[0]; // point
+						Vert* v1 = s2[1]; // bottom of hull
+
+						// requires that s2[1] is exactly bottom!
+						if (p->y < v1->y)
+						{
+							Vert* v2 = (Vert*)v1->prev;
+							while (1)
+							{
+								T ccw = predicates::adaptive::orient2d(v1->x,v1->y,p->x,p->y,v2->x,v2->y);
+								if (ccw >= 0)
+									break;
+								v1=v2;
+								v2=(Vert*)v2->prev;
+							}
+						}
+						else
+						{
+							Vert* v2 = (Vert*)v1->next;
+							while (1)
+							{
+								T ccw = predicates::adaptive::orient2d(v1->x,v1->y,p->x,p->y,v2->x,v2->y);
+								if (ccw < 0)
+									break;
+								v1=v2;
+								v2=(Vert*)v2->next;
+							}
+						}
+
+						Vert* v2 = (Vert*)v1->next; // candid (r)
+						while (1)
+						{
+							// lacate bondary face on v1,v2 edge
+							// probably we could re-use previously rebased first face
+							Face* t = (Face*)v1->sew;
+
+							// points to 'prev' neighbor, Nr vert (next candid)
+							int at_plus_2 = t->v[0] == v1 ? 2 : t->v[1] == v1 ? 0 : 1;
+							while (t->f[at_plus_2] != 0)
+							{
+								t = (Face*)t->f[at_plus_2];
+								at_plus_2 = t->v[0] == v1 ? 2 : t->v[1] == v1 ? 0 : 1;
+							}
+
+							// at_plus_1 points to 'next' neighbor face / current Cr vert
+							int at_plus_1 = at_plus_2 ? at_plus_2 - 1 : 2;
+							assert(t->v[at_plus_1] == v2);
+
+							Vert* Cr = v2;
+							Vert* Nr = (Vert*)t->v[at_plus_2];
+
+							Face* first = t; // this can be reused in next iter
+
+							// TODO: REMOVE FACE LINKING
+							// - doesn't help much
+							// - remember last face instead
+
+							while ( // DIG!!!
+								predicates::adaptive::orient2d(v1->x,v1->y,p->x,p->y,Nr->x,Nr->y) < 0 &&
+								predicates::adaptive::incircle(Nr->x,Nr->y,v1->x,v1->y,p->x,p->y,Cr->x,Cr->y) > 0)
+							{
+								Cr = Nr;
+								t->next = t->f[at_plus_1]; // link faces so we can re-run quickly
+								t = (Face*)t->next;
+								at_plus_2 = t->v[0] == v1 ? 2 : t->v[1] == v1 ? 0 : 1;
+								at_plus_1 = at_plus_2 ? at_plus_2 - 1 : 2;
+								Nr = (Vert*)t->v[at_plus_2];
+							}
+
+							if (Cr == v2)
+							{
+								// build new face
+								// ...
+
+								// advance
+								// ...
+
+								// check exit condition
+								// ... break
+
+								continue;
+							}
+
+							// change occurences of v1 in all faces except last one into Cr
+
+							// TODO: convert it to while(t != last)
+							// and advance with at_plus_1 instead of t->next
+							// remove breaking list apart
+
+							t = first;
+							while (t->next)
+							{
+								int at = t->v[0] == v1 ? 0 : t->v[1] == v1 ? 1 : 2;
+								t->v[at] = Cr;
+
+								Face* n = (Face*)t->next;
+								t->next = 0; // break appart
+
+								t = n;
+							}
+							t->next = 0; // break appart last
+
+							// in last face replace v[at+1] (for at -> v1) with p
+							int at = t->v[0] == v1 ? 0 : t->v[1] == v1 ? 1 : 2;
+							at_plus_1 = at==2 ? 0 : at+1;
+							t->v[at_plus_1] = p;
+
+							// finaly upadate neighbors !!!!!!!
+							// ...
+						}
 					}
 					else
 					{
