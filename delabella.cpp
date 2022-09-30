@@ -4833,6 +4833,9 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					T bbox1[] = {bbox[0],u->x,bbox[2],bbox[3]}
 					T bbox2[] = {u->x,bbox[1],bbox[2],bbox[3]}
 
+					// problem !!!!!!!!!!!!!!!!!
+					// first recurse will move u somewhere else !!!!
+
 					f1 = Recurse(v, f1, n1, bbox1, 'X'); // left
 					f2 = Recurse(u, f2, n2, bbox2, 'X'); // right
 
@@ -4878,7 +4881,7 @@ struct CDelaBella2 : IDelaBella2<T, I>
 					f[2 * n1 - 1].next = f2;
 					f = f1;
 
-					f = MergeH(s, s2, f);
+					f = MergeV(u, s2, f);
 				}
 
 				return f;
