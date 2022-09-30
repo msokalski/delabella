@@ -2791,8 +2791,10 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			v->i = i;
 			v->x = *(const T*)((const char*)x + i * advance_bytes);
 			v->y = *(const T*)((const char*)y + i * advance_bytes);
-
 			v->sew = 0;
+
+			// calc initial bbox
+			// ...
 		}
 
 		// ReallocFaces
@@ -2824,25 +2826,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		struct R
 		{
 			Vert** const vert_map;
-
-			static Vert* Bottom(Vert* a, Vert* b, Vert* c, Vert* d)
-			{
-				Vert* p = a->y < b->y ? a : b;
-				Vert* q = c->y < d->y ? c : d;
-				return p->y < q->y ? p : q;
-			}
-
-			static Vert* Bottom(Vert* a, Vert* b, Vert* c)
-			{
-				Vert* r = a->y < b->y ? a : b;
-				return c->y < r->y ? c : r;
-			}
-
-			static Vert* Left(Vert* a, Vert* b)
-			{
-				return a->x < b->x ? a : b;
-			}
-
 			Vert* UniqueList(Vert* v, I n)
 			{
 				vert_map[v[0].i] = v;
@@ -2871,6 +2854,334 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				}
 				u->next = 0;
 				return u; // return tail
+			}
+
+			// y-partitioning sample  
+			// with 3 verts on y = u->y split line
+			//         +----+   
+			//        /      \  
+			//       +  HI-Y  + 
+			//        \      /  
+			//    +----u----+   
+			//   /      \       
+			//  +  LO-Y  +      
+			//   \      /       
+			//    +----+        
+
+			Vert* PartitionX(Vert* v, I* pn, Vert* u)
+			{
+				I n = *pn;
+
+				I lo = 0;
+				I hi = n;
+
+				T x = u->x;
+				T y = u->y;
+
+				while (lo<hi && v[lo].x < x)
+					lo++;
+
+				for (I i=lo; i<hi; )
+				{
+					if (v[i].x < x)
+						std::swap(v[lo++],v[i++]);
+					else
+					if (v[i].x > x)
+						std::swap(v[i],v[--hi]);
+					else
+					{
+						if (v[i].y < y)
+							std::swap(v[lo++],v[i++]);
+						else
+						if (v[i].y > y)
+							std::swap(v[i],v[--hi]);
+						else
+							i++;
+					}
+				}
+
+				assert(hi>lo); // at least one 'u' !
+
+				u = v + lo;
+				assert(u->x == x && u->y == y);
+
+				I dups = hi-lo-1;
+				if (dups > 0)
+				{
+					// move all dups of u to tail
+					// we dont care about order in partition
+					int swaps = std::min(dups, n-hi);
+					for (int i=1; i<=swaps; i++)				
+					{
+						Vert* tail = v + n-i;
+						std::swap(v[lo+i],*tail);
+
+						// dups are not going to move any more
+						// map them and forget!
+						vert_map[tail->i] = tail;
+
+						// we can also link them here
+						// ...
+					}
+				}
+
+				// update array size after removing u dups
+				*pn = n-dups;
+
+				// return new unique u position
+				return u;
+			}
+
+			Vert* PartitionY(Vert* v, I* pn, Vert* u)
+			{
+				I n = *pn;
+
+				I lo = 0;
+				I hi = n;
+
+				T x = u->x;
+				T y = u->y;
+
+				while (lo<hi && v[lo].y < y)
+					lo++;
+
+				for (I i=lo; i<hi; )
+				{
+					if (v[i].y < y)
+						std::swap(v[lo++],v[i++]);
+					else
+					if (v[i].y > y)
+						std::swap(v[i],v[--hi]);
+					else
+					{
+						if (v[i].x < x)
+							std::swap(v[lo++],v[i++]);
+						else
+						if (v[i].x > x)
+							std::swap(v[i],v[--hi]);
+						else
+							i++;
+					}
+				}
+
+				assert(hi>lo); // at least one 'u' !
+
+				u = v + lo;
+				assert(u->x == x && u->y == y);
+
+				I dups = hi-lo-1;
+				if (dups > 0)
+				{
+					// move all dups of u to tail
+					// we dont care about order in partition
+					int swaps = std::min(dups, n-hi);
+					for (int i=1; i<=swaps; i++)
+					{
+						Vert* tail = v + n-i;
+						std::swap(v[lo+i],*tail);
+
+						// dups are not going to move any more
+						// map them and forget!
+						vert_map[tail->i] = tail;
+
+						// we can also link them here
+						// ...
+					}
+				}
+
+				// update array size after removing u dups
+				*pn = n-dups;
+
+				// return new unique u position
+				return u;
+			}
+
+			Vert* DivideX(Vert* v, I* pn, T bbox[4], char after = 0)
+			{
+				I n = *pn;
+
+				const static base = 10;
+				Vert* bin[base-1] = {0};
+				int num[base-1] = {0};
+
+				T lo = bbox[0], hi = bbox[1];
+				T scale = base / (lo - hi);
+
+				if (after == 'X')
+				{
+					T lo_y = v[0].y;
+					T hi_y = v[0].y;
+
+					for (int i=0; i<n; i++)
+					{
+						int k = (int)((v[i].x - lo) * scale);
+						if (k>=base)
+							k=base-1;
+
+						num[k]++;
+						bin[k] = v+i;
+
+						// needed only if we plan to refine
+						// v[i].next = bin[k];
+
+						lo_y = std::min(lo_y,v[i].y);
+						hi_y = std::max(hi_y,v[i].y);
+					}
+
+					bbox[2] = lo_y;
+					bbox[3] = hi_y;
+				}
+				else
+				if (after == 'Y')
+				{
+					T lo_x = v[0].x;
+					T hi_x = v[0].x;
+
+					for (int i=0; i<n; i++)
+					{
+						int k = (int)((v[i].x - lo) * scale);
+						if (k>=base)
+							k=base-1;
+
+						num[k]++;
+						bin[k] = v+i;
+
+						// needed only if we plan to refine
+						//v[i].next = bin[k];
+
+						lo_x = std::min(lo_x,v[i].x);
+						hi_x = std::max(hi_x,v[i].x);
+					}
+
+					bbox[0] = lo_x;
+					bbox[1] = hi_x;
+				}
+				else
+				{
+					for (int i=0; i<n; i++)
+					{
+						int k = (int)((v[i].x - lo) * scale);
+						if (k>=base)
+							k=base-1;
+
+						num[k]++;
+						bin[k] = v+i;
+
+						// needed only if we plan to refine
+						//v[i].next = bin[k];
+					}
+				}
+
+				Vert* u = 0;
+				int scan = 0;
+				for (int k=0; k<base; k++)
+				{
+					scan += bin[k];
+					if (scan >= n/2)
+					{
+						u = bin[k];
+						n = num[k];
+						lo = k/scale + lo;
+						hi = (k+1)/scale + lo;
+						break;
+					}
+				}
+
+				return PartitionX(v, pn, u);
+			}
+
+			Vert* DivideY(Vert* v, I* pn, T bbox[4], char after = 0)
+			{
+				I n = *pn;
+
+				const static base = 10;
+				Vert* bin[base-1] = {0};
+				int num[base-1] = {0};
+
+				T lo = bbox[2], hi = bbox[3];
+				T scale = base / (lo - hi);
+
+				if (after == 'X')
+				{
+					T lo_y = v[0].y;
+					T hi_y = v[0].y;
+
+					for (int i=0; i<n; i++)
+					{
+						int k = (int)((v[i].y - lo) * scale);
+						if (k>=base)
+							k=base-1;
+
+						num[k]++;
+						bin[k] = v+i;
+
+						// needed only if we plan to refine
+						// v[i].next = bin[k];
+
+						lo_y = std::min(lo_y,v[i].y);
+						hi_y = std::max(hi_y,v[i].y);
+					}
+
+					bbox[2] = lo_y;
+					bbox[3] = hi_y;
+				}
+				else
+				if (after == 'Y')
+				{
+					T lo_x = v[0].x;
+					T hi_x = v[0].x;
+
+					for (int i=0; i<n; i++)
+					{
+						int k = (int)((v[i].y - lo) * scale);
+						if (k>=base)
+							k=base-1;
+
+						num[k]++;
+						bin[k] = v+i;
+
+						// needed only if we plan to refine
+						//v[i].next = bin[k];
+
+						lo_x = std::min(lo_x,v[i].x);
+						hi_x = std::max(hi_x,v[i].x);
+					}
+
+					bbox[0] = lo_x;
+					bbox[1] = hi_x;
+				}
+				else
+				{
+					for (int i=0; i<n; i++)
+					{
+						int k = (int)((v[i].y - lo) * scale);
+						if (k>=base)
+							k=base-1;
+
+						num[k]++;
+						bin[k] = v+i;
+
+						// needed only if we plan to refine
+						//v[i].next = bin[k];
+					}
+				}
+
+				Vert* u = 0;
+				int scan = 0;
+				for (int k=0; k<base; k++)
+				{
+					scan += bin[k];
+					if (scan >= n/2)
+					{
+						u = bin[k];
+						n = num[k];
+						lo = k/scale + lo;
+						hi = (k+1)/scale + lo;
+						break;
+					}
+				}
+
+				return PartitionY(v, pn, u);
 			}
 
 			// here f is head of available pool for allocations
@@ -4464,39 +4775,26 @@ struct CDelaBella2 : IDelaBella2<T, I>
 				return 0;
 			}
 
+
 			// here f is beginning of face block which is 2*n big
 			// we return remaining pool of available faces (list) from this block
-			Face* Recurse(Vert* v, Face* f, I n, Vert* s[2])
+			Face* Recurse(Vert* v, Face* f, I n, T bbox[4], char after = 0)
 			{
-				// we should also return/accumulate number of dups!
-				// for reporting it somewhat later
-
-				if (n<=2)
+				if (n==2)
 				{
+					// check if dupped!
 					s[0] = v;
 					s[1] = UniqueList(v,n);
 					return f;
 				}
 
-				// bbox
-				T lo_x = v[0].x, hi_x = v[0].x;
-				T lo_y = v[0].y, hi_y = v[0].y;
-
-				for (I i=1; i<n; i++)
-				{
-					lo_x = std::min(v[i].x,lo_x);
-					lo_y = std::min(v[i].y,lo_y);
-					hi_x = std::max(v[i].x,hi_x);
-					hi_y = std::max(v[i].y,hi_y);
-				}
-
 				Vert* u;
 
-				if (hi_x - lo_x >= hi_y - lo_y)
+				if (bbox[1] - bbox[0] >= bbox[3] - bbox[2])
 				{
-					if (lo_y == hi_y)
+					if (bbox[2] == bbox[3])
 					{
-						if (lo_x == hi_x)
+						if (bbox[0] == bbox[1])
 						{
 							// ALL ARE DUPS
 							s[0] = v;
@@ -4523,39 +4821,20 @@ struct CDelaBella2 : IDelaBella2<T, I>
 						return f;
 					}
 
-					struct
-					{
-						const T half;
-						bool operator () (const Vert& v) const
-						{
-							return v.x < half;
-						}
+					u = DivideX(v,&n,bbox,after);
 
-					} half = { (lo_x + hi_x) / 2 };
+					// u belongs to both parititions!
+					I n1 = (I)(u - v) + 1;
+					I n2 = n - n1 + 1;
 
-					u = std::partition(v,v+n,half);
-
-					assert(u != v && u - v < n);
-
-					I n1 = (I)(u - v);
-					I n2 = n - n1;
-					Vert* s2[2]={0,0};
-
-					// prepare 2 face alloc pools
 					Face* f1 = f;
 					Face* f2 = f + 2 * n1;
 
-					// this is the place we should decide if we want to run f1
-					// on another thread and join it after f2 ends
-					// or run one after another on current thread.
+					T bbox1[] = {bbox[0],u->x,bbox[2],bbox[3]}
+					T bbox2[] = {u->x,bbox[1],bbox[2],bbox[3]}
 
-					f1 = Recurse(v, f1, n1, s); // left
-					f2 = Recurse(u, f2, n2, s2); // right
-
-					// because there's still something to be merged, we're going to add faces,
-					// we can assume recursions did not alloc all available faces in their sub-blocks
-					// so last face in first pool before recursion is still the last one
-					// so we can merge pools easily...
+					f1 = Recurse(v, f1, n1, bbox1, 'X'); // left
+					f2 = Recurse(u, f2, n2, bbox2, 'X'); // right
 
 					f[2 * n1 - 1].next = f2;
 					f = f1;
@@ -4581,44 +4860,25 @@ struct CDelaBella2 : IDelaBella2<T, I>
 						return f;
 					}
 
-					struct
-					{
-						const T half;
-						bool operator () (const Vert& v) const
-						{
-							return v.y < half;
-						}
+					u = DivideY(v,&n,bbox,after);
 
-					} half = { (lo_y + hi_y) / 2 };
+					// u belongs to both parititions!
+					I n1 = (I)(u - v) + 1;
+					I n2 = n - n1 + 1;
 
-					u = std::partition(v,v+n,half);
-
-					assert(u != v && u - v < n);
-
-					I n1 = (I)(u - v);
-					I n2 = n - n1;
-					Vert* s2[2]={0,0};
-
-					// prepare 2 face alloc pools
 					Face* f1 = f;
 					Face* f2 = f + 2 * n1;
 
-					// this is the place we should decide if we want to run f1
-					// on another thread and join it after f2 ends
-					// or run one after another on current thread.
+					T bbox1[] = {bbox[0],bbox[1],bbox[2],u->y};
+					T bbox2[] = {bbox[0],bbox[1],u->y,bbox[3]};
 
-					f1 = Recurse(v, f1, n1, s); // lower
-					f2 = Recurse(u, f2, n2, s2); // upper
-
-					// because there's still something to be merged
-					// we can assume recursions did not alloc all available faces
-					// so last in first pool before recursion is still the last one
-					// so we can merge pools easily...
+					f1 = Recurse(v, f1, n1, bbox1, 'Y'); // left
+					f2 = Recurse(u, f2, n2, bbox2, 'Y'); // right
 
 					f[2 * n1 - 1].next = f2;
 					f = f1;
 
-					f = MergeV(s, s2, f);
+					f = MergeH(s, s2, f);
 				}
 
 				return f;
@@ -4639,6 +4899,96 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		// merge is ok, can run on a signle thread 
 		// it's complexity should be around sqrt(N) (not N)
 
+		struct
+		{
+			bool operator () (const Vert& v)const
+			{
+				return v.x < split;
+			}
+
+			bool operator () (const Vert& a, const Vert& b) const
+			{
+				return a.x < b.x;
+			}
+
+			const T split;
+		} test = { 0 };
+
+		printf("\n----------------------\n");
+
+		int tests = 1000;
+
+		int dbg[21];
+
+		for (int k=0; k<10; k++)
+		{
+			for (int i=0; i<21; i++)
+			{
+				dbg[i] = rand()%6;
+				printf("%d ", dbg[i]);
+			}
+			printf("\n");
+
+			std::nth_element(dbg,dbg+10,dbg+21,std::less{});
+
+			for (int i=0; i<21; i++)
+				printf("%d ", dbg[i]);
+			printf("\n");
+
+			int v = dbg[10];
+
+			std::partition(dbg,dbg+21,[v](int i){return i < v;});
+			for (int i=0; i<21; i++)
+				printf("%d ", dbg[i]);
+			printf("\n\n");			
+		}
+
+		exit(321);
+
+
+		Vert* copy = (Vert*)malloc(sizeof(Vert)*points);
+		memcpy(copy,vert_alloc,sizeof(Vert)*points);
+
+		if (1)
+		{
+			uint64_t elapsed = 0;
+			for (int i=0; i<tests; i++)
+			{
+				memcpy(copy,vert_alloc,sizeof(Vert)*points);
+				elapsed -= uSec();
+				std::partition(copy, copy + points, test);
+				elapsed += uSec();
+			}
+			printf("partition: %dms\n", (int)(elapsed/tests));
+		}
+
+		if (1)
+		{
+			uint64_t elapsed = 0;
+			for (int i=0; i<tests; i++)
+			{
+				memcpy(copy,vert_alloc,sizeof(Vert)*points);
+				elapsed -= uSec();
+				std::nth_element(copy, copy + points/2, copy + points, test);
+				elapsed += uSec();
+			}
+			printf("nth_element: %dms\n", (int)(elapsed/tests));
+		}
+
+		if (1)
+		{
+			uint64_t elapsed = 0;
+			for (int i=0; i<tests; i++)
+			{
+				memcpy(copy,vert_alloc,sizeof(Vert)*points);
+				elapsed -= uSec();
+				std::sort(copy, copy + points, test);
+				elapsed += uSec();
+			}
+			printf("sort: %dms\n", (int)(elapsed/tests));
+		}
+
+		exit(123);
 
 
 		Vert* s[2]={0,0};

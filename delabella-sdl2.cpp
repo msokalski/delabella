@@ -2039,8 +2039,8 @@ int bench_main(int argc, char* argv[])
 #else
 int main(int argc, char* argv[])
 {
-    const char* dist = "xxx";
-    const char* bias = "+";
+    const char* dist = "uni";
+    const char* bias = "";
 #endif
 
 	#ifdef _WIN32
