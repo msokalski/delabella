@@ -82,6 +82,8 @@ int main( int argc, char* argv[] )
     printf( "\n" );
 
     FILE* svg = 0;
+
+    double svg_view = 0;
     double svg_scale = 1;
     double svg_trans_x = 0;
     double svg_trans_y = 0;
@@ -109,22 +111,44 @@ int main( int argc, char* argv[] )
         double y_size = y_max - y_min;
         double in_size = x_size > y_size ? x_size : y_size;
         double out_size = 640;
+        double right_col = 320;
+        
+        svg_view = out_size;
 
         svg_scale = out_size / (in_size * 1.2);
         svg_trans_x = out_size * 0.5 - (x_max + x_min) * svg_scale * 0.5;
         svg_trans_y = out_size * 0.5 - (y_max + y_min) * svg_scale * 0.5;
 
         char svg_size[200];
-        sprintf(svg_size,"width=\"%f\" height=\"%f\" viewBox=\"%f %f %f %f\"", out_size, out_size, 0.0, 0.0, out_size, out_size);
+        sprintf(svg_size,"width=\"%f\" height=\"%f\" viewBox=\"%f %f %f %f\"", out_size + right_col, out_size, -3.0, -3.0, out_size + right_col + 6.0, out_size + 6.0);
         const char* svg_attr = "fill=\"none\" stroke=\"currentcolor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"";
 
         fprintf(svg, "<svg xmlns=\"http://www.w3.org/2000/svg\" %s %s>\n", svg_size, svg_attr);
 
-        fprintf(svg, "  <rect x=\"%f\" y=\"%f\" width=\"%f\" height=\"%f\" rx=\"15\" fill=\"#fff\"/>\n", 0.0, 0.0, out_size, out_size);
+        fprintf(svg, "  <rect x=\"%f\" y=\"%f\" width=\"%f\" height=\"%f\" rx=\"15\" fill=\"#fff\"/>\n", 0.0, 0.0, out_size + right_col, out_size);
 
         //fprintf(svg, "</svg>\n");
         //fclose(svg);
     }
+
+    struct Face
+    {
+        int v[3];
+        static int cmp(const void* a, const void* b)
+        {
+            const Face* l = (const Face*)a;
+            const Face* r = (const Face*)b;
+            for (int i=0; i<3; i++)
+            {
+                int q = l->v[i] - r->v[i];
+                if (q)
+                    return q;
+            }
+            return 0;
+        }
+    };
+
+    Face t[1000];
 
     // Process points
     IDelaBella2 < double > * idb = IDelaBella2 < double > ::Create();
@@ -155,25 +179,7 @@ int main( int argc, char* argv[] )
   
         const IDelaBella2<double>::Simplex* dela = idb->GetFirstDelaunaySimplex();
 
-        struct Face
-        {
-            int v[3];
-            static int cmp(const void* a, const void* b)
-            {
-                const Face* l = (const Face*)a;
-                const Face* r = (const Face*)b;
-                for (int i=0; i<3; i++)
-                {
-                    int q = l->v[i] - r->v[i];
-                    if (q)
-                        return q;
-                }
-                return 0;
-            }
-        };
-
         assert(tris <= 1000);
-        Face t[1000];
 
         for ( int i = 0; i < tris; i++ )
         {
@@ -282,7 +288,13 @@ int main( int argc, char* argv[] )
         }
 
 
-        fprintf(svg, "  <text stroke=\"none\" fill=\"#000\" font-size=\"24\" font-family=\"Arial, Helvetica, sans-serif\" x=\"%f\" y=\"%f\">%d %s</text>\n", 24.0, 24.0, tris, "triangles");
+        fprintf(svg, "  <text stroke=\"none\" fill=\"#000\" font-size=\"24\" font-family=\"Arial, Helvetica, sans-serif\" x=\"%f\" y=\"%f\">%d %s</text>\n", 24.0 + svg_view, 48.0, tris, "triangles");
+
+        for (int j=0; j<tris; j++)
+        {
+            fprintf(svg, "  <text stroke=\"none\" fill=\"#000\" font-size=\"18\" font-family=\"Arial, Helvetica, sans-serif\" x=\"%f\" y=\"%f\">%d:  %d %d %d</text>\n", 24.0 + svg_view, 96.0 + j*24, 
+                j, t[j].v[0], t[j].v[1], t[j].v[2] );
+        }
 
         fprintf(svg, "</svg>\n");
         fclose(svg);        
