@@ -171,21 +171,21 @@ int main( int argc, char* argv[] )
             o = fopen(argv[2],"w");
             if (!o)
                 printf("Can't open out file\n");
+        }
 
-            printf("%d\n", tris);
+        printf("%d\n", tris);
+        if (o)
+            fprintf(o,"%d\n", tris);
+
+        for (int i=0; i<tris; i++)
+        {
+            printf("%d %d %d %d\n", i, t[i].v[0],t[i].v[1],t[i].v[2]);
             if (o)
-                fprintf(o,"%d\n", tris);
+                fprintf(o,"%d %d %d %d\n", i, t[i].v[0],t[i].v[1],t[i].v[2]);
+        }
 
-            for (int i=0; i<tris; i++)
-            {
-                printf("%d %d %d %d\n", i, t[i].v[0],t[i].v[1],t[i].v[2]);
-                if (o)
-                    fprintf(o,"%d %d %d %d\n", i, t[i].v[0],t[i].v[1],t[i].v[2]);
-            }
-
-            if (o)
-                fclose(o);
-        }        
+        if (o)
+            fclose(o);
     }
     else
     {
