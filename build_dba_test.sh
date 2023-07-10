@@ -1,1 +1,1 @@
-clang++ -std=c++17 delabella.cpp dba_test.cpp -o dba_test
+g++ -std=c++17 -mfma delabella.cpp dba_test.cpp -o dba_test
