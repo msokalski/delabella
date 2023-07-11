@@ -100,7 +100,8 @@ int main( int argc, char* argv[] )
 
     FILE* svg = 0;
     double svg_view = 0;
-    double svg_scale = 1;
+    double svg_scale_x = 1;
+    double svg_scale_y = -1;
     double svg_trans_x = 0;
     double svg_trans_y = 0;
     double svg_right_col = 160;
@@ -161,9 +162,10 @@ int main( int argc, char* argv[] )
             
             svg_view = out_size;
 
-            svg_scale = out_size / (in_size * 1.2);
-            svg_trans_x = out_size * 0.5 - (x_max + x_min) * svg_scale * 0.5;
-            svg_trans_y = out_size * 0.5 - (y_max + y_min) * svg_scale * 0.5;
+            svg_scale_x = out_size / (in_size * 1.2);
+            svg_scale_y = -svg_scale_x;
+            svg_trans_x = out_size * 0.5 - (x_max + x_min) * svg_scale_x * 0.5;
+            svg_trans_y = out_size * 0.5 - (y_max + y_min) * svg_scale_y * 0.5;
 
             char svg_size[200];
             sprintf(svg_size,"width=\"%f\" height=\"%f\" viewBox=\"%f %f %f %f\"", out_size + right_col, out_size, -3.0, -3.0, out_size + right_col + 6.0, out_size + 6.0);
@@ -247,9 +249,9 @@ int main( int argc, char* argv[] )
             {
                 fprintf(svg, "  <path stroke-width=\"0.25\" fill=\"RGB(%d,%d,%d)\" fill-opacity=\"0.25\" d=\"", pal[i%6][0], pal[i%6][1], pal[i%6][2]);
                 fprintf(svg, "M %f %f L %f %f  L %f %f  Z", 
-                    cloud[t[i].v[0]].x*svg_scale + svg_trans_x, cloud[t[i].v[0]].y*svg_scale + svg_trans_y,
-                    cloud[t[i].v[1]].x*svg_scale + svg_trans_x, cloud[t[i].v[1]].y*svg_scale + svg_trans_y,
-                    cloud[t[i].v[2]].x*svg_scale + svg_trans_x, cloud[t[i].v[2]].y*svg_scale + svg_trans_y);
+                    cloud[t[i].v[0]].x*svg_scale_x + svg_trans_x, cloud[t[i].v[0]].y*svg_scale_y + svg_trans_y,
+                    cloud[t[i].v[1]].x*svg_scale_x + svg_trans_x, cloud[t[i].v[1]].y*svg_scale_y + svg_trans_y,
+                    cloud[t[i].v[2]].x*svg_scale_x + svg_trans_x, cloud[t[i].v[2]].y*svg_scale_y + svg_trans_y);
                 fprintf(svg, "\" />\n");
             }
         }
@@ -267,7 +269,7 @@ int main( int argc, char* argv[] )
         // overlay input
         for (int j=0; j<npt; j++)
         {
-            fprintf(svg, "  <circle stroke-width=\"1\" cx=\"%f\" cy=\"%f\" r=\"3\" />\n", cloud[j].x*svg_scale + svg_trans_x, cloud[j].y*svg_scale + svg_trans_y);
+            fprintf(svg, "  <circle stroke-width=\"1\" cx=\"%f\" cy=\"%f\" r=\"3\" />\n", cloud[j].x*svg_scale_x + svg_trans_x, cloud[j].y*svg_scale_y + svg_trans_y);
         }
 
         if (nedg)
@@ -276,8 +278,8 @@ int main( int argc, char* argv[] )
             for (int i=0; i<nedg; i++)
             {
                 fprintf(svg, "M %f %f L %f %f ", 
-                    cloud[bounds[i].a].x*svg_scale + svg_trans_x, cloud[bounds[i].a].y*svg_scale + svg_trans_y,
-                    cloud[bounds[i].b].x*svg_scale + svg_trans_x, cloud[bounds[i].b].y*svg_scale + svg_trans_y);
+                    cloud[bounds[i].a].x*svg_scale_x + svg_trans_x, cloud[bounds[i].a].y*svg_scale_y + svg_trans_y,
+                    cloud[bounds[i].b].x*svg_scale_x + svg_trans_x, cloud[bounds[i].b].y*svg_scale_y + svg_trans_y);
             }
 
             fprintf(svg, "\" />\n");
@@ -286,8 +288,8 @@ int main( int argc, char* argv[] )
 
         for (int j=0; j<npt; j++)
         {
-            fprintf(svg, "  <text text-anchor=\"middle\" stroke=\"#fff\" stroke-opacity=\"0.33\" fill=\"none\" font-size=\"8\" font-family=\"Arial, Helvetica, sans-serif\" x=\"%f\" y=\"%f\">%d</text>\n", cloud[j].x*svg_scale + svg_trans_x, cloud[j].y*svg_scale + svg_trans_y - 4, j);
-            fprintf(svg, "  <text text-anchor=\"middle\" stroke=\"none\" fill=\"#000\" font-size=\"8\" font-family=\"Arial, Helvetica, sans-serif\" x=\"%f\" y=\"%f\">%d</text>\n", cloud[j].x*svg_scale + svg_trans_x, cloud[j].y*svg_scale + svg_trans_y - 4, j);
+            fprintf(svg, "  <text text-anchor=\"middle\" stroke=\"#fff\" stroke-opacity=\"0.33\" fill=\"none\" font-size=\"8\" font-family=\"Arial, Helvetica, sans-serif\" x=\"%f\" y=\"%f\">%d</text>\n", cloud[j].x*svg_scale_x + svg_trans_x, cloud[j].y*svg_scale_y + svg_trans_y - 4, j);
+            fprintf(svg, "  <text text-anchor=\"middle\" stroke=\"none\" fill=\"#000\" font-size=\"8\" font-family=\"Arial, Helvetica, sans-serif\" x=\"%f\" y=\"%f\">%d</text>\n", cloud[j].x*svg_scale_x + svg_trans_x, cloud[j].y*svg_scale_y + svg_trans_y - 4, j);
         }
 
         fprintf(svg, "  <text stroke=\"none\" fill=\"#000\" font-size=\"24\" font-family=\"Arial, Helvetica, sans-serif\" x=\"%f\" y=\"%f\">%d %s</text>\n", 24.0 + svg_view, 48.0, tris, "triangles");
