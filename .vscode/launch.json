@@ -9,9 +9,13 @@
             "type": "cppdbg",
             "request": "launch",
 
-            "program": "/home/user/delabella/delabella-sdl2",
+            //"program": "/home/user/delabella/delabella-sdl2",
+            //"args": [  ],
             //"args": [ "circle.xy" ],
-            "args": [  ],
+
+            "program": "/home/user/delabella/dba_test",
+            "args": [ "dba_test.txt", "dba_test.log", "dba_test.svg" ],
+
             "stopAtEntry": false,
             "cwd": "/home/user/delabella",
             "environment": [],

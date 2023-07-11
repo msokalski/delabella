@@ -144,7 +144,8 @@ struct IDelaBella2
 	// returns number of 'land' faces (they start at GetFirstDelaunaySimplex)
 	// optionally <exterior> pointer is set to the first 'sea' face
 	// if invert is set, outer-most faces will become 'land' (instead of 'sea')
-	virtual I FloodFill(bool invert, const Simplex** exterior = 0) = 0;
+	// depth controls how many times (0=INF) wave front can pass through constraints rings
+	virtual I FloodFill(bool invert, const Simplex** exterior = 0, int depth = 0) = 0;
 
 	// groups adjacent faces, not separated by constraint edges, built on concyclic vertices into polygons
 	// first 3 vertices of a polygon are all 3 vertices of first face Simplex::v[0], v[1], v[2]

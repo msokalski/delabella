@@ -81,56 +81,6 @@ int main( int argc, char* argv[] )
     }
     printf( "\n" );
 
-    FILE* svg = 0;
-
-    double svg_view = 0;
-    double svg_scale = 1;
-    double svg_trans_x = 0;
-    double svg_trans_y = 0;
-
-    if (argc>3)    
-        svg = fopen(argv[3],"w");
-
-    if (svg)
-    {
-        double x_min = INFINITY, x_max = -INFINITY;
-        double y_min = INFINITY, y_max = -INFINITY;
-        for ( int j = 0; j < npt; j++ )
-        {
-            if (cloud[j].x < x_min)
-                x_min = cloud[j].x;
-            if (cloud[j].x > x_max)
-                x_max = cloud[j].x;
-            if (cloud[j].y < y_min)
-                y_min = cloud[j].y;
-            if (cloud[j].y > y_max)
-                y_max = cloud[j].y;
-        }
-
-        double x_size = x_max - x_min;
-        double y_size = y_max - y_min;
-        double in_size = x_size > y_size ? x_size : y_size;
-        double out_size = 640;
-        double right_col = 320;
-        
-        svg_view = out_size;
-
-        svg_scale = out_size / (in_size * 1.2);
-        svg_trans_x = out_size * 0.5 - (x_max + x_min) * svg_scale * 0.5;
-        svg_trans_y = out_size * 0.5 - (y_max + y_min) * svg_scale * 0.5;
-
-        char svg_size[200];
-        sprintf(svg_size,"width=\"%f\" height=\"%f\" viewBox=\"%f %f %f %f\"", out_size + right_col, out_size, -3.0, -3.0, out_size + right_col + 6.0, out_size + 6.0);
-        const char* svg_attr = "fill=\"none\" stroke=\"currentcolor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"";
-
-        fprintf(svg, "<svg xmlns=\"http://www.w3.org/2000/svg\" %s %s>\n", svg_size, svg_attr);
-
-        fprintf(svg, "  <rect x=\"%f\" y=\"%f\" width=\"%f\" height=\"%f\" rx=\"15\" fill=\"#fff\"/>\n", 0.0, 0.0, out_size + right_col, out_size);
-
-        //fprintf(svg, "</svg>\n");
-        //fclose(svg);
-    }
-
     struct Face
     {
         int v[3];
@@ -147,6 +97,13 @@ int main( int argc, char* argv[] )
             return 0;
         }
     };
+
+    FILE* svg = 0;
+    double svg_view = 0;
+    double svg_scale = 1;
+    double svg_trans_x = 0;
+    double svg_trans_y = 0;
+    double svg_right_col = 160;
 
     Face t[1000];
 
@@ -173,9 +130,53 @@ int main( int argc, char* argv[] )
         assert(polys == idb->Polygonize());
         */
 
-        tris = idb->FloodFill(false, 0);      
+        tris = idb->FloodFill(false, 0, 1);      
 
         printf( "Done\n" );
+
+        if (argc>3)    
+            svg = fopen(argv[3],"w");
+
+        if (svg)
+        {
+            double x_min = INFINITY, x_max = -INFINITY;
+            double y_min = INFINITY, y_max = -INFINITY;
+            for ( int j = 0; j < npt; j++ )
+            {
+                if (cloud[j].x < x_min)
+                    x_min = cloud[j].x;
+                if (cloud[j].x > x_max)
+                    x_max = cloud[j].x;
+                if (cloud[j].y < y_min)
+                    y_min = cloud[j].y;
+                if (cloud[j].y > y_max)
+                    y_max = cloud[j].y;
+            }
+
+            double x_size = x_max - x_min;
+            double y_size = y_max - y_min;
+            double in_size = x_size > y_size ? x_size : y_size;
+            double out_size = 640;
+            double right_col = svg_right_col * (tris/20 + 1);
+            
+            svg_view = out_size;
+
+            svg_scale = out_size / (in_size * 1.2);
+            svg_trans_x = out_size * 0.5 - (x_max + x_min) * svg_scale * 0.5;
+            svg_trans_y = out_size * 0.5 - (y_max + y_min) * svg_scale * 0.5;
+
+            char svg_size[200];
+            sprintf(svg_size,"width=\"%f\" height=\"%f\" viewBox=\"%f %f %f %f\"", out_size + right_col, out_size, -3.0, -3.0, out_size + right_col + 6.0, out_size + 6.0);
+            const char* svg_attr = "fill=\"none\" stroke=\"currentcolor\" stroke-linecap=\"round\" stroke-linejoin=\"round\" stroke-width=\"2\"";
+
+            fprintf(svg, "<svg xmlns=\"http://www.w3.org/2000/svg\" %s %s>\n", svg_size, svg_attr);
+
+            fprintf(svg, "  <rect x=\"%f\" y=\"%f\" width=\"%f\" height=\"%f\" rx=\"15\" fill=\"#fff\"/>\n", 0.0, 0.0, out_size + right_col, out_size);
+
+            //fprintf(svg, "</svg>\n");
+            //fclose(svg);
+        }
+
   
         const IDelaBella2<double>::Simplex* dela = idb->GetFirstDelaunaySimplex();
 
@@ -266,7 +267,7 @@ int main( int argc, char* argv[] )
         // overlay input
         for (int j=0; j<npt; j++)
         {
-            fprintf(svg, "  <circle cx=\"%f\" cy=\"%f\" r=\"3\" />\n", cloud[j].x*svg_scale + svg_trans_x, cloud[j].y*svg_scale + svg_trans_y);
+            fprintf(svg, "  <circle stroke-width=\"1\" cx=\"%f\" cy=\"%f\" r=\"3\" />\n", cloud[j].x*svg_scale + svg_trans_x, cloud[j].y*svg_scale + svg_trans_y);
         }
 
         if (nedg)
@@ -282,17 +283,20 @@ int main( int argc, char* argv[] )
             fprintf(svg, "\" />\n");
         }
 
+
         for (int j=0; j<npt; j++)
         {
-            fprintf(svg, "  <text stroke=\"none\" fill=\"#800\" font-size=\"16\" font-family=\"Arial, Helvetica, sans-serif\" x=\"%f\" y=\"%f\">%d</text>\n", cloud[j].x*svg_scale + svg_trans_x - 5, cloud[j].y*svg_scale + svg_trans_y - 4, j);
+            fprintf(svg, "  <text text-anchor=\"middle\" stroke=\"#fff\" stroke-opacity=\"0.33\" fill=\"none\" font-size=\"8\" font-family=\"Arial, Helvetica, sans-serif\" x=\"%f\" y=\"%f\">%d</text>\n", cloud[j].x*svg_scale + svg_trans_x, cloud[j].y*svg_scale + svg_trans_y - 4, j);
+            fprintf(svg, "  <text text-anchor=\"middle\" stroke=\"none\" fill=\"#000\" font-size=\"8\" font-family=\"Arial, Helvetica, sans-serif\" x=\"%f\" y=\"%f\">%d</text>\n", cloud[j].x*svg_scale + svg_trans_x, cloud[j].y*svg_scale + svg_trans_y - 4, j);
         }
-
 
         fprintf(svg, "  <text stroke=\"none\" fill=\"#000\" font-size=\"24\" font-family=\"Arial, Helvetica, sans-serif\" x=\"%f\" y=\"%f\">%d %s</text>\n", 24.0 + svg_view, 48.0, tris, "triangles");
 
         for (int j=0; j<tris; j++)
         {
-            fprintf(svg, "  <text stroke=\"none\" fill=\"#000\" font-size=\"18\" font-family=\"Arial, Helvetica, sans-serif\" x=\"%f\" y=\"%f\">%d:  %d %d %d</text>\n", 24.0 + svg_view, 96.0 + j*24, 
+            int col = j/20;
+            int row = j%20;
+            fprintf(svg, "  <text stroke=\"none\" fill=\"#000\" font-size=\"18\" font-family=\"Arial, Helvetica, sans-serif\" x=\"%f\" y=\"%f\">%d:  %d %d %d</text>\n", 24.0 + svg_view + svg_right_col * col, 96.0 + row*24, 
                 j, t[j].v[0], t[j].v[1], t[j].v[2] );
         }
 
