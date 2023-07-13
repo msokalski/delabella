@@ -2264,13 +2264,15 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			flip = 0;
 			fill ^= 0b01000000;
 			flip_tail = 0;
+
+			depth--;
 		}
 
 		int acc = 0;
 		int pro = 0;
 		int tot = (int)out_verts / 3;
 
-		while (seed)
+		while (seed && depth)
 		{
 			Face *stack = seed;
 			seed = 0;
@@ -2384,8 +2386,6 @@ struct CDelaBella2 : IDelaBella2<T, I>
 
 			depth--;
 			fill ^= 0b01000000;
-			if (!depth)
-				break;
 		}
 
 		// 4. rebuild face list and assign indexes
