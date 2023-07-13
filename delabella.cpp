@@ -2382,11 +2382,10 @@ struct CDelaBella2 : IDelaBella2<T, I>
 			//    - flip current fill mode
 			//    - jump to 1.
 
-			if (depth)
-			{
-				depth--;
-				fill ^= 0b01000000;
-			}
+			depth--;
+			fill ^= 0b01000000;
+			if (!depth)
+				break;
 		}
 
 		// 4. rebuild face list and assign indexes
@@ -2415,8 +2414,15 @@ struct CDelaBella2 : IDelaBella2<T, I>
 		for (int i = 0; i < faces; i++)
 		{
 			Face *f = face_alloc + i;
+
 			if (f->IsDelaunay())
 			{
+
+				if (f->index != marker)
+				{
+					f->flags = (f->flags & ~0b01000000) | fill;
+				}
+
 				if (f->flags & 0b01000000)
 				{
 					if (!interior)
