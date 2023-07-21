@@ -3,7 +3,10 @@ CPP=g++
 
 # fp-math must conform to strict IEEE behaviour, ie: don't use -ffast-math
 # adding -I for clang
-OPT="-std=c++17 -O3 -I/usr/include/SDL2"
+
+#OPT="-std=c++17 -O3 -I/usr/include/SDL2"
+OPT="-std=c++17 -g -I/usr/include/SDL2"
+
 LNK="-lSDL2 -lGL"
 SRC="delabella.cpp delabella-sdl2.cpp"
 OUT="delabella-sdl2"

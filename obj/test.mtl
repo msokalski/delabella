@@ -1,0 +1,16 @@
+# booleanella tri-tri instersection test
+
+newmtl A
+Ka 1.0 0.7 0.7
+Kd 1.0 0.7 0.7
+Ks 1.0 1.0 1.0
+Ns 10.0
+d  0.66
+
+newmtl B
+Ka 0.7 1.0 0.7
+Kd 0.7 1.0 0.7
+Ks 1.0 1.0 1.0
+Ns 10.0
+d  0.66
+
