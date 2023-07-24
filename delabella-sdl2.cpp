@@ -2250,6 +2250,7 @@ int intersect(const double* const tri_a[3], const double* const tri_b[3], double
     }
 
     double sgn_a[3] = {0};
+    bool has_sgn_a = false;
 
     if (outs < 2)
     {
@@ -2260,6 +2261,8 @@ int intersect(const double* const tri_a[3], const double* const tri_b[3], double
         sgn_a[0] = orient3d(a,b,c, tri_a[0]);
         sgn_a[1] = orient3d(a,b,c, tri_a[1]);
         sgn_a[2] = orient3d(a,b,c, tri_a[2]);
+
+        has_sgn_a = true;
 
         dbg_orient_calls += 3;
 
@@ -2410,261 +2413,248 @@ int intersect(const double* const tri_a[3], const double* const tri_b[3], double
     if (inp[0] != 15 && inp[0] == inp[1])
     {
         // this is to assist tesselate() 
-        // in cases: 0x44, 0x55, 0x66, 0x77
+        // in cases: 0x44, 0x55, 0x66
         // so it does not need to depend
         // on any coordinates
 
-        const double* other;
+        int o;
         switch (inp[0])
         {
-            case 4: other = tri_a[2]; break;
-            case 5: other = tri_a[0]; break;
-            case 6: other = tri_a[1]; break;
+            case 4: 
+                o=2; 
+                if (!has_sgn_a)
+                {
+                    sgn_a[o] = orient3d(tri_b[0],tri_b[1],tri_b[2], tri_a[o]);
+                    dbg_orient_calls++;
+                }
+                break;
 
-            case 12: other = tri_b[2]; break;
-            case 13: other = tri_b[0]; break;
-            case 14: other = tri_b[1]; break;
+            case 5: 
+                o=0; 
+                if (!has_sgn_a)
+                {
+                    sgn_a[o] = orient3d(tri_b[0],tri_b[1],tri_b[2], tri_a[o]);
+                    dbg_orient_calls++;
+                }
+                break;
+
+            case 6: 
+                o=1; 
+                if (!has_sgn_a)
+                {
+                    sgn_a[o] = orient3d(tri_b[0],tri_b[1],tri_b[2], tri_a[o]);
+                    dbg_orient_calls++;
+                }
+                break;
+
+            case 12: o=2; break;
+            case 13: o=0; break;
+            case 14: o=1; break;
 
             default:
                 assert(0);
         }
 
-        const double* below;
-        const double* left;
-        const double* right;
+        double sign;
 
         switch (out[0]|(out[1]<<4))
         {
-            case 0 | (5<<4): 
-            {
-                left = tri_a[0];
-                assert(sgn_a[1] != 0);
-                if (sgn_a[1] < 0)
-                {
-                    below = tri_a[1];
-                    right = tri_a[2];
-                }
-                else
-                {
-                    below = tri_a[2];
-                    right = tri_a[1];
-                }
-
-                break;
-            }
-
-            case 2 | (4<<4): 
-            {
-                left = tri_a[2];
-                assert(sgn_a[0] != 0);
-                if (sgn_a[0] < 0)
-                {
-                    below = tri_a[0];
-                    right = tri_a[1];
-                }
-                else
-                {
-                    below = tri_a[1];
-                    right = tri_a[0];
-                }
-
-                break;
-            }
-            
-            case 8 | (13<<4): 
-            {
-                left = tri_b[0];
-                assert(sgn_b[1] != 0);
-                if (sgn_b[1] < 0)
-                {
-                    below = tri_b[1];
-                    right = tri_b[2];
-                }
-                else
-                {
-                    below = tri_b[2];
-                    right = tri_b[1];
-                }
-
-                break;
-            }
-
-            case 10 | (12<<4): 
-            {
-                left = tri_b[2];
-                assert(sgn_b[0] != 0);
-                if (sgn_b[0] < 0)
-                {
-                    below = tri_b[0];
-                    right = tri_b[1];
-                }
-                else
-                {
-                    below = tri_b[1];
-                    right = tri_b[0];
-                }
-
-                break;
-            }
-
-            case 4 | (5<<4): 
-            {
-                left = tri_a[0];
-                assert(sgn_a[1]!=0);
-                if (sgn_a[1] < 0)
-                {
-                    below = tri_a[1];
-                    right = tri_a[2];
-                }
-                else
-                {
-                    below = tri_a[2];
-                    right = tri_a[1];
-                }
-
-                break;
-            }
-
-            case 6 | (4<<4): 
-            {
-                left = tri_a[2];
-                assert(sgn_a[0]!=0);
-                if (sgn_a[0] < 0)
-                {
-                    below = tri_a[0];
-                    right = tri_a[1];
-                }
-                else
-                {
-                    below = tri_a[1];
-                    right = tri_a[0];
-                }
-
-                break;
-            }
-
-            case 12 | (13<<4): 
-            {
-                left = tri_b[0];
-                assert(sgn_b[1]!=0);
-                if (sgn_b[1] < 0)
-                {
-                    below = tri_b[1];
-                    right = tri_b[2];
-                }
-                else
-                {
-                    below = tri_b[2];
-                    right = tri_b[1];
-                }
-
-                break;
-            }
-
-            case 14 | (12<<4): 
-            {
-                left = tri_b[2];
-                assert(sgn_b[0]!=0);
-                if (sgn_b[0] < 0)
-                {
-                    below = tri_b[0];
-                    right = tri_b[1];
-                }
-                else
-                {
-                    below = tri_b[1];
-                    right = tri_b[0];
-                }
-
-                break;
-            }
-
-            case 6 | (1<<4): 
-            {
-                right = tri_a[1];
-                assert(tri_a[0]!=0);
-                if (tri_a[0]<0)
-                {
-                    below = tri_a[0];
-                    left = tri_a[2];
-                }
-                else
-                {
-                    below = tri_a[2];
-                    left = tri_a[0];
-                }
-
-                break;
-            }
-
-            case 6 | (5<<4): 
-            {
-                left = tri_a[0];
-                assert(sgn_a[2]!=0);
-                if (sgn_a[2]<0)
-                {
-                    below = tri_a[2];
-                    right = tri_a[1];
-                }
-                else
-                {
-                    below = tri_a[1];
-                    right = tri_a[2];
-                }
-
-                break;
-            }
-
-            case 14 | (9<<4): 
-            {
-                right = tri_b[1];
-                assert(tri_b[0]!=0);
-                if (tri_b[0]<0)
-                {
-                    below = tri_b[0];
-                    left = tri_b[2];
-                }
-                else
-                {
-                    below = tri_b[2];
-                    left = tri_b[0];
-                }
-
-                break;
-            }
-
-            case 14 | (13<<4): 
-            {
-                left = tri_b[0];
-                assert(sgn_b[2]!=0);
-                if (sgn_b[2]<0)
-                {
-                    below = tri_b[2];
-                    right = tri_b[1];
-                }
-                else
-                {
-                    below = tri_b[1];
-                    right = tri_b[2];
-                }
-
-                break;
-            }
+            case 0 | (5<<4):   sign = -sgn_a[1]*sgn_b[o]; break;
+            case 2 | (4<<4):   sign = -sgn_a[0]*sgn_b[o]; break;
+            case 8 | (13<<4):  sign = -sgn_b[1]*sgn_a[o]; break;
+            case 10 | (12<<4): sign = -sgn_b[0]*sgn_a[o]; break;
+            case 4 | (5<<4):   sign = -sgn_a[1]*sgn_b[o]; break;
+            case 6 | (4<<4):   sign = -sgn_a[0]*sgn_b[o]; break;
+            case 12 | (13<<4): sign = -sgn_b[1]*sgn_a[o]; break;
+            case 14 | (12<<4): sign = -sgn_b[0]*sgn_a[o]; break;
+            case 6 | (1<<4):   sign = -sgn_a[0]*sgn_b[o]; break;
+            case 6 | (5<<4):   sign = +sgn_a[2]*sgn_b[o]; break;
+            case 14 | (9<<4):  sign = -sgn_b[0]*sgn_a[o]; break;
+            case 14 | (13<<4): sign = +sgn_b[2]*sgn_a[o]; break;
 
             default:
                 assert(0);
-        }
+        }        
 
-        if (orient3d(below,left,right,other) < 0)
+        if (sign > 0)
         {
             // swap outs !!!
             out[2] = out[0];
             out[0] = out[1];
             out[1] = out[2];
         }
-
-        dbg_orient_calls++;
     }
+    else
+    if (inp[0] == 15 && inp[1] == 15 && (out[0]&8) == (out[1]&8))
+    {
+        // help tesselation in case 0x77
+
+        /*
+              v          v           v          v    
+             / \        / \         / \        / \   
+            /   \      /   \       / c \      / c \  
+           / a-b \    / b-a \     / a-b \    / b-a \ 
+          w-------u  v-------w   w-------u  v-------w
+              c          c                           
+        */
+
+        // find vertices u & w that are on the same side of a-b
+        // if one of them is exactly on a-b assume it is w
+        // otherwise choose w from u,w by enforcing order: w-a-b
+        // by testing if v is visible from {below,left,right} of a-b
+
+        int dir = 0, c = -1;
+
+        // c must not be vertex referenced
+        // a must be in out[0], b must be in out[1]
+
+        switch ((out[0] | (out[1]<<4)) & ~0x88)
+        {
+            case 0 | (1<<4): 
+                dir=+1; // a=0; b=1; 
+                c=2;
+                break;
+            case 1 | (2<<4):
+                dir=+1; // a=1; b=2; 
+                c=0;
+                break;
+            case 2 | (0<<4):
+                dir=+1; // a=2; b=0; 
+                c=1;
+                break;
+
+            case 1 | (0<<4):
+                dir=-1; // a=1; b=0; 
+                c=2;
+                break;
+            case 2 | (1<<4):
+                dir=-1; // a=2; b=1; 
+                c=0;
+                break;
+            case 0 | (2<<4):
+                dir=-1; // a=0; b=2; 
+                c=1;
+                break;
+
+            case 4 | (5<<4):
+                dir=-1; // a=0; b=2; 
+                c=1;
+                break;
+            case 5 | (6<<4): 
+                dir=-1; // a=1; b=0; 
+                c=2;
+                break;
+            case 6 | (4<<4): 
+                dir=-1; // a=2; b=1; 
+                c=0;
+                break;
+
+            case 5 | (4<<4):
+                dir=-1; // a=2; b=0; 
+                c=1;
+                break;
+            case 6 | (5<<4):
+                dir=+1; // a=0; b=1; 
+                c=2;
+                break;
+            case 4 | (6<<4):
+                dir=+1; // a=1; b=2; 
+                c=0;
+                break;
+
+            case 0 | (5<<4):
+                dir=-1; // a=0; b=2; 
+                c=1;
+                break;
+            case 1 | (6<<4):
+                dir=+1; // a=1; b=2; 
+                c=0;
+                break;
+            case 2 | (4<<4):
+                dir=-1; // a=2; b=1; 
+                c=0;
+                break;
+
+            case 4 | (2<<4):
+                dir=+1; // a=1; b=2; 
+                c=0;
+                break;
+            case 5 | (0<<4):
+                dir=+1; // a=2; b=0; 
+                c=1;
+                break;
+            case 6 | (1<<4):
+                dir=-1; // a=2; b=1; 
+                c=0;
+                break;
+
+            default:
+                assert(0);
+        }
+        
+        if (out[0]&8)
+        {
+            if (!has_sgn_a)
+            {
+                sgn_a[0] = orient3d(tri_b[0],tri_b[1],tri_b[2], tri_a[0]);
+                sgn_a[1] = orient3d(tri_b[0],tri_b[1],tri_b[2], tri_a[1]);
+                sgn_a[2] = orient3d(tri_b[0],tri_b[1],tri_b[2], tri_a[2]);        
+                dbg_orient_calls += 3;
+            }
+
+            if (sgn_b[c] < 0)
+                dir = -dir;
+
+            // a-b-c belongs to tri_b, u,v,w belongs to tri_a
+            int w=-1;
+            for (int i=2,j=0; j<3; i=j++)
+            {
+                if (sgn_a[i]<=0 && sgn_a[j]<=0)
+                {
+                    w = dir < 0 ? i : j;
+                    break;
+                }
+                if (sgn_a[i]>=0 && sgn_a[j]>=0)
+                {
+                    w = dir < 0 ? j : i;
+                    break;
+                }
+            }
+
+            assert(w>=0 && w<3);
+            inp[2] = w;
+        }
+        else
+        {
+            if (!has_sgn_a)
+            {
+                sgn_a[c] = orient3d(tri_b[0],tri_b[1],tri_b[2], tri_a[c]);
+                dbg_orient_calls++;
+            }
+
+            if (sgn_a[c] < 0)
+                dir = -dir;
+
+            // a-b-c belongs to tri_a, u,v,w belongs to tri_b
+            int w=-1;
+            for (int i=2,j=0; j<3; i=j++)
+            {
+                if (sgn_b[i]<=0 && sgn_b[j]<=0)
+                {
+                    w = dir < 0 ? i : j;
+                    break;
+                }
+                if (sgn_b[i]>=0 && sgn_b[j]>=0)
+                {
+                    w = dir < 0 ? j : i;
+                    break;
+                }
+            }
+
+            assert(w>=0 && w<3);
+            inp[2] = w | 8;
+        }
+    }    
 
     if (seg)
     {
@@ -2756,27 +2746,9 @@ int intersect(const double* const tri_a[3], const double* const tri_b[3], double
             seg[1][1] = t[i][1];
             seg[1][2] = t[i][2];
         }
-
-        if (inp[0] == 15 && inp[0] == inp[1])
-        {
-            // help tesselation in case 0x77
-
-            /*    v          u          w 
-                 / \        / \        / \ 
-                /   \      /   \      / a \ 
-               / a-b \    / b-a \    /  b  \ 
-              w-------u  v-------w  u-------v */
-
-            // 1. find vertex w such both triangles: u,b,a and v,a,b
-            //    has same direction (same sign of orientXD)
-            // 2. if signs (both) are negative, swap a with b
-            // 3. set out[3] = w
-
-            // then handle a,b,F,w (case 0x7w) in tesselate()
-        }
     }
 
-    return out[0] | (out[1]<<4) | (inp[0]<<8) | (inp[1]<<12);
+    return out[0] | (out[1]<<4) | (inp[0]<<8) | (inp[1]<<12) | (inp[2]<<16);
 }
 
 int tesselate(int out, int buf[25])
@@ -3098,19 +3070,49 @@ int tesselate(int out, int buf[25])
                 break;
             }
 
-            /*    + u
+            /*    + w
                  / \ 
-                / b \ 
-            -- /  a  \ --
-            v +-------+ w */
+                / a \ 
+               /  b  \   
+            u +-------+ v */
             case 0x77:
             {
                 // here w will also need some help from intersector:
                 // where is u and ensure a,b,u are sorted!
 
+                /*
                 buf[i++] = 0+j;
                 buf[i++] = 1+j;
                 buf[i++] = 2+j;
+                */
+
+                int w = (out>>16) & 0x7;
+                int v = w==0 ? 2 : w-1;
+                int u = v==0 ? 2 : v-1;
+
+                u+=j;
+                v+=j;
+                w+=j;
+
+                buf[i++] = u;
+                buf[i++] = v;
+                buf[i++] = b;
+
+                buf[i++] = u;
+                buf[i++] = b;
+                buf[i++] = a;
+
+                buf[i++] = v;
+                buf[i++] = a;
+                buf[i++] = b;                
+
+                buf[i++] = u;
+                buf[i++] = a;
+                buf[i++] = w;
+
+                buf[i++] = v;
+                buf[i++] = w;
+                buf[i++] = a;
 
                 break;
             }
@@ -3210,18 +3212,16 @@ int main(int argc, char* argv[])
 
         int64_t dbg_intersections = 0;
 
-        int64_t tests = 1000000;
+        int64_t tests = 1000; // 1G
         for (int64_t test=0; test<tests; test++)
         {
-            /*
             static int every = 0;
             every++;
             if (every == 1000000)
             {
-                printf("TESTING %ld / %ld\n", test, tests);
+                printf("TESTING %ld / %ld\n", test+1, tests);
                 every = 0;
             }
-            */
 
             double tri_a[3][3] = 
             {
@@ -3268,7 +3268,7 @@ int main(int argc, char* argv[])
             // 2 supplemental tokens tell whether the other triange's vertex or edge can
             // represent such end-point, (value 15 indicates it is triangle interior)
 
-            if (result[out&0xFFFF] == 0)
+            if (/*result[out&0xFFFF] == 0*/ out>=0 && (out&0xFF00) == 0xFF00 && (out&8) == ((out>>4)&8))
             {
                 char path[256];
                 mkdir("obj",0777);
