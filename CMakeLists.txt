@@ -1,7 +1,6 @@
-cmake_minimum_required(VERSION 2.6)
-cmake_policy(SET CMP0048 "NEW")
+cmake_minimum_required(VERSION 3.16)
 
-project(delabella LANGUAGES CXX VERSION 1.0)
+project(delabella LANGUAGES CXX VERSION 2.0)
 
 add_library(${PROJECT_NAME} STATIC ${PROJECT_SOURCE_DIR}/delabella.cpp)
 
