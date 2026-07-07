@@ -37,6 +37,7 @@ Copyright (C) 2018-2022 GUMIX - Marcin Sokalski
 #include <stdio.h>
 #include <stdarg.h>
 #include <assert.h>
+#include <ctime>
 
 #include <vector>
 
